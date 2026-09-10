@@ -850,22 +850,114 @@ TEST(SymbolicTables, DivergentLimitsReportNoValue) {
 // Expansion terminates.
 // ---------------------------------------------------------------------------
 
-TEST(SymbolicTables, ExpansionIsBoundedAndStaysEqualToItsInput) {
-    // sym_expand("((x+1)^8)^8") never returned: expansion multiplies out by repeated
-    // distribution and nothing collects like terms, so (x+1)^8 is 256 products rather
-    // than nine terms and the outer power is 256^8 of them. Past the ceiling it now
-    // declines to expand further, which leaves a partly-expanded expression -- still
-    // exactly equal to the input, which is what the caller is entitled to.
-    for (const char* text : {"((x+1)^8)^8", "((x+2)^4)^4", "(x+1)^8", "(x+1)^3",
-                             "(x+1)*(x+2)", "(x+1)^2*(x-3)"}) {
-        const SymExpr original = parse_or_die(text);
-        const SymExpr expanded = sym_expand(parse_or_die(text));
+TEST(SymbolicTables, ExpansionCollectsLikeTermsAndStaysEqualToItsInput) {
+    // Expansion used to multiply out over the tree without ever putting like terms
+    // back together, so (x+1)^3 was eight products and (x+1)^8 was 256. Nothing
+    // collected them, which is why ((x+1)^8)^8 -- 256^8 products distributed
+    // pairwise -- never returned and the REPL had to be killed.
+    struct Case {
+        const char* text;
+        int terms;
+    };
+    const Case cases[] = {
+        {"(x+1)^3", 4},   {"(x+1)^2", 3},        {"(x+1)*(x+2)", 3},
+        {"(x+1)^8", 9},   {"(x+y)*(x-y)", 2},    {"(x+1)^2*(x-3)", 4},
+        {"x*y + x*z", 2}, {"x + x + x", 1},      {"(x+1)^2 - (x+1)^2", 1},
+    };
+    for (const Case& c : cases) {
+        const SymExpr original = parse_or_die(c.text);
+        const SymExpr expanded = sym_expand(parse_or_die(c.text));
+        // Value first: whatever shape it takes, it has to be the same function.
         for (const double x : {0.3, 1.3, -0.7, 2.1}) {
             const double want = at(original, "x", x);
             EXPECT_NEAR(at(expanded, "x", x), want, 1e-9 * std::max(1.0, std::abs(want)))
-                << "sym_expand(" << text << ") changed the value at x=" << x;
+                << "sym_expand(" << c.text << ") changed the value at x=" << x;
+        }
+        // Then the shape: one term per distinct monomial, counted by the separators
+        // between them.
+        const std::string printed = sym_to_string(expanded);
+        int separators = 0;
+        for (std::size_t i = 0; i + 2 < printed.size(); ++i) {
+            if (printed[i] == ' ' && (printed[i + 1] == '+' || printed[i + 1] == '-') &&
+                printed[i + 2] == ' ') {
+                ++separators;
+            }
+        }
+        EXPECT_EQ(separators + 1, c.terms) << c.text << " expanded to " << printed;
+    }
+}
+
+TEST(SymbolicTables, NestedPowersExpandInsteadOfHanging) {
+    // ((x+1)^8)^8 is (x+1)^64: sixty-five terms. Distributing pairwise it is 256^8
+    // products, which is what did not terminate.
+    const SymExpr expanded = sym_expand(parse_or_die("((x+1)^8)^8"));
+    const std::string printed = sym_to_string(expanded);
+    int separators = 0;
+    for (std::size_t i = 0; i + 2 < printed.size(); ++i) {
+        if (printed[i] == ' ' && (printed[i + 1] == '+' || printed[i + 1] == '-') &&
+            printed[i + 2] == ' ') {
+            ++separators;
         }
     }
+    EXPECT_EQ(separators + 1, 65) << "expected the degree-64 binomial";
+    // The leading coefficients are C(64, k).
+    EXPECT_NE(printed.find("x ^ 64"), std::string::npos) << printed.substr(0, 120);
+    EXPECT_NE(printed.find("2016.000000"), std::string::npos) << "C(64,2)";
+    EXPECT_NE(printed.find("41664.000000"), std::string::npos) << "C(64,3)";
+
+    // Value equality is asserted only where the expanded polynomial can actually be
+    // evaluated. It is symbolically exact everywhere, and numerically unusable for
+    // x < 0: at x = -0.7 the answer is 0.3^64 = 3.4e-34 while the largest term is
+    // 5.6e13, so recovering it needs about 47 digits of cancellation and a double
+    // carries 16. That is a property of the degree-64 polynomial, not of this
+    // expansion -- evaluating the same coefficients in exact arithmetic and then
+    // rounding shows the identical loss. For x > 0 every term is positive, nothing
+    // cancels, and the two forms agree.
+    const SymExpr original = parse_or_die("((x+1)^8)^8");
+    for (const double x : {0.05, 0.3, 1.3, 2.1}) {
+        const double want = at(original, "x", x);
+        EXPECT_NEAR(at(expanded, "x", x), want, 1e-9 * std::max(1.0, std::abs(want)))
+            << "at x=" << x;
+    }
+}
+
+TEST(SymbolicTables, ExpansionDeclinesRatherThanReturningPartOfTheAnswer) {
+    // Eight distinct variables to the eighth power is C(15,7) = 6435 monomials,
+    // past the 4096-term ceiling. Past it, expansion hands back what it was given
+    // rather than a truncated polynomial -- so the result is still the same
+    // function, just not multiplied out.
+    const char* wide = "(a+b+c+d+f+g+h+i)^8";
+    const SymExpr original = parse_or_die(wide);
+    const SymExpr expanded = sym_expand(parse_or_die(wide));
+    const std::map<std::string, double> env{{"a", 1.1}, {"b", 0.7}, {"c", 1.3}, {"d", 0.2},
+                                            {"f", 0.9}, {"g", 1.7}, {"h", 0.4}, {"i", 1.2}};
+    const double want = sym_eval(original, env);
+    EXPECT_NEAR(sym_eval(expanded, env), want, 1e-9 * std::max(1.0, std::abs(want)))
+        << "declining to expand must not change the value";
+
+    // A quotient by something that is not a number is left alone: cancelling x/x to
+    // 1 would differ from x/x at x = 0, and nothing here can rule that point out.
+    const SymExpr quotient = sym_expand(parse_or_die("x/x"));
+    EXPECT_TRUE(std::isnan(at(quotient, "x", 0.0))) << sym_to_string(quotient);
+
+    // And a fractional exponent is not pushed through a square: (x^2)^0.5 is |x|.
+    const SymExpr root = sym_expand(parse_or_die("(x^2)^0.5"));
+    EXPECT_NEAR(at(root, "x", -3.0), 3.0, 1e-12) << sym_to_string(root);
+}
+
+TEST(SymbolicTables, ExpansionKeepsDistinctAtomsApart) {
+    // Atoms are identified by structure, not by printed form. sym_to_string renders
+    // a constant with six decimals, so sin(1.0000001*x) and sin(1.0000002*x) print
+    // identically; keying atoms by that text would merge them and expand their
+    // difference to exactly zero.
+    const SymExpr difference = sym_expand(parse_or_die("sin(1.0000001*x) - sin(1.0000002*x)"));
+    const double at_two = at(difference, "x", 2.0);
+    EXPECT_NE(at_two, 0.0) << "distinct atoms collapsed: " << sym_to_string(difference);
+    EXPECT_NEAR(at_two, std::sin(1.0000001 * 2.0) - std::sin(1.0000002 * 2.0), 1e-15);
+
+    // The same expression really does cancel when the atoms are the same.
+    const SymExpr cancels = sym_expand(parse_or_die("sin(1.0000001*x) - sin(1.0000001*x)"));
+    EXPECT_EQ(at(cancels, "x", 2.0), 0.0) << sym_to_string(cancels);
 }
 
 TEST(SymbolicTables, PrintedConstantsReadBackAsThemselves) {

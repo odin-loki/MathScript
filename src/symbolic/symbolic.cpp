@@ -1049,54 +1049,412 @@ namespace {
 
 constexpr int kMaxExpandExponent = 8;
 
-// Ceiling on the size of an expanded result. Expansion here multiplies out by repeated
-// distribution and nothing collects like terms, so (x+1)^3 stays as eight products
-// rather than four terms and (x+1)^8 as 256 rather than nine. Raising an already-
-// expanded sum to a further power therefore squares-and-squares again: ((x+1)^8)^8 is
-// 65 terms once collected and 256^8 products here, and sym_expand did not return from
-// it at all -- the REPL had to be killed. Declining to expand past this size gives the
-// caller the expression back instead of a hang.
-constexpr long long kMaxExpandNodes = 20000;
 
-long long count_expr_nodes(const SymExpr& expr) {
-    long long total = 1;
-    if (expr.left) {
-        total += count_expr_nodes(*expr.left);
+
+
+// ---------------------------------------------------------------------------
+// Canonical polynomial form.
+//
+// Expansion used to multiply out over the expression tree and never put like terms
+// back together: (x+1)^3 came out as eight products rather than four terms, and
+// (x+1)^8 as 256 rather than nine. That is unreadable, and it is also why nested
+// powers exploded -- ((x+1)^8)^8 is 256^8 products distributed pairwise, which did
+// not terminate.
+//
+// Expansion now happens on a canonical form. A polynomial is a map from monomial key
+// to monomial; multiplying two of them is one pass over the cross product with like
+// terms merged as they are produced, so an intermediate is never larger than the
+// answer it represents. ((x+1)^8)^8 is degree 64 and no intermediate exceeds
+// sixty-five terms.
+//
+// A monomial is a numeric coefficient times a product of ATOMS raised to powers. An
+// atom is any factor that is not a number and that this machinery cannot look
+// inside: a variable, or an opaque subexpression such as sin(x) or x^y. Anything
+// that does not decompose is carried through as an atom rather than dropped.
+//
+// Atoms are identified by STRUCTURE, not by printed text. Printing is not injective:
+// sym_to_string renders a constant with six decimals, so sin(1.0000001*x) and
+// sin(1.0000002*x) both print as sin((1.000000 * x)). Keying atoms by their printed
+// form would merge those two into one and expand their difference to exactly zero --
+// a wrong answer with no error. The printed form is used only to bucket candidates;
+// identity is settled by sym_equal, which compares values exactly.
+// ---------------------------------------------------------------------------
+
+constexpr int kMaxPolyDepth = 256;
+constexpr std::size_t kMaxPolyTerms = 4096;
+
+struct Monomial {
+    double coefficient = 1.0;
+    std::map<int, double> factors;  // atom id -> exponent
+};
+
+// key -> monomial. The map both orders terms and merges like ones.
+using Polynomial = std::map<std::string, Monomial>;
+
+struct PolyContext {
+    std::vector<SymExpr> atoms;                       // id -> the expression
+    std::map<std::string, std::vector<int>> buckets;  // printed form -> candidate ids
+    bool overflowed = false;
+
+    // Bucket by printed form for speed, then settle identity with sym_equal. Two
+    // expressions that print alike but differ are given different ids.
+    int intern(const SymExpr& expr) {
+        std::string printed = sym_to_string(expr);
+        auto& candidates = buckets[printed];
+        for (const int id : candidates) {
+            if (sym_equal(atoms[static_cast<std::size_t>(id)], expr)) {
+                return id;
+            }
+        }
+        const int id = static_cast<int>(atoms.size());
+        atoms.push_back(clone_expr(expr));
+        candidates.push_back(id);
+        return id;
     }
-    if (expr.right) {
-        total += count_expr_nodes(*expr.right);
-    }
-    return total;
+};
+
+// Stable text for an exponent, used only to build map keys: %.17g so that two
+// exponents which differ at all get different keys.
+std::string exponent_key(double value) {
+    char buffer[40];
+    std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+    return buffer;
 }
 
-// Whether raising a base of `base_nodes` nodes to `exponent` stays inside the ceiling,
-// computed without ever forming the product.
-bool expansion_fits(long long base_nodes, int exponent) {
-    long long projected = 1;
+std::string monomial_key(const Monomial& monomial) {
+    std::string key;
+    for (const auto& [atom, exponent] : monomial.factors) {
+        if (exponent == 0.0) {
+            continue;
+        }
+        key += std::to_string(atom);
+        key += '^';
+        key += exponent_key(exponent);
+        key += '*';
+    }
+    return key;
+}
+
+void poly_add_term(Polynomial& poly, Monomial monomial) {
+    std::erase_if(monomial.factors, [](const auto& entry) { return entry.second == 0.0; });
+    if (monomial.coefficient == 0.0) {
+        return;
+    }
+    const std::string key = monomial_key(monomial);
+    const double contribution = monomial.coefficient;
+    auto [it, inserted] = poly.try_emplace(key, std::move(monomial));
+    if (!inserted) {
+        it->second.coefficient += contribution;
+        if (it->second.coefficient == 0.0) {
+            poly.erase(it);
+        }
+    }
+}
+
+Polynomial poly_constant(double value) {
+    Polynomial poly;
+    Monomial monomial;
+    monomial.coefficient = value;
+    poly_add_term(poly, std::move(monomial));
+    return poly;
+}
+
+Polynomial poly_atom(const SymExpr& expr, PolyContext& context) {
+    Monomial monomial;
+    monomial.factors[context.intern(expr)] = 1.0;
+    Polynomial poly;
+    poly_add_term(poly, std::move(monomial));
+    return poly;
+}
+
+void poly_accumulate(Polynomial& into, const Polynomial& from, double scale) {
+    for (const auto& [key, monomial] : from) {
+        (void)key;
+        Monomial scaled = monomial;
+        scaled.coefficient *= scale;
+        poly_add_term(into, std::move(scaled));
+    }
+}
+
+Polynomial poly_multiply(const Polynomial& a, const Polynomial& b, PolyContext& context) {
+    Polynomial product;
+    for (const auto& [key_a, mono_a] : a) {
+        (void)key_a;
+        for (const auto& [key_b, mono_b] : b) {
+            (void)key_b;
+            Monomial combined;
+            combined.coefficient = mono_a.coefficient * mono_b.coefficient;
+            combined.factors = mono_a.factors;
+            for (const auto& [atom, exponent] : mono_b.factors) {
+                combined.factors[atom] += exponent;
+            }
+            poly_add_term(product, std::move(combined));
+        }
+        if (product.size() > kMaxPolyTerms) {
+            context.overflowed = true;
+            return product;
+        }
+    }
+    return product;
+}
+
+bool poly_is_single_monomial(const Polynomial& poly, Monomial& out) {
+    if (poly.size() != 1) {
+        return false;
+    }
+    out = poly.begin()->second;
+    return out.coefficient != 0.0;
+}
+
+Polynomial expand_to_poly(const SymExpr& expr, PolyContext& context, int depth);
+
+Polynomial poly_power(const Polynomial& base, int exponent, PolyContext& context) {
+    Polynomial result = poly_constant(1.0);
     for (int i = 0; i < exponent; ++i) {
-        if (base_nodes != 0 && projected > kMaxExpandNodes / base_nodes) {
+        result = poly_multiply(result, base, context);
+        if (context.overflowed) {
+            return result;
+        }
+    }
+    return result;
+}
+
+// Add/Sub/Neg chains are walked with an explicit stack rather than by recursion.
+// A sum of a hundred terms parses into a hundred-deep left-leaning tree, and
+// recursing it would either blow the depth guard -- declining an expansion that is
+// perfectly ordinary -- or hold a hundred polynomial maps live at once.
+bool flatten_sum(const SymExpr& expr, PolyContext& context, int depth, Polynomial& out) {
+    std::vector<std::pair<const SymExpr*, double>> pending{{&expr, 1.0}};
+    bool saw_sum = false;
+    while (!pending.empty()) {
+        const auto [node, sign] = pending.back();
+        pending.pop_back();
+        if (node->op == SymOp::Add && node->left && node->right) {
+            saw_sum = true;
+            pending.emplace_back(node->left.get(), sign);
+            pending.emplace_back(node->right.get(), sign);
+            continue;
+        }
+        if (node->op == SymOp::Sub && node->left && node->right) {
+            saw_sum = true;
+            pending.emplace_back(node->left.get(), sign);
+            pending.emplace_back(node->right.get(), -sign);
+            continue;
+        }
+        if (node->op == SymOp::Neg && node->left) {
+            saw_sum = true;
+            pending.emplace_back(node->left.get(), -sign);
+            continue;
+        }
+        poly_accumulate(out, expand_to_poly(*node, context, depth + 1), sign);
+        if (context.overflowed) {
+            return saw_sum;
+        }
+    }
+    return saw_sum;
+}
+
+Polynomial expand_to_poly(const SymExpr& expr, PolyContext& context, int depth) {
+    if (depth > kMaxPolyDepth || context.overflowed) {
+        context.overflowed = true;
+        return poly_constant(0.0);
+    }
+    switch (expr.op) {
+    case SymOp::Const:
+        return poly_constant(expr.value);
+    case SymOp::Var:
+        return poly_atom(expr, context);
+    case SymOp::Add:
+    case SymOp::Sub:
+    case SymOp::Neg: {
+        Polynomial result;
+        if (flatten_sum(expr, context, depth, result)) {
+            return result;
+        }
+        break;
+    }
+    case SymOp::Mul:
+        if (expr.left && expr.right) {
+            const Polynomial lhs = expand_to_poly(*expr.left, context, depth + 1);
+            const Polynomial rhs = expand_to_poly(*expr.right, context, depth + 1);
+            return poly_multiply(lhs, rhs, context);
+        }
+        break;
+    case SymOp::Div:
+        if (expr.left && expr.right) {
+            // Division only by a numeric factor. Cancelling an ATOM would rewrite
+            // x/x as 1, which differs from x/x at x = 0, and no amount of algebra
+            // here can rule that point out. Dividing by a number is unconditional.
+            const Polynomial denominator = expand_to_poly(*expr.right, context, depth + 1);
+            Monomial divisor;
+            if (!poly_is_single_monomial(denominator, divisor) || !divisor.factors.empty()) {
+                break;
+            }
+            Polynomial result;
+            poly_accumulate(result, expand_to_poly(*expr.left, context, depth + 1),
+                            1.0 / divisor.coefficient);
+            return result;
+        }
+        break;
+    case SymOp::Pow: {
+        double power = 0.0;
+        if (expr.left && expr.right && try_get_const_value(*expr.right, power)) {
+            const bool integral = power == std::floor(power);
+            if (integral && power >= 0.0 && power <= static_cast<double>(kMaxExpandExponent)) {
+                const int whole = static_cast<int>(power);
+                return poly_power(expand_to_poly(*expr.left, context, depth + 1), whole, context);
+            }
+            const Polynomial base = expand_to_poly(*expr.left, context, depth + 1);
+            Monomial single;
+            if (!poly_is_single_monomial(base, single)) {
+                break;
+            }
+            // A non-integer exponent may only be pushed through a single atom with a
+            // positive coefficient. (c*x)^p and c^p * x^p agree wherever either is
+            // real, but (x^2)^0.5 is |x| and not x, and (x*y)^0.5 is not x^0.5*y^0.5
+            // when both factors are negative.
+            const bool distributable =
+                integral || (single.coefficient > 0.0 && single.factors.size() <= 1 &&
+                             (single.factors.empty() || single.factors.begin()->second == 1.0));
+            if (!distributable) {
+                break;
+            }
+            Monomial raised;
+            raised.coefficient = std::pow(single.coefficient, power);
+            for (const auto& [atom, exponent] : single.factors) {
+                raised.factors[atom] = exponent * power;
+            }
+            if (!std::isfinite(raised.coefficient)) {
+                break;
+            }
+            Polynomial result;
+            poly_add_term(result, std::move(raised));
+            return result;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return poly_atom(expr, context);
+}
+
+double monomial_degree(const Monomial& monomial) {
+    double degree = 0.0;
+    for (const auto& [atom, exponent] : monomial.factors) {
+        (void)atom;
+        degree += exponent;
+    }
+    return degree;
+}
+
+// |coefficient| * product(atom^exponent), with trivial factors collapsed and
+// negative exponents gathered into a denominator so that x/y comes back as x/y
+// rather than x * y^-1. The sign is returned separately so the caller can emit a
+// subtraction instead of adding a negated term.
+SymExpr build_monomial_expr(const Monomial& monomial, const std::vector<SymExpr>& atoms,
+                            bool use_absolute_coefficient) {
+    auto build_factor = [&](int id, double exponent) {
+        SymExpr base = clone_expr(atoms[static_cast<std::size_t>(id)]);
+        if (exponent == 1.0) {
+            return base;
+        }
+        return sym_pow(std::move(base), sym_const(exponent));
+    };
+
+    SymExpr numerator;
+    bool have_numerator = false;
+    SymExpr denominator;
+    bool have_denominator = false;
+    for (const auto& [id, exponent] : monomial.factors) {
+        if (exponent == 0.0) {
+            continue;
+        }
+        if (exponent > 0.0) {
+            SymExpr factor = build_factor(id, exponent);
+            numerator = have_numerator ? sym_mul(std::move(numerator), std::move(factor))
+                                       : std::move(factor);
+            have_numerator = true;
+        } else {
+            SymExpr factor = build_factor(id, -exponent);
+            denominator = have_denominator ? sym_mul(std::move(denominator), std::move(factor))
+                                           : std::move(factor);
+            have_denominator = true;
+        }
+    }
+
+    const double coefficient =
+        use_absolute_coefficient ? std::abs(monomial.coefficient) : monomial.coefficient;
+    if (!have_numerator) {
+        numerator = sym_const(coefficient);
+    } else if (coefficient == -1.0) {
+        numerator = sym_neg(std::move(numerator));
+    } else if (coefficient != 1.0) {
+        numerator = sym_mul(sym_const(coefficient), std::move(numerator));
+    }
+    if (!have_denominator) {
+        return numerator;
+    }
+    return sym_div(std::move(numerator), std::move(denominator));
+}
+
+// Terms ordered by descending total degree, so the result reads the way a
+// polynomial is written. Ties keep the map's own order, which is by atom id and
+// exponent -- arbitrary but deterministic, which is what matters.
+SymExpr poly_to_expr(const Polynomial& poly, const std::vector<SymExpr>& atoms) {
+    std::vector<const Monomial*> ordered;
+    ordered.reserve(poly.size());
+    for (const auto& [key, monomial] : poly) {
+        (void)key;
+        if (monomial.coefficient != 0.0) {
+            ordered.push_back(&monomial);
+        }
+    }
+    if (ordered.empty()) {
+        return sym_const(0.0);
+    }
+    std::stable_sort(ordered.begin(), ordered.end(), [](const Monomial* a, const Monomial* b) {
+        return monomial_degree(*a) > monomial_degree(*b);
+    });
+
+    SymExpr result = build_monomial_expr(*ordered.front(), atoms, false);
+    for (std::size_t i = 1; i < ordered.size(); ++i) {
+        // A negative term is subtracted rather than added as a negation, so that
+        // (x+y)*(x-y) reads as x^2 - y^2.
+        const bool negative = ordered[i]->coefficient < 0.0;
+        SymExpr term = build_monomial_expr(*ordered[i], atoms, negative);
+        result = negative ? sym_sub(std::move(result), std::move(term))
+                          : sym_add(std::move(result), std::move(term));
+    }
+    return result;
+}
+
+// Every coefficient has to stay finite for the regrouping to have preserved the
+// value; a division by zero somewhere inside means handing back the original.
+bool poly_is_finite(const Polynomial& poly) {
+    for (const auto& [key, monomial] : poly) {
+        (void)key;
+        if (!std::isfinite(monomial.coefficient)) {
             return false;
         }
-        projected *= base_nodes;
+        for (const auto& [atom, exponent] : monomial.factors) {
+            (void)atom;
+            if (!std::isfinite(exponent)) {
+                return false;
+            }
+        }
     }
-    return projected <= kMaxExpandNodes;
-}
-
-bool is_small_nonneg_integer_exponent(const SymExpr& expr, int& exponent) {
-    if (expr.op != SymOp::Const) {
-        return false;
-    }
-    const double value = expr.value;
-    if (value < 0.0 || value > static_cast<double>(kMaxExpandExponent) || value != std::floor(value)) {
-        return false;
-    }
-    exponent = static_cast<int>(value);
     return true;
 }
 
 } // namespace
 
 SymExpr sym_expand(SymExpr expr) {
+    // Expand inside the opaque nodes first -- sin((x+1)*(x+2)) should have its
+    // argument multiplied out even though the sine itself is not a polynomial --
+    // then push the whole thing through the canonical form. The polynomial does the
+    // distributing and the collecting in one step, so there is no separate
+    // distribution pass here any more.
     if (expr.left) {
         expr.left = std::make_unique<SymExpr>(sym_expand(clone_expr(*expr.left)));
     }
@@ -1104,63 +1462,14 @@ SymExpr sym_expand(SymExpr expr) {
         expr.right = std::make_unique<SymExpr>(sym_expand(clone_expr(*expr.right)));
     }
 
-    switch (expr.op) {
-    case SymOp::Pow: {
-        int exponent = 0;
-        if (!is_small_nonneg_integer_exponent(*expr.right, exponent)) {
-            break;
-        }
-        if (exponent == 0) {
-            return sym_simplify(sym_const(1.0));
-        }
-        if (exponent == 1) {
-            return sym_simplify(clone_expr(*expr.left));
-        }
-        if (!expansion_fits(count_expr_nodes(*expr.left), exponent)) {
-            break;
-        }
-        SymExpr result = clone_expr(*expr.left);
-        for (int i = 1; i < exponent; ++i) {
-            result = sym_mul(std::move(result), clone_expr(*expr.left));
-        }
-        return sym_simplify(sym_expand(std::move(result)));
+    PolyContext context;
+    const Polynomial poly = expand_to_poly(expr, context, 0);
+    if (context.overflowed || !poly_is_finite(poly)) {
+        // Too many terms, too deep, or a coefficient that stopped being a number:
+        // hand back what came in rather than a truncated or wrong answer.
+        return sym_simplify(std::move(expr));
     }
-    case SymOp::Mul: {
-        const SymExpr& left = *expr.left;
-        const SymExpr& right = *expr.right;
-        // Distributing a product of two sums costs the product of their sizes.
-        const long long left_nodes = count_expr_nodes(left);
-        const long long right_nodes = count_expr_nodes(right);
-        if (right_nodes != 0 && left_nodes > kMaxExpandNodes / right_nodes) {
-            break;
-        }
-        if (left.op == SymOp::Add) {
-            return sym_simplify(sym_expand(sym_add(
-                sym_mul(clone_expr(*left.left), clone_expr(right)),
-                sym_mul(clone_expr(*left.right), clone_expr(right)))));
-        }
-        if (left.op == SymOp::Sub) {
-            return sym_simplify(sym_expand(sym_sub(
-                sym_mul(clone_expr(*left.left), clone_expr(right)),
-                sym_mul(clone_expr(*left.right), clone_expr(right)))));
-        }
-        if (right.op == SymOp::Add) {
-            return sym_simplify(sym_expand(sym_add(
-                sym_mul(clone_expr(left), clone_expr(*right.left)),
-                sym_mul(clone_expr(left), clone_expr(*right.right)))));
-        }
-        if (right.op == SymOp::Sub) {
-            return sym_simplify(sym_expand(sym_sub(
-                sym_mul(clone_expr(left), clone_expr(*right.left)),
-                sym_mul(clone_expr(left), clone_expr(*right.right)))));
-        }
-        break;
-    }
-    default:
-        break;
-    }
-
-    return sym_simplify(std::move(expr));
+    return sym_simplify(poly_to_expr(poly, context.atoms));
 }
 
 namespace {

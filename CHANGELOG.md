@@ -101,6 +101,36 @@ Two more silently-wrong results, and the rest of the tables:
   covers `t/(1+t)`; `(1+t)^-m` and `log(1+t)` are added. `sym_imellin` compares its
   `pi` to a tolerance matched to the six-decimal printer instead of for equality.
 
+Two wrong answers in the REPL's own scalar evaluator, found while scoping the number
+formatting:
+
+- A leading unary sign was applied to the whole expression. Both `eval_literal_arith`
+  and `eval_scalar_expr_impl` tested `expr.front() == '-'` before looking for a binary
+  operator, so `-4 + 1` was read as `-(4 + 1)` and evaluated to **-5**, `-4 - 1` to
+  **-3**, and with `x = 4`, `-x + y` to **-6**. The operator is found first now, and a
+  leading sign is unary only when there is no binary operator to bind to.
+- An exponent literal could not appear in arithmetic. The top-level operator scan did
+  not know that `+` or `-` can be the sign of an exponent, so `1e-09 * 2` was split at
+  the minus and reported as "could not parse". `vars` already printed small magnitudes
+  in exponent form, so a session could show a value it would not then accept back.
+
+`sym_expand` collects like terms. It multiplied out over the expression tree and never
+put like terms back together, so `(x+1)^3` came out as eight products rather than four
+terms and `(x+1)^8` as 256 rather than nine -- and that is why nested powers exploded.
+Expansion now runs on a canonical polynomial form where multiplication merges like
+terms as it produces them, so an intermediate is never larger than the answer:
+`((x+1)^8)^8` is the degree-64 binomial, sixty-five terms, and completes in 8 ms where
+it previously did not return at all. The size ceiling that had been added to stop the
+hang is now a ceiling on the size of the answer rather than on a projection of the
+uncollected product.
+
+Atoms in that form are identified by structure, not by printed text. `sym_to_string`
+renders a constant with six decimals, so `sin(1.0000001*x)` and `sin(1.0000002*x)`
+print identically; keying atoms by their printed form would merge them and expand
+their difference to exactly zero. Two other conservative choices are deliberate:
+`x/x` is not cancelled to 1, because they differ at `x = 0`, and a fractional exponent
+is not pushed through a product, because `(x^2)^0.5` is `|x|` and not `x`.
+
 `sym_to_string` printed constants through `std::to_string`, which is `printf("%f")`:
 six decimal places and nothing else. A coefficient below 5e-7 printed as `0.000000` and
 vanished from the expression, and a large one gained a spurious `.000000` tail, so an

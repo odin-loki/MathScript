@@ -359,6 +359,25 @@ std::string_view strip_outer_parens_view(std::string_view expr) {
     }
 }
 
+// True when the '+' or '-' at `index` is the sign of an exponent rather than an
+// operator: the 'e' of 1e-09, with a digit or a decimal point before it.
+//
+// Without this, find_top_level_op_view splits 1e-09 at the minus and the REPL
+// reports "could not parse: 1e-09 * 2". That is not hypothetical -- `vars` already
+// prints small values in exponent form, so the session could print a value it could
+// not read back into any arithmetic expression.
+bool is_exponent_sign(std::string_view expr, size_t index) {
+    if (index < 2 || (expr[index] != '+' && expr[index] != '-')) {
+        return false;
+    }
+    const char marker = expr[index - 1];
+    if (marker != 'e' && marker != 'E') {
+        return false;
+    }
+    const char before = expr[index - 2];
+    return std::isdigit(static_cast<unsigned char>(before)) || before == '.';
+}
+
 bool is_binary_minus_view(std::string_view expr, size_t index) {
     size_t j = index;
     while (j > 0 && std::isspace(static_cast<unsigned char>(expr[j - 1]))) {
@@ -387,6 +406,11 @@ std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view e
                     if (c == '-' && !is_binary_minus_view(expr, i)) {
                         continue;
                     }
+                    // The sign inside an exponent literal belongs to the number,
+                    // not to the expression around it.
+                    if (is_exponent_sign(expr, i)) {
+                        continue;
+                    }
                     last = std::pair{i, *p};
                 }
             }
@@ -410,6 +434,28 @@ Result<double> eval_literal_arith(std::string_view expr_text) {
         return std::unexpected(DomainError{"eval", "empty expression"});
     }
 
+    double value = 0.0;
+    if (parse_number_view(expr, value)) {
+        return value;
+    }
+
+    // The binary operator has to be found BEFORE a leading sign is taken as unary.
+    // Peeling the sign off first applies it to everything that follows: -4 + 1 was
+    // read as -(4 + 1) and evaluated to -5, and -4 - 1 to -3. find_scalar_binop_view
+    // will not mistake the leading '-' for an operator -- is_binary_minus_view
+    // rejects a sign with nothing before it -- so this ordering is safe.
+    if (const auto op_pos = find_scalar_binop_view(expr)) {
+        auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = eval_literal_arith(trim_view(expr.substr(op_pos->first + 1)));
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+    }
+
     if (expr.front() == '-') {
         auto inner = eval_literal_arith(expr.substr(1));
         if (!inner) {
@@ -420,26 +466,7 @@ Result<double> eval_literal_arith(std::string_view expr_text) {
     if (expr.front() == '+') {
         return eval_literal_arith(expr.substr(1));
     }
-
-    double value = 0.0;
-    if (parse_number_view(expr, value)) {
-        return value;
-    }
-
-    const auto op_pos = find_scalar_binop_view(expr);
-    if (!op_pos) {
-        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
-    }
-
-    auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
-    if (!left) {
-        return std::unexpected(left.error());
-    }
-    auto right = eval_literal_arith(trim_view(expr.substr(op_pos->first + 1)));
-    if (!right) {
-        return std::unexpected(right.error());
-    }
-    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+    return std::unexpected(DomainError{"eval", "invalid scalar expression"});
 }
 
 struct ScalarFnCache {
@@ -18431,6 +18458,30 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
         return eval_literal_arith(expr);
     }
 
+    if (const auto call = parse_scalar_unary_call_view(expr)) {
+        return eval_scalar_call_expr(state, expr, *call);
+    }
+
+    ScalarOperand single;
+    if (parse_scalar_operand_view(expr, single)) {
+        return resolve_scalar_operand(state, single);
+    }
+
+    // As in eval_literal_arith: the binary operator is found before a leading sign
+    // is taken as unary, or the sign applies to the whole expression. With x = 4,
+    // -x + 1 evaluated to -5 and -x + y to -6.
+    if (const auto op_pos = find_scalar_binop_view(expr)) {
+        auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+    }
+
     if (expr.front() == '-') {
         auto inner = eval_scalar_expr_impl(state, expr.substr(1));
         if (!inner) {
@@ -18441,30 +18492,7 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
     if (expr.front() == '+') {
         return eval_scalar_expr_impl(state, expr.substr(1));
     }
-
-    if (const auto call = parse_scalar_unary_call_view(expr)) {
-        return eval_scalar_call_expr(state, expr, *call);
-    }
-
-    ScalarOperand single;
-    if (parse_scalar_operand_view(expr, single)) {
-        return resolve_scalar_operand(state, single);
-    }
-
-    const auto op_pos = find_scalar_binop_view(expr);
-    if (!op_pos) {
-        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
-    }
-
-    auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
-    if (!left) {
-        return std::unexpected(left.error());
-    }
-    auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
-    if (!right) {
-        return std::unexpected(right.error());
-    }
-    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+    return std::unexpected(DomainError{"eval", "invalid scalar expression"});
 }
 
 // Evaluating a call needs 16 string_views and 16 doubles of scratch, about half
