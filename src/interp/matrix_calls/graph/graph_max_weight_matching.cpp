@@ -7,28 +7,18 @@ Result<Matrix<double>> handle_graph_max_weight_matching(Interpreter& interp,
                                                         const MatrixCallAssign& assign) {
     using namespace detail;
     MatrixCallCtx ctx(interp);
-    auto resolve_operand = [&ctx](const std::string& text) { return ctx.resolve_operand(text); };
-    auto parse_scalar_arg = [&ctx](const std::string& arg_text, const char* fn) -> Result<double> {
-        double value = 0.0;
-        if (parse_number(arg_text, value)) return value;
-        auto expr = eval_scalar_expr(ctx.state(), arg_text);
-        if (!expr) {
-            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
-        }
-        return *expr;
-    };
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
     if (assign.callee == "graph_max_weight_matching" &&
         (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
+        auto matrix = ctx.resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
         bool maxcardinality = false;
         if (assign.args.size() == 2) {
-            auto flag = parse_scalar_arg(assign.args[1], "graph_max_weight_matching");
+            auto flag = ctx.parse_scalar_arg(assign.args[1], "graph_max_weight_matching");
             if (!flag) {
                 return std::unexpected(flag.error());
             }

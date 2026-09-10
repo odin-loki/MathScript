@@ -6,15 +6,6 @@ namespace ms::interp {
 Result<Matrix<double>> handle_mat_submatrix(Interpreter& interp, const MatrixCallAssign& assign) {
     using namespace detail;
     MatrixCallCtx ctx(interp);
-    auto parse_scalar_arg = [&ctx](const std::string& arg_text, const char* fn) -> Result<double> {
-        double value = 0.0;
-        if (parse_number(arg_text, value)) return value;
-        auto expr = eval_scalar_expr(ctx.state(), arg_text);
-        if (!expr) {
-            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
-        }
-        return *expr;
-    };
 
     if (assign.callee != "mat_submatrix" || assign.args.size() != 5) {
         return std::unexpected(
@@ -26,7 +17,7 @@ Result<Matrix<double>> handle_mat_submatrix(Interpreter& interp, const MatrixCal
     }
     double values[4] = {0.0, 0.0, 0.0, 0.0};
     for (size_t i = 0; i < 4; ++i) {
-        auto parsed = parse_scalar_arg(assign.args[i + 1], "mat_submatrix");
+        auto parsed = ctx.parse_scalar_arg(assign.args[i + 1], "mat_submatrix");
         if (!parsed) {
             return std::unexpected(parsed.error());
         }

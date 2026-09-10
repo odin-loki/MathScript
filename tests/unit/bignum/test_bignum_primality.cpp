@@ -17,8 +17,8 @@
 
 #include "ms/bignum/bignum.hpp"
 
-using ms::BigInt;
-using ms::bigint_is_prime;
+using ms::bignum::BigInt;
+using ms::bignum::bigint_is_prime;
 
 namespace {
 BigInt B(const char* s) { return BigInt(std::string(s)); }
@@ -98,7 +98,10 @@ TEST(BigIntPrimality, ResultDoesNotDependOnRoundCount) {
         EXPECT_FALSE(bigint_is_prime(B(c), 1)) << c << " with rounds=1";
         EXPECT_FALSE(bigint_is_prime(B(c), 50)) << c << " with rounds=50";
     }
-    for (const char* p : {"97", "3474749660383", "2305843009213693951"}) {
+    // 3474749660383 belongs in the pseudoprime list above, not here: it is
+    // 1303 x 2666730361. An earlier draft of this file asserted it prime in one
+    // test and composite in another, and the suite caught the contradiction.
+    for (const char* p : {"97", "2147483647", "2305843009213693951"}) {
         EXPECT_TRUE(bigint_is_prime(B(p), 0)) << p << " with rounds=0";
         EXPECT_TRUE(bigint_is_prime(B(p), 50)) << p << " with rounds=50";
     }
