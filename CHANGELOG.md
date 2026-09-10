@@ -101,6 +101,22 @@ Two more silently-wrong results, and the rest of the tables:
   covers `t/(1+t)`; `(1+t)^-m` and `log(1+t)` are added. `sym_imellin` compares its
   `pi` to a tolerance matched to the six-decimal printer instead of for equality.
 
+`sym_hankel` returned a wrong number for the whole `r^n exp(-a r)` family, `n >= 1`.
+The implementation used `scale(n) * a / (k^2 + a^2)^((n+3)/2)`, which is the shape of
+the `n = 0` row with a different constant; that shape is not what differentiating
+`a/(a^2+k^2)^(3/2)` with respect to `a` produces, because `a` appears in the numerator
+as well. `H0[r^2 exp(-2r)]` at `k = 1` returned 0.214663 where direct quadrature of the
+defining Bessel integral gives 0.107331 -- a factor of two, silently. The forward
+transform is now `(-1)^n d^n/da^n [a/(a^2+k^2)^(3/2)]`, differentiated symbolically so
+every `n` is right by construction, and it agrees with the quadrature to twelve digits.
+The inverse matcher, which had been inverting the wrong shape consistently, is
+restricted to the `n = 0` row that is actually invertible by pattern.
+
+The rest of the Hankel table: the Lipschitz integral `H0[c e^{-a r}/r] = c/sqrt(a^2+k^2)`
+and its inverse, the Gaussian `H0[e^{-a r^2}] = e^{-k^2/(4a)}/(2a)`, `H0[1/r] = 1/k`,
+`H0[(r^2+a^2)^{-3/2}] = e^{-ak}/a`, linearity, a row at any amplitude rather than only
+the canonical one, and `exp(-a k)/k` in either spelling of its minus sign.
+
 The AES S-box was the one secret-dependent memory access in the cipher, and its index
 derives from the key. Both tables are now read by a masked scan of all 256 entries, so
 the address sequence does not depend on the value. Output is unchanged -- a 290-command

@@ -397,9 +397,16 @@ TEST(SymbolicCasTest, hankel_r_squared_exp_and_sqrt_const_sum) {
             sym_pow(sym_var("r"), sym_const(2.0)),
             sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))),
         "r", "k");
-    const double expected_n2 = 8.0 * std::tgamma(2.5) / std::sqrt(std::numbers::pi) * 2.0 /
-                               std::pow(4.0 + 1.0, 2.5);
-    EXPECT_NEAR(sym_eval(rpow, {{"k", 1.0}}), expected_n2, 1e-9);
+    // H0[r^2 exp(-a*r)] = a(6a^2 - 9k^2) / (a^2 + k^2)^(7/2). The value this used to
+    // assert -- scale(n)*a / (a^2+k^2)^((n+3)/2) -- is exactly twice as large at a = 2,
+    // k = 1. Direct quadrature of the defining Bessel integral gives 0.107331262920,
+    // matching the form below to twelve digits.
+    const double a = 2.0;
+    const double k = 1.0;
+    const double expected_n2 =
+        a * (6.0 * a * a - 9.0 * k * k) / std::pow(a * a + k * k, 3.5);
+    EXPECT_NEAR(sym_eval(rpow, {{"k", k}}), expected_n2, 1e-9);
+    EXPECT_NEAR(expected_n2, 0.107331262920, 1e-11);
 
     const auto sqrt_form = sym_hankel(
         sym_div(
@@ -415,15 +422,17 @@ TEST(SymbolicCasTest, ihankel_k_times_const_decay_and_scale_miss) {
         "k", "r");
     EXPECT_NEAR(sym_eval(decay, {{"r", 3.0}}), 1.0 / std::sqrt(9.0 + 4.0), 1e-12);
 
-    const auto miss = sym_ihankel(
+    // 99/((k^2+4)^1.5) is the same row as 2/((k^2+4)^1.5) at 49.5 times the amplitude.
+    // The matcher used to require the numerator to equal the canonical constant exactly.
+    const auto scaled = sym_ihankel(
         sym_div(
             sym_const(99.0),
             sym_pow(
                 sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(2.0), sym_const(2.0))),
                 sym_const(1.5))),
         "k", "r");
-    EXPECT_EQ(miss.op, SymOp::Deriv);
-    EXPECT_EQ(miss.name, "k");
+    EXPECT_FALSE(sym_is_unsupported(scaled, "k"));
+    EXPECT_NEAR(sym_eval(scaled, {{"r", 1.0}}), 49.5 * std::exp(-2.0), 1e-12);
 }
 
 TEST(SymbolicCasTest, fourier_neg_wrapped_const_and_t2_on_left) {
@@ -482,13 +491,15 @@ TEST(SymbolicCasTest, integrate_bare_trig_and_hankel_div_miss) {
     const auto cosine = sym_integrate(sym_cos(sym_var("x")), "x");
     EXPECT_NEAR(sym_eval(cosine, {{"x", 0.0}}), 0.0, 1e-12);
 
-    const auto hankel_miss = sym_hankel(
+    // 2/sqrt(r^2+4) is the same row as 1/sqrt(r^2+4), doubled; the matcher used to
+    // require the numerator to be exactly 1.
+    const auto hankel_scaled = sym_hankel(
         sym_div(
             sym_const(2.0),
             sym_sqrt(sym_add(sym_pow(sym_var("r"), sym_const(2.0)), sym_const(4.0)))),
         "r", "k");
-    EXPECT_EQ(hankel_miss.op, SymOp::Deriv);
-    EXPECT_EQ(hankel_miss.name, "r");
+    EXPECT_FALSE(sym_is_unsupported(hankel_scaled, "r"));
+    EXPECT_NEAR(sym_eval(hankel_scaled, {{"k", 2.0}}), 2.0 * std::exp(-4.0) / 2.0, 1e-12);
 }
 
 TEST(SymbolicCasTest, integrate_const_other_var_pow_and_reciprocal_miss) {
@@ -727,8 +738,10 @@ TEST(SymbolicCasTest, hankel_exp_rpow_and_ihankel_n_nonzero) {
     const auto r_exp = sym_hankel(
         sym_mul(sym_var("r"), sym_exp(sym_neg(sym_mul(sym_const(2.0), sym_var("r"))))),
         "r", "k");
-    const double n1_scale = 8.0 / std::sqrt(std::numbers::pi);
-    EXPECT_NEAR(sym_eval(r_exp, {{"k", 0.0}}), n1_scale / 16.0, 1e-9);
+    // H0[r*exp(-a*r)] = (2a^2 - k^2)/(a^2 + k^2)^(5/2), which at k = 0 is 2/a^3 = 0.25
+    // for a = 2. The value this used to assert, 8/sqrt(pi)/16 = 0.28209, came from the
+    // formula that was only ever right at n = 0.
+    EXPECT_NEAR(sym_eval(r_exp, {{"k", 0.0}}), 2.0 / std::pow(2.0, 3.0), 1e-9);
 
     const auto lin = sym_hankel(
         sym_add(sym_neg(sym_exp(sym_mul(sym_const(-2.0), sym_var("r")))),
@@ -741,7 +754,10 @@ TEST(SymbolicCasTest, hankel_exp_rpow_and_ihankel_n_nonzero) {
     EXPECT_EQ(miss_c.op, SymOp::Deriv);
     EXPECT_EQ(miss_c.name, "r");
 
-    // n=1 inverse: scale*a / (k^2+a^2)^2 with scale = 4/sqrt(pi), a = 2.
+    // A constant over (k^2+a^2)^2 is not the transform of r*exp(-a*r) -- that is
+    // (2a^2 - k^2)/(a^2+k^2)^(5/2) -- so it is declined rather than inverted. This
+    // assertion used to require the inverse to match a shape the forward transform
+    // never actually produces.
     const double a = 2.0;
     const double scale = 4.0 / std::sqrt(std::numbers::pi);
     const auto inv = sym_ihankel(
@@ -752,7 +768,7 @@ TEST(SymbolicCasTest, hankel_exp_rpow_and_ihankel_n_nonzero) {
                         sym_pow(sym_const(a), sym_const(2.0))),
                 sym_const(2.0))),
         "k", "r");
-    EXPECT_NEAR(sym_eval(inv, {{"r", 1.0}}), std::exp(-2.0), 1e-9);
+    EXPECT_TRUE(sym_is_unsupported(inv, "k")) << sym_to_string(inv);
 
     EXPECT_NEAR(sym_eval(sym_ihankel(sym_const(0.0), "k", "r"), {}), 0.0, 1e-12);
 

@@ -679,3 +679,75 @@ TEST(SymbolicTables, PiAndEAreConstantsNotFreeVariables) {
     EXPECT_NEAR(sym_eval(parse_or_die("pizza"), {{"pizza", 7.0}}), 7.0, 1e-12);
     EXPECT_NEAR(sym_eval(parse_or_die("ex"), {{"ex", 5.0}}), 5.0, 1e-12);
 }
+
+// ---------------------------------------------------------------------------
+// Hankel: the defining Bessel integral, and the self-inverse property.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// H0[f](k) = integral from 0 to infinity of f(r) J0(k r) r dr, evaluated numerically.
+// Only rows whose integrand decays exponentially are checked this way; the algebraic
+// ones oscillate too slowly for a truncated quadrature to say anything, and are pinned
+// by the round trip below instead.
+double hankel_numeric(const SymExpr& f, const std::string& r, double k) {
+    // The lower limit is a whisker above zero rather than zero: the integrand of a row
+    // like exp(-a*r)/r is finite there (the 1/r cancels against the r weight) but is
+    // computed as inf * 0. What is skipped is of order 1e-9.
+    return simpson([&](double x) { return at(f, r, x) * std::cyl_bessel_j(0, k * x) * x; },
+                   1e-9, 60.0, 240000);
+}
+
+} // namespace
+
+TEST(SymbolicTables, HankelEntriesMatchTheDefiningBesselIntegral) {
+    // Each of these declined before. exp(-a*r)/r is the Lipschitz integral, the
+    // screened-Coulomb pair; exp(-a*r^2) is the most-cited order-0 pair of all.
+    for (const char* text : {"exp(-2*r)", "exp(-2*r)/r", "exp(-2*r^2)", "r*exp(-2*r)",
+                             "3*exp(-2*r)", "exp(-(3*r))/r", "exp(-0.5*r^2)"}) {
+        const SymExpr f = parse_or_die(text);
+        const SymExpr transformed = sym_hankel(f, "r", "k");
+        ASSERT_FALSE(sym_is_unsupported(transformed, "r")) << "H0[" << text << "] declined";
+        for (const double k : {0.5, 1.0, 2.0, 3.5}) {
+            const double want = hankel_numeric(f, "r", k);
+            EXPECT_NEAR(at(transformed, "k", k), want, 1e-6 * std::max(1.0, std::abs(want)))
+                << "H0[" << text << "] at k=" << k << " gave " << sym_to_string(transformed);
+        }
+    }
+}
+
+TEST(SymbolicTables, HankelIsItsOwnInverse) {
+    // The order-0 transform is self-inverse, so every forward row is an inverse row
+    // with r and k swapped. The two directions had drifted apart: exp(-a*k) had no
+    // inverse entry though its forward partner has always existed, exp(-2*k)/k was
+    // refused for the spelling of its minus sign, and a row at any amplitude other
+    // than the canonical one was refused outright.
+    // r*exp(-a*r) is deliberately absent: its forward transform is a derivative of the
+    // n = 0 row with respect to a, not a constant over a power of (a^2+k^2), so there
+    // is no shape for the inverse to match. The matcher used to claim it, and inverted
+    // it consistently with a forward formula that was wrong.
+    for (const char* text : {"exp(-2*r)", "exp(-2*r)/r", "1/(r^2+4)^1.5", "1/r",
+                             "exp(-2*r^2)"}) {
+        const SymExpr f = parse_or_die(text);
+        const SymExpr forward = sym_hankel(f, "r", "k");
+        ASSERT_FALSE(sym_is_unsupported(forward, "r")) << "H0[" << text << "] declined";
+        const SymExpr back = sym_ihankel(forward, "k", "r");
+        ASSERT_FALSE(sym_is_unsupported(back, "k"))
+            << text << " did not survive the round trip: " << sym_to_string(forward);
+        for (const double r : {0.4, 1.0, 2.5}) {
+            const double want = at(f, "r", r);
+            EXPECT_NEAR(at(back, "r", r), want, 1e-6 * std::max(1.0, std::abs(want)))
+                << text << " round-tripped to " << sym_to_string(back);
+        }
+    }
+}
+
+TEST(SymbolicTables, HankelStillDeclinesWhatNeedsASpecialFunction) {
+    // 1/(r^2+a^2) is a Bessel K0 and 1 is a distribution; neither is representable in
+    // SymExpr, so declining is the right answer, not a gap.
+    for (const char* text : {"1/(r^2+4)", "log(r)", "sin(r)"}) {
+        const SymExpr f = parse_or_die(text);
+        EXPECT_TRUE(sym_is_unsupported(sym_hankel(f, "r", "k"), "r"))
+            << text << " was answered: " << sym_to_string(sym_hankel(f, "r", "k"));
+    }
+}

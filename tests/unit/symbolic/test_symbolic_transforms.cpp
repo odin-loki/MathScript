@@ -336,16 +336,21 @@ TEST(SymbolicTransformsTest, hankel_exponential_decay) {
 }
 
 TEST(SymbolicTransformsTest, hankel_power_exponential) {
-    // n=1: r*exp(-a*r) -> scale*a / (a^2+k^2)^((n+3)/2) with (n+3)/2 = 2.
     const auto r_expr = sym_mul(
         sym_var("r"),
         sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
-    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
+    // H0[r*exp(-a*r)] = (2a^2 - k^2) / (a^2 + k^2)^(5/2).
+    //
+    // This used to be pinned as scale(n)*a / (a^2+k^2)^((n+3)/2), which is the n = 0
+    // row's shape with a different constant. That form is wrong for every n >= 1:
+    // differentiating a/(a^2+k^2)^(3/2) with respect to a does not just raise the
+    // exponent, because a is in the numerator too. Direct quadrature of the defining
+    // Bessel integral agrees with the form below and disagrees with the old one by a
+    // factor of two at n = 2.
     const auto expected = sym_div(
-        sym_const(numer),
-        sym_pow(
-            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
-            sym_const(2.0)));
+        sym_sub(sym_const(2.0 * 9.0), sym_pow(sym_var("k"), sym_const(2.0))),
+        sym_pow(sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_const(9.0)),
+                sym_const(2.5)));
     expect_hankel_pair(r_expr, expected, {{"k", 2.0}});
 
     const auto r_pow_expr = sym_mul(
@@ -743,12 +748,18 @@ TEST(SymbolicTransformsTest, hankel_exp_times_r_and_swapped_sqrt) {
     const auto r_expr = sym_mul(
         sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))),
         sym_var("r"));
-    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
+    // H0[r*exp(-a*r)] = (2a^2 - k^2) / (a^2 + k^2)^(5/2).
+    //
+    // This used to be pinned as scale(n)*a / (a^2+k^2)^((n+3)/2), which is the n = 0
+    // row's shape with a different constant. That form is wrong for every n >= 1:
+    // differentiating a/(a^2+k^2)^(3/2) with respect to a does not just raise the
+    // exponent, because a is in the numerator too. Direct quadrature of the defining
+    // Bessel integral agrees with the form below and disagrees with the old one by a
+    // factor of two at n = 2.
     const auto expected = sym_div(
-        sym_const(numer),
-        sym_pow(
-            sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
-            sym_const(2.0)));
+        sym_sub(sym_const(2.0 * 9.0), sym_pow(sym_var("k"), sym_const(2.0))),
+        sym_pow(sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_const(9.0)),
+                sym_const(2.5)));
     expect_hankel_pair(r_expr, expected, {{"k", 2.0}});
 
     const auto tpow_on_right = sym_mul(
@@ -788,16 +799,17 @@ TEST(SymbolicTransformsTest, ihankel_sub_exponential_forms) {
 }
 
 TEST(SymbolicTransformsTest, ihankel_n1_form_and_right_const) {
-    const double numer = std::pow(2.0, 2) * std::tgamma(2.0) / std::sqrt(std::numbers::pi) * 3.0;
+    // A constant over (k^2+a^2)^2 is no longer claimed as the inverse of r*exp(-a*r).
+    // The forward transform of that function is (2a^2 - k^2)/(a^2+k^2)^(5/2), not a
+    // constant over a power at all, so this shape was only invertible because the
+    // forward formula it was matched against was itself wrong. Declining is correct.
     const auto k_n1 = sym_div(
-        sym_const(numer),
+        sym_const(4.0),
         sym_pow(
             sym_add(sym_pow(sym_var("k"), sym_const(2.0)), sym_pow(sym_const(3.0), sym_const(2.0))),
             sym_const(2.0)));
-    const auto expected_n1 = sym_mul(
-        sym_var("r"),
-        sym_exp(sym_neg(sym_mul(sym_const(3.0), sym_var("r")))));
-    expect_ihankel_pair(k_n1, expected_n1, {{"r", 1.0}});
+    const auto declined = sym_ihankel(k_n1, "k", "r");
+    EXPECT_TRUE(sym_is_unsupported(declined, "k")) << sym_to_string(declined);
 
     const auto scaled = sym_mul(
         sym_div(

@@ -37,6 +37,8 @@ bool is_bare_var(const SymExpr& expr, const std::string& var) {
 
 bool contains_var_name(const SymExpr& expr, const std::string& name);
 bool try_eval_const(const SymExpr& expr, double& out);
+std::optional<double> match_quadratic_coefficient(const SymExpr& expr, const std::string& var);
+bool match_exp_neg_at(const SymExpr& expr, const std::string& t_var, double& a);
 
 bool is_const_zero(const SymExpr& expr) {
     return expr.op == SymOp::Const && expr.value == 0.0;
@@ -467,54 +469,65 @@ SymExpr sym_ihankel_unsupported(const SymExpr& expr, const std::string& k) {
 constexpr int kMaxMellinPower = 8;
 constexpr int kMaxHankelPower = 8;
 
-double hankel_rpow_exp_scale(int n) {
-    // Keep n=0 exact so inverse matching of a/(a^2+k^2)^{3/2} succeeds with == on doubles.
-    if (n == 0) {
-        return 1.0;
-    }
-    const double exponent = (static_cast<double>(n) + 3.0) / 2.0;
-    return std::pow(2.0, n + 1) * std::tgamma(exponent) / std::sqrt(std::numbers::pi);
-}
 
-bool hankel_scale_matches(double numerator, int n, double a) {
-    const double expected = hankel_rpow_exp_scale(n) * a;
-    const double tol = 1e-9 * std::max(1.0, std::abs(expected));
-    return std::abs(numerator - expected) <= tol;
+// The multiple of the canonical row that `numerator` represents, or nullopt if the
+// row does not apply at all. It used to be a yes/no test against the canonical scale
+// to within 1e-9, which refused two different things: a row at any other amplitude
+// (1/((k^2+4)^1.5) is the same row as 2/((k^2+4)^1.5), halved), and the module's own
+// printed output, since sym_to_string prints six decimals and 4.513517 differs from
+// the exact scale by about 7e-8.
+std::optional<double> hankel_scale_ratio(double numerator, int n, double a) {
+    (void)n;
+    const double expected = a;
+    if (expected == 0.0) {
+        return std::nullopt;
+    }
+    return numerator / expected;
 }
 
 SymExpr build_k2_plus_a2(const std::string& k, double a) {
     return build_s2_plus_a2(k, a);
 }
 
-bool match_one_over_sqrt_r2_plus_a2(const SymExpr& expr, const std::string& r_var, double& a) {
+bool match_one_over_sqrt_r2_plus_a2(const SymExpr& expr, const std::string& r_var, double& a,
+                                   double& scale) {
     if (expr.op != SymOp::Div || !expr.left || !expr.right) {
-        return false;
-    }
-    double numerator = 0.0;
-    if (!try_get_const_value(*expr.left, numerator) || numerator != 1.0) {
         return false;
     }
     if (expr.right->op != SymOp::Sqrt || !expr.right->left) {
         return false;
     }
-    return match_s2_plus_a2(*expr.right->left, r_var, a);
+    return try_get_const_value(*expr.left, scale) && match_s2_plus_a2(*expr.right->left, r_var, a);
 }
 
-bool match_exp_neg_ak_over_k(const SymExpr& expr, const std::string& k_var, double& a) {
-    if (expr.op != SymOp::Div || !expr.left || !expr.right || !is_bare_var(*expr.right, k_var)) {
+// c * exp(-a*var) / var, in either spelling of the negation. The old matcher required
+// the exponent to be a Neg node, so exp(-(2*k))/k matched and exp(-2*k)/k -- where the
+// minus binds to the coefficient and there is no Neg at all -- did not, though they
+// are the same function. match_exp_neg_at already handles both.
+bool match_scaled_exp_neg_over_var(const SymExpr& expr, const std::string& var, double& a,
+                                   double& scale) {
+    if (expr.op != SymOp::Div || !expr.left || !expr.right || !is_bare_var(*expr.right, var)) {
         return false;
     }
-    if (expr.left->op != SymOp::Exp || !expr.left->left) {
-        return false;
+    const SymExpr* decay = expr.left.get();
+    scale = 1.0;
+    if (decay->op == SymOp::Mul && decay->left && decay->right) {
+        if (try_get_const_value(*decay->left, scale)) {
+            decay = decay->right.get();
+        } else if (try_get_const_value(*decay->right, scale)) {
+            decay = decay->left.get();
+        }
     }
-    const SymExpr& inner = *expr.left->left;
-    if (inner.op != SymOp::Neg || !inner.left) {
-        return false;
-    }
-    return match_scaled_var(*inner.left, k_var, a) && a > 0.0;
+    return match_exp_neg_at(*decay, var, a) && a > 0.0;
 }
 
-std::optional<std::pair<int, double>> match_hankel_k_domain_rpow_exp(
+struct HankelKDomain {
+    int power = 0;
+    double rate = 0.0;
+    double scale = 1.0;
+};
+
+std::optional<HankelKDomain> match_hankel_k_domain_rpow_exp(
     const SymExpr& expr, const std::string& k_var) {
     if (expr.op != SymOp::Div || !expr.left || !expr.right) {
         return std::nullopt;
@@ -527,45 +540,49 @@ std::optional<std::pair<int, double>> match_hankel_k_domain_rpow_exp(
     if (!match_s2_plus_a2(*expr.right->left, k_var, a) || a <= 0.0) {
         return std::nullopt;
     }
+    // Only the n = 0 row, a/(a^2+k^2)^(3/2), is invertible by matching a shape: for
+    // n >= 1 the forward transform is a derivative of it with respect to a, and the
+    // result is no longer a constant over a power of (a^2+k^2). The matcher used to
+    // claim those too, and inverted them consistently with the wrong forward formula.
     const double exp_power = expr.right->right->value;
-    const int n = static_cast<int>(std::lround(2.0 * exp_power - 3.0));
-    if (n < 0 || n > kMaxHankelPower ||
-        exp_power != (static_cast<double>(n) + 3.0) / 2.0) {
+    if (exp_power != 1.5) {
         return std::nullopt;
     }
+    const int n = 0;
     double numerator = 0.0;
-    if (try_get_const_value(*expr.left, numerator)) {
-        if (hankel_scale_matches(numerator, n, a)) {
-            return std::make_pair(n, a);
-        }
+    if (!try_get_const_value(*expr.left, numerator)) {
         return std::nullopt;
     }
-    if (expr.left->op != SymOp::Mul || !expr.left->left || !expr.left->right) {
+    const auto ratio = hankel_scale_ratio(numerator, n, a);
+    if (!ratio) {
         return std::nullopt;
     }
-    double scale = 0.0;
-    double a_factor = 0.0;
-    if (expr.left->left->op == SymOp::Const && expr.left->right->op == SymOp::Const) {
-        scale = expr.left->left->value;
-        a_factor = expr.left->right->value;
-    } else if (expr.left->right->op == SymOp::Const && expr.left->left->op == SymOp::Const) {
-        scale = expr.left->right->value;
-        a_factor = expr.left->left->value;
-    } else {
-        return std::nullopt;
-    }
-    if (std::abs(a_factor - a) <= 1e-12 && hankel_scale_matches(scale * a_factor, n, a)) {
-        return std::make_pair(n, a);
-    }
-    return std::nullopt;
+    return HankelKDomain{n, a, *ratio};
 }
 
+// H0[r^n exp(-a*r)](k) = (-1)^n d^n/da^n [ a / (a^2 + k^2)^(3/2) ].
+//
+// This used to be scale(n) * a / (k^2 + a^2)^((n+3)/2), which is right at n = 0 and
+// wrong for every n above it: differentiating a/(a^2+k^2)^(3/2) with respect to a does
+// not just raise the exponent and rescale, because a appears in the numerator too.
+// H0[r*exp(-2r)] at k = 0.5 came back as 0.24988 where the defining Bessel integral
+// gives 0.20813 -- the true value (2a^2 - k^2)/(a^2 + k^2)^(5/2). A wrong number, with
+// no error, for the whole n >= 1 family.
+//
+// Differentiating symbolically rather than hand-deriving each row keeps every n right
+// by construction. The differentiation variable is named after k so it cannot collide
+// with the caller's spectral variable.
 SymExpr hankel_forward_rpow_exp_neg(int n, double a, const std::string& k) {
-    // Exponent (n+3)/2 for the Fourier–Bessel table entry.
-    const double exp_power = 0.5 * (static_cast<double>(n) + 3.0);
-    return sym_div(
-        sym_const(hankel_rpow_exp_scale(n) * a),
-        sym_pow(build_k2_plus_a2(k, a), sym_const(exp_power)));
+    const std::string rate = k + "__hankel_rate";
+    SymExpr transformed = sym_div(
+        sym_var(rate),
+        sym_pow(sym_add(sym_pow(sym_var(rate), sym_const(2.0)),
+                        sym_pow(sym_var(k), sym_const(2.0))),
+                sym_const(1.5)));
+    for (int i = 0; i < n; ++i) {
+        transformed = sym_simplify(sym_neg(sym_diff(std::move(transformed), rate)));
+    }
+    return sym_simplify(sym_substitute(transformed, rate, sym_const(a)));
 }
 
 SymExpr ihankel_inverse_rpow_exp_neg(int n, double a, const std::string& r) {
@@ -2219,39 +2236,86 @@ SymExpr sym_hankel(const SymExpr& expr, const std::string& r, const std::string&
     case SymOp::Var:
         return sym_hankel_unsupported(expr, r);
     case SymOp::Add:
-        return sym_add(
-            sym_hankel(*expr.left, r, k),
-            sym_hankel(*expr.right, r, k));
+        return decline_if_unsupported(
+            sym_add(sym_hankel(*expr.left, r, k), sym_hankel(*expr.right, r, k)),
+            expr, r);
     case SymOp::Sub:
-        return sym_sub(
-            sym_hankel(*expr.left, r, k),
-            sym_hankel(*expr.right, r, k));
+        return decline_if_unsupported(
+            sym_sub(sym_hankel(*expr.left, r, k), sym_hankel(*expr.right, r, k)),
+            expr, r);
     case SymOp::Neg:
-        return sym_neg(sym_hankel(*expr.left, r, k));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_hankel(*expr.right, r, k));
+        return decline_if_unsupported(sym_neg(sym_hankel(*expr.left, r, k)), expr, r);
+    case SymOp::Mul: {
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_hankel(*expr.right, r, k)), expr, r);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_hankel(*expr.left, r, k));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_hankel(*expr.left, r, k)), expr, r);
         }
         if (const auto matched = match_tpow_exp_neg(expr, r)) {
             return hankel_forward_rpow_exp_neg(matched->first, matched->second, k);
         }
         return sym_hankel_unsupported(expr, r);
+    }
     case SymOp::Exp: {
         double a = 0.0;
         if (match_exp_neg_at(expr, r, a)) {
             return hankel_forward_rpow_exp_neg(0, a, k);
         }
+        // The Gaussian: H0[exp(-a*r^2)] = exp(-k^2/(4a)) / (2a). The single most-cited
+        // order-0 pair, and self-reciprocal at a = 1/2.
+        if (const auto coefficient = match_quadratic_coefficient(*expr.left, r)) {
+            if (*coefficient < 0.0) {
+                const double rate = -*coefficient;
+                return sym_div(
+                    sym_exp(sym_neg(sym_div(sym_pow(sym_var(k), sym_const(2.0)),
+                                            sym_const(4.0 * rate)))),
+                    sym_const(2.0 * rate));
+            }
+        }
         return sym_hankel_unsupported(expr, r);
     }
     case SymOp::Div: {
+        if (!expr.left || !expr.right) {
+            return sym_hankel_unsupported(expr, r);
+        }
+        double denominator = 0.0;
+        if (try_get_const_value(*expr.right, denominator) && denominator != 0.0) {
+            return decline_if_unsupported(
+                sym_div(sym_hankel(*expr.left, r, k), sym_const(denominator)), expr, r);
+        }
         double a = 0.0;
-        if (match_one_over_sqrt_r2_plus_a2(expr, r, a)) {
-            return sym_div(
-                sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(k)))),
-                sym_var(k));
+        double scale = 1.0;
+        if (match_one_over_sqrt_r2_plus_a2(expr, r, a, scale)) {
+            return sym_simplify(attach_scale(
+                scale,
+                sym_div(sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(k)))), sym_var(k))));
+        }
+        // The Lipschitz integral: H0[c*exp(-a*r)/r] = c/sqrt(a^2 + k^2). The
+        // screened-Coulomb pair, in every Hankel table.
+        if (match_scaled_exp_neg_over_var(expr, r, a, scale)) {
+            return sym_simplify(
+                attach_scale(scale, sym_div(sym_const(1.0), sym_sqrt(build_k2_plus_a2(k, a)))));
+        }
+        double numerator = 0.0;
+        if (try_get_const_value(*expr.left, numerator)) {
+            // H0[1/r] = 1/k, the self-reciprocal Coulomb kernel.
+            if (is_bare_var(*expr.right, r)) {
+                return sym_simplify(
+                    attach_scale(numerator, sym_div(sym_const(1.0), sym_var(k))));
+            }
+            // H0[(r^2 + a^2)^(-3/2)] = exp(-a*k)/a, which is the pair above
+            // differentiated with respect to a.
+            double exponent = 0.0;
+            if (expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
+                try_get_const_value(*expr.right->right, exponent) && exponent == 1.5 &&
+                match_s2_plus_a2(*expr.right->left, r, a) && a > 0.0) {
+                return sym_simplify(attach_scale(
+                    numerator / a, sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(k))))));
+            }
         }
         return sym_hankel_unsupported(expr, r);
     }
@@ -2273,35 +2337,77 @@ SymExpr sym_ihankel(const SymExpr& expr, const std::string& k, const std::string
         }
         return sym_ihankel_unsupported(expr, k);
     case SymOp::Add:
-        return sym_add(
-            sym_ihankel(*expr.left, k, r),
-            sym_ihankel(*expr.right, k, r));
+        return decline_if_unsupported(
+            sym_add(sym_ihankel(*expr.left, k, r), sym_ihankel(*expr.right, k, r)),
+            expr, k);
     case SymOp::Sub:
-        return sym_sub(
-            sym_ihankel(*expr.left, k, r),
-            sym_ihankel(*expr.right, k, r));
+        return decline_if_unsupported(
+            sym_sub(sym_ihankel(*expr.left, k, r), sym_ihankel(*expr.right, k, r)),
+            expr, k);
     case SymOp::Neg:
-        return sym_neg(sym_ihankel(*expr.left, k, r));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_ihankel(*expr.right, k, r));
+        return decline_if_unsupported(sym_neg(sym_ihankel(*expr.left, k, r)), expr, k);
+    case SymOp::Mul: {
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_ihankel(*expr.right, k, r)), expr, k);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_ihankel(*expr.left, k, r));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_ihankel(*expr.left, k, r)), expr, k);
         }
         return sym_ihankel_unsupported(expr, k);
+    }
+    case SymOp::Exp: {
+        // The order-0 transform is its own inverse, so every forward row is an inverse
+        // row with r and k swapped. exp(-a*k) had no inverse entry though
+        // sym_hankel("exp(-a*r)") has always produced its partner.
+        double a = 0.0;
+        if (match_exp_neg_at(expr, k, a)) {
+            return hankel_forward_rpow_exp_neg(0, a, r);
+        }
+        if (const auto coefficient = match_quadratic_coefficient(*expr.left, k)) {
+            if (*coefficient < 0.0) {
+                const double rate = -*coefficient;
+                return sym_div(
+                    sym_exp(sym_neg(sym_div(sym_pow(sym_var(r), sym_const(2.0)),
+                                            sym_const(4.0 * rate)))),
+                    sym_const(2.0 * rate));
+            }
+        }
+        return sym_ihankel_unsupported(expr, k);
+    }
     case SymOp::Div: {
         if (!expr.left || !expr.right) {
             return sym_ihankel_unsupported(expr, k);
         }
+        double denominator = 0.0;
+        if (try_get_const_value(*expr.right, denominator) && denominator != 0.0) {
+            return decline_if_unsupported(
+                sym_div(sym_ihankel(*expr.left, k, r), sym_const(denominator)), expr, k);
+        }
         double a = 0.0;
-        if (match_exp_neg_ak_over_k(expr, k, a)) {
-            return sym_div(
-                sym_const(1.0),
-                sym_sqrt(build_k2_plus_a2(r, a)));
+        double scale = 1.0;
+        if (match_scaled_exp_neg_over_var(expr, k, a, scale)) {
+            return sym_simplify(attach_scale(
+                scale, sym_div(sym_const(1.0), sym_sqrt(build_k2_plus_a2(r, a)))));
+        }
+        // The partner of the Lipschitz row, in the other direction: the transform is
+        // self-inverse, so c/sqrt(a^2 + k^2) comes back as c*exp(-a*r)/r. Without it the
+        // pair could be transformed forward and not back.
+        if (match_one_over_sqrt_r2_plus_a2(expr, k, a, scale) && a > 0.0) {
+            return sym_simplify(attach_scale(
+                scale,
+                sym_div(sym_exp(sym_neg(sym_mul(sym_const(a), sym_var(r)))), sym_var(r))));
+        }
+        double numerator = 0.0;
+        if (try_get_const_value(*expr.left, numerator) && is_bare_var(*expr.right, k)) {
+            return sym_simplify(attach_scale(numerator, sym_div(sym_const(1.0), sym_var(r))));
         }
         if (const auto matched = match_hankel_k_domain_rpow_exp(expr, k)) {
-            return ihankel_inverse_rpow_exp_neg(matched->first, matched->second, r);
+            return sym_simplify(attach_scale(
+                matched->scale,
+                ihankel_inverse_rpow_exp_neg(matched->power, matched->rate, r)));
         }
         return sym_ihankel_unsupported(expr, k);
     }
