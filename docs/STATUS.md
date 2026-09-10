@@ -1,6 +1,6 @@
 # Status
 
-**Generated** by `scripts/gen_status.py` at 2026-09-10 04:40 UTC from commit `b1951d9`.
+**Generated** by `scripts/gen_status.py` at 2026-09-10 05:28 UTC from commit `b02c990`.
 Do not edit by hand; run the script.
 
 Every figure here is read from a build artefact. Anything the script could not
@@ -12,8 +12,8 @@ published claims were checkable in five minutes and wrong.
 
 | | |
 |---|---|
-| CTest suites | 336 |
-| Source lines (`src` + `include`, excluding vendor) | 153,290 |
+| CTest suites | 338 |
+| Source lines (`src` + `include`, excluding vendor) | 153,095 |
 
 ## Coverage
 
@@ -23,10 +23,10 @@ prints how many lines they hid.
 
 | | Measured | CI gate | Ratchet floor |
 |---|---|---|---|
-| Lines | 91.2% | 80% | 91.2% |
+| Lines | 91.6% | 80% | 91.6% |
 | Functions | 98.3% | not measured | 98.3% |
-| Branches (raw gcov) | 57.3% | not measured | 57.3% |
-| Branches (decision lines only) | 71.4% | — | — |
+| Branches (raw gcov) | 57.8% | not measured | 57.8% |
+| Branches (decision lines only) | 71.8% | — | — |
 
 Three columns, three different things. The measurement is what this build reported.
 The CI gate is the fixed minimum `ci.yml` sets. The ratchet floor is the previous
