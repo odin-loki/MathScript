@@ -195,15 +195,15 @@ strongest evidence available that the parser is reading the guards correctly.
 
 | Item | Status | Note |
 |---|---|---|
-| 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% branches |
-| 8.2 `src/plugin` tests | Open | 1,189 LOC, zero tests |
+| 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
+| 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against the 282 of audit bookkeeping that had never run); the Clang AST rules themselves are still covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Open | |
 | 8.4 Mutation testing | Open | |
 | 8.5 Property-based testing | Open | |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
 | 8.8 Group 573 integration targets | Done | 573 executables → 31 |
-| 8.9 Lock it in | Partial | four source-only gates in CI; the coverage ratchet is not built |
+| 8.9 Lock it in | Done | four source-only gates plus the coverage ratchet, all gating in CI |
 
 ### 8.1, the number the plan asked for
 
@@ -214,7 +214,19 @@ suites passing, over the denominator declared in `coverage_exclusions.txt`:
 |---|---|
 | Lines | **91.2%** (76,687 of 84,077) |
 | Functions | **98.3%** (5,492 of 5,588) |
-| Branches | **57.3%** (82,082 of 143,192) |
+| Branches (raw gcov) | **57.3%** (82,082 of 143,192) |
+| Branches (decision lines only) | **71.8%** |
+
+Two branch rows, and **neither replaces the other**. The raw gcov figure counts every
+edge gcov emits, which on this codebase includes edges inside library code inlined
+into our lines -- a `std::vector` growth path, an allocation-failure branch -- that no
+test of ours can reach and that we would not write a test for if we could. The
+decision-line figure, which `scripts/decision_coverage.py` computes, counts only the
+branches on lines that carry a decision we wrote. The gap between 57.3% and 71.8% is
+that inlined machinery, and quoting either number alone overstates something: the raw
+one understates what our own decisions cover, the decision one hides how much
+uncovered generated code the binary contains. `docs/STATUS.md` is regenerated each
+coverage run and carries the current pair.
 
 The exclusions hide 7,698 of 91,775 instrumented lines — 8% — and the run prints that
 figure, because a list nobody sees is a list that grows. What remains excluded is
@@ -282,7 +294,21 @@ drift printed — but it is **not** a gate. The coverage figure moves between ru
 and between runs, so failing on inequality would be failing on noise, and a gate that
 cries wolf is how the stale numbers got published in the first place.
 
-The **coverage ratchet** of §8.9 is not built.
+The **coverage ratchet** of §8.9 is built and gating: `scripts/coverage_ratchet.py`
+runs in the coverage job and fails on a drop below `tests/coverage_baseline.json`.
+
+It is a ratchet rather than a threshold because a threshold is a number to argue
+about, where a ratchet only asks that the tree not go backwards. It allows a
+tolerance of 0.5 points, and that number is set from measurement rather than taste:
+the same tree measured locally and on the runner agreed on all three metrics to
+within lcov's own 0.1 resolution, so 0.5 is about ten times any spread observed and
+far below what removing a test suite would cost. The evidence is recorded in the
+baseline file next to the number, because a tolerance with no stated basis is a
+tolerance that grows.
+
+`--update` raises the baseline and refuses to lower it; lowering needs `--force` and
+therefore shows up in the diff. That is the difference between a run that
+legitimately drops coverage and one that quietly moves the goalposts.
 
 ## §9 — Performance and intrinsics
 
