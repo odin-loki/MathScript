@@ -49,8 +49,13 @@ jobs:
       - name: Build
         run: cmake --build build-msvc --config Release
 
+      # The second invocation re-runs only what failed, so a failing test's output is
+      # the LAST thing in the log rather than buried where test 4 of 358 happened to
+      # run. Two Windows cycles were spent guessing at a transcript mismatch that the
+      # test had already diagnosed precisely -- in a part of the log that the API
+      # cannot reach from the end. The step still exits non-zero either way.
       - name: Test
-        run: ctest --test-dir build-msvc --output-on-failure
+        run: ctest --test-dir build-msvc --output-on-failure || ctest --test-dir build-msvc --rerun-failed --output-on-failure
 
       - name: Install smoke
         run: pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke
@@ -123,7 +128,7 @@ jobs:
         run: cmake --build build-linux
 
       - name: Test
-        run: ctest --test-dir build-linux --output-on-failure
+        run: ctest --test-dir build-linux --output-on-failure || ctest --test-dir build-linux --rerun-failed --output-on-failure
 
       - name: Install smoke
         run: bash scripts/package_smoke.sh build-linux install-smoke

@@ -279,6 +279,29 @@ better than the symptom. `dispatch_errors.out` had recorded `-nan` twice, from
 `log(-1)` and `sqrt(-1)`. glibc spells it `-nan` and MSVC spells it `-nan(ind)`, so
 the transcript was pinning a libc detail rather than anything about MathScript.
 
+A second Windows run failed the same test for a second, unrelated reason, and the
+pair of them is the lesson: a golden transcript must contain nothing whose spelling
+the C library chooses. The other line was `gamma(20)`. A transcendental printed at
+full round-trip precision pins the last bit of whatever libm the host has, and libms
+are not required to agree there -- one ulp changes the seventeenth significant digit
+and so the string. It is now `combo_factorial(19)`, the same number by a path with no
+libm in it; the property that the REPL prints all of 19! rather than `1.21645e+17` is
+asserted with a tolerance in `test_repl_audit_fixes`, which is the right instrument
+for it.
+
+The rule the corpus now follows: an expected file may hold exact integers, parsed
+literals printed back, and diagnostics, and may not hold the result of a
+transcendental at full precision.
+
+**What actually cost the most was not being able to read the failure.** The test
+diagnoses a mismatch precisely -- it prints the first differing line with both sides
+-- but `ctest --output-on-failure` emits that where the test ran, which for
+`test_repl_corpus` is fourth of 358, and the log API can only reach the end of a
+5,800-line log. Two Windows cycles of roughly an hour each were spent inferring a
+diff that had already been computed. The Windows and Linux test steps now re-run the
+failures after a failing run, so a failing test's output is the last thing in the
+log. That is worth more than either of the two fixes it took to find.
+
 The weak fix would have been to drop the two lines. The defect underneath is one of
 the audits' own: **a NaN reaching the display is a marker that prints as a value.**
 `ms::sym2::evaluate` already declined both arguments, so the REPL and the symbolic

@@ -17,4 +17,10 @@ combo_factorial(20)
 combo_factorial(25)
 combo_binomial(67, 33)
 combo_catalan(34)
-gamma(20)
+# NOT gamma(20). A transcendental printed at full round-trip precision pins the last
+# bit of whatever libm the host has, and libms are not required to agree there: glibc
+# and MSVC differ by an ulp, which changes the 17th significant digit and so the string.
+# That is a spelling the C library chose, not a promise MathScript makes, and a golden
+# transcript is the wrong instrument for it. The property that gamma(20) prints all of
+# 19! rather than 1.21645e+17 is asserted with a tolerance in test_repl_audit_fixes.
+combo_factorial(19)
