@@ -686,6 +686,46 @@ TEST(SymbolicTables, PiAndEAreConstantsNotFreeVariables) {
 
 namespace {
 
+// J0, computed here rather than taken from <cmath>. The C++17 mathematical special
+// functions are not implemented by Microsoft's standard library, so std::cyl_bessel_j
+// does not compile on the MSVC job even though it is standard.
+//
+// Two regimes: the ascending series, exact to about 1e-11 where its terms do not
+// cancel, and the standard asymptotic expansion beyond, good to about 1e-8 at the
+// crossover and better further out. That is far inside what the quadrature needs -- the
+// integrands it is used on decay like exp(-2r), so everything past the crossover
+// contributes less than 1e-7 of the total. BesselJ0MatchesKnownValues pins both regimes
+// against published values.
+double bessel_j0(double x) {
+    x = std::abs(x);
+    if (x < 18.0) {
+        const double quarter_square = 0.25 * x * x;
+        double term = 1.0;
+        double total = 1.0;
+        for (int m = 1; m < 60; ++m) {
+            term *= -quarter_square / (static_cast<double>(m) * static_cast<double>(m));
+            total += term;
+            if (std::abs(term) < 1e-18 * std::abs(total)) {
+                break;
+            }
+        }
+        return total;
+    }
+    // P and Q for nu = 0, i.e. mu = 4*nu^2 = 0, from
+    //   P ~ 1 - (mu-1)(mu-9)/(2!(8x)^2) + (mu-1)(mu-9)(mu-25)(mu-49)/(4!(8x)^4) - ...
+    //   Q ~   (mu-1)/(8x) - (mu-1)(mu-9)(mu-25)/(3!(8x)^3) + ...
+    // giving 9/128, 11025/98304, 108056025/188743680 and 1/8, 225/3072, 893025/3932160.
+    const double inv = 1.0 / x;
+    const double inv2 = inv * inv;
+    const double p_series = 1.0 - (9.0 / 128.0) * inv2 + (11025.0 / 98304.0) * inv2 * inv2 -
+                            (108056025.0 / 188743680.0) * inv2 * inv2 * inv2;
+    const double q_series = -(1.0 / 8.0) * inv + (225.0 / 3072.0) * inv2 * inv -
+                            (893025.0 / 3932160.0) * inv2 * inv2 * inv;
+    const double phase = x - 0.25 * std::numbers::pi;
+    return std::sqrt(2.0 / (std::numbers::pi * x)) *
+           (p_series * std::cos(phase) - q_series * std::sin(phase));
+}
+
 // H0[f](k) = integral from 0 to infinity of f(r) J0(k r) r dr, evaluated numerically.
 // Only rows whose integrand decays exponentially are checked this way; the algebraic
 // ones oscillate too slowly for a truncated quadrature to say anything, and are pinned
@@ -694,7 +734,7 @@ double hankel_numeric(const SymExpr& f, const std::string& r, double k) {
     // The lower limit is a whisker above zero rather than zero: the integrand of a row
     // like exp(-a*r)/r is finite there (the 1/r cancels against the r weight) but is
     // computed as inf * 0. What is skipped is of order 1e-9.
-    return simpson([&](double x) { return at(f, r, x) * std::cyl_bessel_j(0, k * x) * x; },
+    return simpson([&](double x) { return at(f, r, x) * bessel_j0(k * x) * x; },
                    1e-9, 60.0, 240000);
 }
 
@@ -844,4 +884,44 @@ TEST(SymbolicTables, PrintedConstantsReadBackAsThemselves) {
     // The ordinary magnitudes keep the six-decimal spelling the corpus is written in.
     EXPECT_EQ(sym_to_string(sym_const(2.0)), "2.000000");
     EXPECT_EQ(sym_to_string(sym_const(0.5)), "0.500000");
+}
+
+TEST(SymbolicTables, BesselJ0MatchesKnownValues) {
+    // The quadrature that checks the Hankel table is only as good as its J0, and this
+    // one is hand-rolled because MSVC does not ship std::cyl_bessel_j. The reference
+    // values were computed from the ascending series in 300-digit arithmetic, so they
+    // are independent of the double-precision implementation being checked.
+    struct Case {
+        double x;
+        double j0;
+    };
+    // Below the crossover: the ascending series.
+    const Case series_cases[] = {
+        {0.0, 1.0},
+        {1.0, 0.76519768655796655},
+        {2.404825557695773, 0.0},  // the first zero
+        {5.0, -0.17759677131433830},
+        {10.0, -0.24593576445134834},
+        {15.0, -0.014224472826780773},
+        {17.999999, -0.013355993716868143},
+    };
+    for (const Case& c : series_cases) {
+        EXPECT_NEAR(bessel_j0(c.x), c.j0, 1e-9) << "J0(" << c.x << ")";
+    }
+    // Above it: the asymptotic expansion. 18.000001 and 17.999999 straddle the
+    // crossover, so together they pin both regimes at effectively the same argument --
+    // which is the real continuity check, since J0 itself moves by 3.8e-7 across that
+    // interval and comparing the two sides to each other would only measure its slope.
+    const Case asymptotic_cases[] = {
+        {18.000001, -0.013355617727097167},
+        {20.0, 0.16702466434058315},
+        {50.0, 0.055812327669251815},
+        {100.0, 0.019985850304223122},
+        {150.0, -0.00077409037539429120},
+        {210.0, -0.016170877385332898},
+        {400.0, -0.038825181530783956},
+    };
+    for (const Case& c : asymptotic_cases) {
+        EXPECT_NEAR(bessel_j0(c.x), c.j0, 1e-9) << "J0(" << c.x << ")";
+    }
 }
