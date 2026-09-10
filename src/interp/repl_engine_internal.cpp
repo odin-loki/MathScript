@@ -390,11 +390,14 @@ bool is_binary_minus_view(std::string_view expr, size_t index) {
         return false;
     }
     const char prev = expr[j - 1];
-    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '^' &&
+           prev != '(';
 }
 
+/// See `find_top_level_op`: `leftmost` is associativity, not a preference.
 std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view expr,
-                                                              const char* ops) {
+                                                              const char* ops,
+                                                              bool leftmost) {
     int depth = 0;
     std::optional<std::pair<size_t, char>> last;
     for (size_t i = 0; i < expr.size(); ++i) {
@@ -414,6 +417,9 @@ std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view e
                     if (is_exponent_sign(expr, i)) {
                         continue;
                     }
+                    if (leftmost) {
+                        return std::pair{i, *p};
+                    }
                     last = std::pair{i, *p};
                 }
             }
@@ -422,11 +428,17 @@ std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view e
     return last;
 }
 
+// Loosest operator first: whichever binds least tightly is the one the expression
+// splits at, so it is the one to look for first. `^` is last and therefore binds
+// tightest, and it is the only right-associative level here.
 std::optional<std::pair<size_t, char>> find_scalar_binop_view(std::string_view rhs) {
-    if (auto add_sub = find_top_level_op_view(rhs, "+-")) {
+    if (auto add_sub = find_top_level_op_view(rhs, "+-", false)) {
         return add_sub;
     }
-    return find_top_level_op_view(rhs, "*/");
+    if (auto mul_div = find_top_level_op_view(rhs, "*/", false)) {
+        return mul_div;
+    }
+    return find_top_level_op_view(rhs, "^", true);
 }
 
 Result<double> eval_literal_arith(std::string_view expr_text);
@@ -448,6 +460,19 @@ Result<double> eval_literal_arith(std::string_view expr_text) {
     // will not mistake the leading '-' for an operator -- is_binary_minus_view
     // rejects a sign with nothing before it -- so this ordering is safe.
     if (const auto op_pos = find_scalar_binop_view(expr)) {
+    // `-a^b` is `-(a^b)`, not `(-a)^b`. Unary minus binds looser than exponentiation --
+    // in mathematics and in every language that has a power operator -- and the two
+    // readings differ: -2^2 is -4 one way and 4 the other. The additive and
+    // multiplicative levels have to be searched BEFORE the sign is peeled, or `-4 + 1`
+    // becomes `-(4 + 1)`; the power level has to be searched AFTER it. So the sign is
+    // taken here, once the operator found turns out to be the power.
+        if (op_pos->second == '^' && (expr.front() == '-' || expr.front() == '+')) {
+            auto inner = eval_literal_arith(expr.substr(1));
+            if (!inner) {
+                return std::unexpected(inner.error());
+            }
+            return expr.front() == '-' ? -(*inner) : *inner;
+        }
         auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
         if (!left) {
             return std::unexpected(left.error());
@@ -18017,12 +18042,22 @@ bool is_binary_minus(const std::string& expr, size_t index) {
         return false;
     }
     const char prev = expr[j - 1];
-    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '^' &&
+           prev != '(';
 }
 
-std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops) {
+/// The top-level occurrence of any character in `ops`.
+///
+/// `leftmost` selects which one when there are several, and that is associativity
+/// rather than a preference. Splitting at the LAST occurrence of a left-associative
+/// operator puts everything before it on the left, so `a - b - c` becomes
+/// `(a - b) - c`; splitting at the FIRST occurrence of a right-associative one gives
+/// `a ^ (b ^ c)`, which is what `^` means. Getting this backwards is not a formatting
+/// difference: 2^3^2 is 512 read one way and 729 read the other.
+std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops,
+                                                         bool leftmost) {
     int depth = 0;
-    std::optional<std::pair<size_t, char>> last;
+    std::optional<std::pair<size_t, char>> found;
     for (size_t i = 0; i < expr.size(); ++i) {
         const char c = expr[i];
         if (c == '(') {
@@ -18035,19 +18070,25 @@ std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr
                     if (c == '-' && !is_binary_minus(expr, i)) {
                         continue;
                     }
-                    last = std::pair{i, *p};
+                    if (leftmost) {
+                        return std::pair{i, *p};
+                    }
+                    found = std::pair{i, *p};
                 }
             }
         }
     }
-    return last;
+    return found;
 }
 
 std::optional<std::pair<size_t, char>> find_scalar_binop(const std::string& rhs) {
-    if (auto add_sub = find_top_level_op(rhs, "+-")) {
+    if (auto add_sub = find_top_level_op(rhs, "+-", false)) {
         return add_sub;
     }
-    return find_top_level_op(rhs, "*/");
+    if (auto mul_div = find_top_level_op(rhs, "*/", false)) {
+        return mul_div;
+    }
+    return find_top_level_op(rhs, "^", true);
 }
 
 std::string strip_outer_parens(std::string expr) {
@@ -18639,6 +18680,17 @@ Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOpe
     }
     const auto it = state.scalars.find(operand.name);
     if (it == state.scalars.end()) {
+        // A name that exists as a matrix is not an unknown name, and saying so sends
+        // the reader looking for a variable they can see in `vars`. What they have hit
+        // is that there is no operator arithmetic over matrices -- `A + B` and `A * B`
+        // are not spelled that way -- and the message should say which of the two
+        // problems they have.
+        if (state.matrices.count(operand.name) > 0) {
+            return std::unexpected(DomainError{
+                "resolve", "'" + operand.name +
+                               "' is a matrix, not a scalar; matrices have no operator "
+                               "arithmetic -- use matmul(A, B) and the mat_* accessors"});
+        }
         return std::unexpected(DomainError{"resolve", "unknown scalar: " + operand.name});
     }
     return it->second;
@@ -18764,6 +18816,19 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
     // is taken as unary, or the sign applies to the whole expression. With x = 4,
     // -x + 1 evaluated to -5 and -x + y to -6.
     if (const auto op_pos = find_scalar_binop_view(expr)) {
+    // `-a^b` is `-(a^b)`, not `(-a)^b`. Unary minus binds looser than exponentiation --
+    // in mathematics and in every language that has a power operator -- and the two
+    // readings differ: -2^2 is -4 one way and 4 the other. The additive and
+    // multiplicative levels have to be searched BEFORE the sign is peeled, or `-4 + 1`
+    // becomes `-(4 + 1)`; the power level has to be searched AFTER it. So the sign is
+    // taken here, once the operator found turns out to be the power.
+        if (op_pos->second == '^' && (expr.front() == '-' || expr.front() == '+')) {
+            auto inner = eval_scalar_expr_impl(state, expr.substr(1));
+            if (!inner) {
+                return std::unexpected(inner.error());
+            }
+            return expr.front() == '-' ? -(*inner) : *inner;
+        }
         auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
         if (!left) {
             return std::unexpected(left.error());

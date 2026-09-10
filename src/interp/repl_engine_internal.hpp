@@ -132,8 +132,12 @@ std::string_view strip_outer_parens_view(std::string_view expr);
 
 bool is_binary_minus_view(std::string_view expr, size_t index);
 
+/// The top-level occurrence of any character in `ops`. `leftmost` is associativity:
+/// the last occurrence of a left-associative operator, the first of a right-associative
+/// one. 2^3^2 is 512 one way and 729 the other, so this is not a preference.
 std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view expr,
-                                                              const char* ops);
+                                                              const char* ops,
+                                                              bool leftmost = false);
 
 std::optional<std::pair<size_t, char>> find_scalar_binop_view(std::string_view rhs);
 
@@ -2733,7 +2737,8 @@ bool parse_scalar_operand(const std::string& text, ScalarOperand& out);
 
 bool is_binary_minus(const std::string& expr, size_t index);
 
-std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops);
+std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops,
+                                                         bool leftmost = false);
 
 std::optional<std::pair<size_t, char>> find_scalar_binop(const std::string& rhs);
 

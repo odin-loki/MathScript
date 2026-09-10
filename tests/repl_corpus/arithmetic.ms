@@ -1,10 +1,10 @@
 # Scalar arithmetic, precedence, and the unary minus.
 #
-# RECORDED GAP: `^` is not an operator in the REPL's scalar evaluator. `2^3` does not
-# parse -- `pow(2, 3)` is the only spelling -- although `^` is an operator in every
-# symbolic command and in the matrix literal syntax. The three `^` lines below are here
-# so the day that is fixed shows up as three lines moving from the .err file to the
-# .out file, which is a diff a reviewer can read.
+# `^` is here because the corpus found it missing: `2^3` did not parse, and `pow(2, 3)`
+# was the only spelling, although `^` was an operator in every symbolic command and in
+# the matrix literal syntax. Fixing it moved these three lines out of the .err file,
+# which is what the transcript was recorded to show. Two of them are the readings that
+# have a plausible alternative: 2^3^2 is 512 and not 64, and -2^2 is -4 and not 4.
 #
 # The last of those is here because both backends got it wrong the same way: a leading
 # minus was applied to the whole expression, so -2 + 1 was -3. The interpreter and the

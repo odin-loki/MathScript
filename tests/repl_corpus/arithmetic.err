@@ -1,3 +1,0 @@
-error: repl: could not parse: x ^ y
-error: repl: could not parse: 2 ^ 3 ^ 2
-error: repl: could not parse: (2 ^ 3) ^ 2

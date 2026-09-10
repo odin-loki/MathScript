@@ -4930,6 +4930,20 @@ Result<double> Interpreter::eval_scalar_op(char op, double left, double right) {
             return std::unexpected(DomainError{"divide", "division by zero"});
         }
         return left / right;
+    case '^': {
+        // std::pow returns NaN for a negative base under a fractional exponent, and
+        // infinity for 0 under a negative one. Both are real answers to a question the
+        // user did not ask, and a NaN that reaches the display prints as a value. The
+        // two cases are named instead.
+        if (left < 0.0 && right != std::floor(right)) {
+            return std::unexpected(DomainError{
+                "power", "a negative base has no real power at a fractional exponent"});
+        }
+        if (left == 0.0 && right < 0.0) {
+            return std::unexpected(DomainError{"power", "zero to a negative power"});
+        }
+        return std::pow(left, right);
+    }
     default:
         return std::unexpected(DomainError{"eval", "unsupported operator"});
     }
@@ -9987,7 +10001,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  export history <file>  save_history <file>\n"
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
-            "  name = x + 2             scalar expression (+, -, *, /; () precedence)\n"
+            "  name = x + 2             scalar expression (+, -, *, /, ^; () precedence)\n"
+            "                           ^ is right-associative and binds tighter than * /\n"
+            "                           2^3^2 is 512; -2^2 is -4; 2^-1 is 0.5\n"
             "  A   x   1 + 2   sqrt(2)  a bare name or expression prints its value\n"
             "  name = sin(x) pow(x,2)   scalar calls (sin, cos, sqrt, pow, min, max, ...)\n"
             "  sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh\n"
@@ -22378,8 +22394,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             print_matrix(out, matrix_it->second);
             return out.str();
         }
-        if (auto value = eval_scalar_expr(state_, cmd)) {
+        auto value = eval_scalar_expr(state_, cmd);
+        if (value) {
             return format_scalar(*value) + "\n";
+        }
+        // A line that is unambiguously an expression -- it carries a top-level operator
+        // or is a call -- and failed to evaluate has a real diagnosis, and that is the
+        // useful thing to report: `1 / 0` said "could not parse: 1 / 0", which sends
+        // the reader looking for a typo that is not there.
+        //
+        // A bare word is different, and the difference is that the REPL genuinely
+        // cannot tell which of two things it is. `load` is an incomplete command;
+        // `no_such_variable` is a name that does not exist; they are the same line
+        // shape. Reporting either as an unknown *scalar* asserts a category this code
+        // does not know -- the same defect as telling someone their matrix is an
+        // unknown scalar -- so a bare word keeps the parse error, which claims nothing.
+        if (contains_scalar_operator(cmd) || parse_scalar_call(cmd).has_value()) {
+            return std::unexpected(value.error());
         }
     }
 

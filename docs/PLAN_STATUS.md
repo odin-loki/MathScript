@@ -211,13 +211,20 @@ strongest evidence available that the parser is reading the guards correctly.
 which is the argument for the shape of the test rather than for the tests in it. None
 were regressions; all were already true and none had a test.
 
-- **`^` is not an operator in the REPL's scalar evaluator.** `2^3` does not parse.
-  `pow(2, 3)` is the only spelling, while `^` *is* an operator in every symbolic
-  command and in the matrix literal syntax, so the same character means different
-  things on adjacent lines. Fixing it has to cover the ORC JIT too, which carries its
-  own copy of the expression evaluator -- the two backends already disagreed once
-  about unary minus, and that is the reason to do it as its own change rather than
-  inside another one.
+- **`^` was not an operator in the REPL's scalar evaluator** -- `2^3` did not parse,
+  and `pow(2, 3)` was the only spelling, while `^` *was* an operator in every symbolic
+  command and in the matrix literal syntax. **Fixed**, in all three evaluators at once
+  (the interpreter's two and the ORC JIT's own copy), and the two backends were checked
+  against each other on the same seventeen expressions rather than assumed to agree.
+
+  The first implementation of it was wrong in a way worth recording, because it is the
+  same shape as the audit findings: both backends agreed, and they agreed on **4** for
+  `-2^2`. Unary minus binds looser than exponentiation -- in mathematics and in every
+  language that has a power operator -- so the answer is **-4**. Both readings evaluate
+  and nothing but an assertion distinguishes them. It also had to stay compatible with
+  an earlier fix in the same function: the additive level must be searched *before* a
+  leading sign is taken as unary, or `-4 + 1` becomes `-(4 + 1)`, while the power level
+  must be searched *after* it.
 - **`transpose(A)` has no no-target form** although `matmul(A, A)` does. The CHANGELOG
   says the registry gives every matrix-returning callee a bare form; it does not reach
   this one.
@@ -226,7 +233,18 @@ were regressions; all were already true and none had a test.
   exist.
 - **`stats_one_way_anova` and `rle_encode_vec` are unknown in the bare form** and
   reachable only through an assignment.
-- **`1 / 0` reports "could not parse"** rather than anything about division.
+- **`1 / 0` reported "could not parse"** rather than anything about division. **Fixed**:
+  the bare-expression fallback discarded the evaluator's error and replaced it with a
+  parse failure, so a real diagnosis was thrown away and the reader was sent looking for
+  a typo that was not there. A line carrying a top-level operator or a call now reports
+  what actually went wrong. A bare word still reports the parse error, deliberately:
+  `load` is an incomplete command and `no_such_variable` is a missing name, they are the
+  same line shape, and calling either an unknown *scalar* asserts a category this code
+  cannot know.
+- **`A + B` said "unknown scalar: A"** once errors were propagated, with `A` sitting in
+  `vars` as a matrix. **Fixed** in passing: the resolver now distinguishes a name that
+  does not exist from one that exists as a matrix, and says that matrices have no
+  operator arithmetic.
 - **`not_a_function(1)` reports `unknown matrix: 1`** -- the diagnostic names the
   argument rather than the function it could not find.
 - **`sym_simplify("x + x")` returns `(x + x)`.** Like terms are collected during

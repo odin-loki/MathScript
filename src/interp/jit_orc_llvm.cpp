@@ -7,6 +7,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/TargetSelect.h"
 
@@ -96,12 +97,19 @@ bool is_binary_minus(const std::string& expr, size_t index) {
         return false;
     }
     const char prev = expr[j - 1];
-    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '^' &&
+           prev != '(';
 }
 
-std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops) {
+/// `leftmost` is associativity: the last occurrence of a left-associative operator, the
+/// first of a right-associative one. This has to agree with the interpreter's copy in
+/// repl_engine_internal.cpp, because the two backends are meant to compute the same
+/// number -- they already disagreed once about unary minus, which is why the ordering
+/// here is spelled out rather than assumed.
+std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops,
+                                                         bool leftmost) {
     int depth = 0;
-    std::optional<std::pair<size_t, char>> last;
+    std::optional<std::pair<size_t, char>> found;
     for (size_t i = 0; i < expr.size(); ++i) {
         const char c = expr[i];
         if (c == '(') {
@@ -114,19 +122,25 @@ std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr
                     if (c == '-' && !is_binary_minus(expr, i)) {
                         continue;
                     }
-                    last = std::pair{i, *p};
+                    if (leftmost) {
+                        return std::pair{i, *p};
+                    }
+                    found = std::pair{i, *p};
                 }
             }
         }
     }
-    return last;
+    return found;
 }
 
 std::optional<std::pair<size_t, char>> find_scalar_binop(const std::string& rhs) {
-    if (auto add_sub = find_top_level_op(rhs, "+-")) {
+    if (auto add_sub = find_top_level_op(rhs, "+-", false)) {
         return add_sub;
     }
-    return find_top_level_op(rhs, "*/");
+    if (auto mul_div = find_top_level_op(rhs, "*/", false)) {
+        return mul_div;
+    }
+    return find_top_level_op(rhs, "^", true);
 }
 
 std::string strip_outer_parens(std::string expr) {
@@ -303,6 +317,18 @@ llvm::Value* emit_binop(llvm::IRBuilder<>& builder, char op, llvm::Value* left, 
         return builder.CreateFMul(left, right);
     case '/':
         return builder.CreateFDiv(left, right);
+    case '^': {
+        // llvm.pow.f64 lowers to the platform pow(), which is what the interpreter
+        // calls, so the two backends agree bit for bit rather than approximately. The
+        // interpreter reports a negative base under a fractional exponent and zero to a
+        // negative power; the compiled form has no way to report at run time and
+        // produces the IEEE result (NaN, infinity) for those, which is a difference in
+        // diagnostics and not in the value for every input that has one.
+        llvm::Module* module = builder.GetInsertBlock()->getModule();
+        llvm::Function* pow_fn = llvm::Intrinsic::getDeclaration(
+            module, llvm::Intrinsic::pow, {llvm::Type::getDoubleTy(module->getContext())});
+        return builder.CreateCall(pow_fn, {left, right});
+    }
     default:
         return left;
     }
@@ -385,6 +411,20 @@ llvm::Value* emit_scalar_expr(ScalarEmitCtx& ctx, const std::string& expr_text) 
             return emit_scalar_expr(ctx, expr.substr(1));
         }
         return nullptr;
+    }
+
+    // `-a^b` is `-(a^b)`, not `(-a)^b`. Unary minus binds looser than exponentiation --
+    // in mathematics and in every language that has a power operator -- and the two
+    // readings differ: -2^2 is -4 one way and 4 the other. The additive and
+    // multiplicative levels have to be searched BEFORE the sign is peeled, or `-4 + 1`
+    // becomes `-(4 + 1)`; the power level has to be searched AFTER it. So the sign is
+    // taken here, once the operator found turns out to be the power.
+    if (op_pos->second == '^' && (expr.front() == '-' || expr.front() == '+')) {
+        llvm::Value* inner = emit_scalar_expr(ctx, expr.substr(1));
+        if (!inner) {
+            return nullptr;
+        }
+        return expr.front() == '-' ? ctx.builder->CreateFNeg(inner) : inner;
     }
 
     llvm::Value* left = emit_scalar_expr(ctx, expr.substr(0, op_pos->first));

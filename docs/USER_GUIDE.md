@@ -57,8 +57,8 @@ ms> y = x / 2
 ms> z = sin(0)
 ```
 
-Scalar expressions support `+`, `-`, `*`, `/`, parentheses, unary minus, and the libm
-scalar calls: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
+Scalar expressions support `+`, `-`, `*`, `/`, `^`, parentheses, unary minus, and the
+libm scalar calls: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh`,
 `asinh`, `acosh`, `atanh`, `sqrt`, `cbrt`, `abs`, `exp`, `exp2`, `expm1`, `log`,
 `log2`, `log10`, `log1p`, `floor`, `ceil`, `round`, `trunc`, and the two-argument
 `pow`, `min`, `max`, `atan2`, `hypot`, `fmod`:
@@ -67,6 +67,22 @@ scalar calls: `sin`, `cos`, `tan`, `asin`, `acos`, `atan`, `sinh`, `cosh`, `tanh
 ms> c = sqrt(b)
 ms> y = erf(0.5)
 ```
+
+`^` is exponentiation. Two of its rules have a second reading that is also plausible
+and gives a different number, so they are worth stating rather than assuming — and
+they are the same rules the symbolic commands follow, so `2^3^2` means one thing
+everywhere in a session:
+
+| Written | Means | Value |
+|---|---|---|
+| `2^3^2` | `2^(3^2)` — right-associative | 512 |
+| `-2^2` | `-(2^2)` — unary minus binds looser | -4 |
+| `(-2)^2` | | 4 |
+| `2^-1` | the minus is the exponent's sign | 0.5 |
+| `1/2^2` | `1/(2^2)` — `^` binds tighter than `/` | 0.25 |
+
+A negative base under a fractional exponent, and zero to a negative power, are
+reported rather than answered with the NaN and infinity `pow` would return.
 
 ### Matrix literals
 
