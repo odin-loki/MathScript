@@ -115,7 +115,11 @@ TEST(ReplCommandsTest, solve_and_matmul) {
     expect_contains(interp, "solve(A, B)", "x =");
     expect_contains(interp, "x = solve(A, B)", "x =");
     EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 0.2, 1e-9);
-    expect_contains(interp, "matmul(A, A)", "C =");
+    // A matrix call with no target prints under `_` and stores there, so the result
+    // can be used on the next line. It used to print under an invented `C` that no
+    // lookup could spell back. The assignment form still prints the name the user
+    // chose, which is what `C` means here.
+    expect_contains(interp, "matmul(A, A)", "_ =");
     expect_contains(interp, "C = matmul(A, A)", "C =");
     EXPECT_DOUBLE_EQ(interp.state().matrices.at("C")(0, 0), 10.0);
     ASSERT_TRUE(interp.execute("T = transpose(A)").has_value());
@@ -506,7 +510,7 @@ TEST(ReplCommandsTest, solve_and_matmul_via_variables) {
     ASSERT_TRUE(interp.execute("A = [3, 1; 1, 2]").has_value());
     ASSERT_TRUE(interp.execute("B = [1; 1]").has_value());
     expect_contains(interp, "solve(A, B)", "x =");
-    expect_contains(interp, "matmul(A, A)", "C =");
+    expect_contains(interp, "matmul(A, A)", "_ =");
 }
 
 TEST(ReplCommandsTest, gria_via_matrix_variable) {
@@ -20699,7 +20703,7 @@ TEST(ReplCommandsTest, ml_mat_mul_noassign) {
     Interpreter interp;
     expect_ok(interp, "I = eye(3)");
     expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
-    expect_contains(interp, "ml_mat_mul(I, A)", "C =");
+    expect_contains(interp, "ml_mat_mul(I, A)", "_ =");
     expect_error_contains(interp, "ml_mat_mul(no_such_matrix, A)", "unknown matrix");
 }
 

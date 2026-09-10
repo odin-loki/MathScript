@@ -16894,8 +16894,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!C) {
                     return std::unexpected(C.error());
                 }
+                // A matrix call written without a target prints under `_` and stores there, which is
+                // what the registry fallback does for every other matrix-returning callee and what
+                // the documentation says. These few callees were given hand-written branches before
+                // that fallback existed, and the branches shadow it: they printed under an invented
+                // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                // could be both.
+                state_.scalars.erase("_");
+                state_.matrices["_"] = *C;
                 std::ostringstream out;
-                out << "C =\n";
+                out << "_ =\n";
                 print_matrix(out, *C);
                 return out.str();
             }
@@ -18251,8 +18260,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *value;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -18291,8 +18309,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *value;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -21151,8 +21178,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!C) {
                         return std::unexpected(C.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *C;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *C);
                     return out.str();
                 }
@@ -21177,8 +21213,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!C) {
                     return std::unexpected(C.error());
                 }
+                // A matrix call written without a target prints under `_` and stores there, which is
+                // what the registry fallback does for every other matrix-returning callee and what
+                // the documentation says. These few callees were given hand-written branches before
+                // that fallback existed, and the branches shadow it: they printed under an invented
+                // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                // could be both.
+                state_.scalars.erase("_");
+                state_.matrices["_"] = *C;
                 std::ostringstream out;
-                out << "C =\n";
+                out << "_ =\n";
                 print_matrix(out, *C);
                 return out.str();
             }

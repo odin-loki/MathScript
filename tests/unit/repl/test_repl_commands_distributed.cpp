@@ -2200,7 +2200,7 @@ TEST(ReplCommandsTest, dist_matmul_noassign) {
     Interpreter interp;
     expect_ok(interp, "M = [1, 2; 3, 4]");
     expect_ok(interp, "N = [5, 6; 7, 8]");
-    expect_contains(interp, "dist_matmul(M, N)", "C =");
+    expect_contains(interp, "dist_matmul(M, N)", "_ =");
 }
 
 TEST(ReplCommandsTest, dist_solve_noassign) {

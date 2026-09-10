@@ -217,4 +217,24 @@ TEST(ReplAuditFixes, AnUndefinedAnovaIsReported) {
     EXPECT_GT(interp.state().matrices.at("a")(0, 0), 0.0);
 }
 
+// The result of a matrix call written without a target is stored under `_`, so it can
+// be used on the next line. Five callees -- matmul, tensorops_matmul,
+// tensorops_einsum, signal_conv2, ml_mat_mul and dist_matmul -- had hand-written
+// branches predating the registry fallback, and those printed under an invented `C`
+// and stored nothing: the value could be read and not used, while `rand(2, 2)` on the
+// next line could be both.
+TEST(ReplAuditFixes, ABareMatrixCallLeavesItsResultWhereItSaysItIs) {
+    Interpreter interp;
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+    expect_contains(interp, "matmul(A, A)", "_ =");
+    ASSERT_GT(interp.state().matrices.count("_"), 0U)
+        << "printed a result under a name that holds nothing";
+    const auto& product = interp.state().matrices.at("_");
+    EXPECT_NEAR(product(0, 0), 7.0, 1e-12);
+    EXPECT_NEAR(product(1, 1), 22.0, 1e-12);
+    // And it is usable, which is the whole point of naming it something.
+    expect_ok(interp, "B = matmul(_, A)");
+    EXPECT_NEAR(interp.state().matrices.at("B")(0, 0), 37.0, 1e-12);
+}
+
 } // namespace

@@ -228,9 +228,22 @@ were regressions; all were already true and none had a test.
 - **`transpose(A)` has no no-target form** although `matmul(A, A)` does. The CHANGELOG
   says the registry gives every matrix-returning callee a bare form; it does not reach
   this one.
-- **The no-target matrix form labels its result `C`**, not `_` as the CHANGELOG says.
-  No variable of that name is created, so the label names something that does not
-  exist.
+- **The no-target matrix form printed a result it did not store.** Recorded first as a
+  labelling problem -- it said `C` where the CHANGELOG says `_` -- which understated
+  it: the name was not merely wrong, nothing was stored under it or any other name, so
+  the value could be read and not used. **Fixed.** `matmul`, `tensorops_matmul`,
+  `tensorops_einsum`, `signal_conv2`, `ml_mat_mul` and `dist_matmul` had hand-written
+  branches predating the registry fallback and shadowing it; they now print under `_`
+  and store there, so `B = matmul(_, A)` works on the next line as it already did after
+  `rand(2, 2)`.
+
+  Two things nearby are **not** defects, and are recorded so they are not "fixed"
+  later by someone reading the first sentence. A bare `lu(A)` printing `L =`, `U =`,
+  `P =` is right -- those are the factors' names, not invented ones -- and the
+  assignment form printing the name the user chose is right for the same reason. What
+  is arguably still open is that the multi-output bare forms store nothing either;
+  that needs a decision about what `_` should mean when a command yields three
+  matrices, which is why it was not answered here.
 - **`stats_one_way_anova` and `rle_encode_vec` are unknown in the bare form** and
   reachable only through an assignment.
 - **`1 / 0` reported "could not parse"** rather than anything about division. **Fixed**:

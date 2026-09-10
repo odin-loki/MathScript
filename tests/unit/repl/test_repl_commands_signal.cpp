@@ -5727,7 +5727,7 @@ TEST(ReplCommandsTest, signal_conv2_noassign) {
     Interpreter interp;
     expect_ok(interp, "A = [1, 2; 3, 4]");
     expect_ok(interp, "K = [1, 0; 0, 1]");
-    expect_contains(interp, "signal_conv2(A, K)", "C =");
+    expect_contains(interp, "signal_conv2(A, K)", "_ =");
     expect_error_contains(interp, "signal_conv2(missing, K)", "unknown matrix");
 }
 
