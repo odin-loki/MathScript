@@ -265,6 +265,57 @@ and compared with the integrand, Laplace entries are checked against a numerical
 `integral f(t) e^{-st} dt`, inverse entries are forward-transformed numerically, and
 Fourier entries are integrated over the whole line.
 
+### §10 — the symbolic core, built beside the old one
+
+`ms::sym2` is the core representation §10.4 specifies, in `include/ms/sym2/expr.hpp`.
+It is built beside `ms::symbolic` rather than replacing it, as §10.5 directs: the old
+engine carries Laplace, Mellin, Hankel, Fourier and Z transforms, series, limits,
+linear solve and separable ODEs, and each is worth porting one at a time against a
+differential test rather than losing.
+
+What the old five-field `SymExpr` could not do, and now can:
+
+- **Exact arithmetic.** `value` was a `double`, so `1/3` was `0.333...` and
+  `sym_simplify(x/3*3)` could not return `x`. Approximate simplification is rounding
+  with extra steps. `Integer` and `Rational` atoms carry `bignum::BigInt`, which was
+  already in the tree and unused by `src/symbolic`: `x/3*3` is `x`, `1/3 + 1/3 + 1/3`
+  is exactly `1`, and `2^200` is its 61 digits rather than an overflow.
+- **N-ary `Add` and `Mul` with sorted arguments.** `a+b+c` parsed as `(a+b)+c`, so
+  term collection and structural equality fought the tree shape and
+  `flatten_linear_sum` existed to undo it at each call site. `a + b` and `b + a` are
+  now the same object, and `x + x` is `2*x` at construction.
+- **Shared subexpressions.** `unique_ptr` made a strict tree, so expansion of nested
+  products was exponential in memory. Nodes are interned in a weak-reference table, so
+  a repeated subexpression is stored once and structural equality is a pointer
+  comparison.
+- **Named heads for what has no value.** `Derivative`, `Integral` and `Limit` are
+  answers, and `undefined` is a value: `x/0`, `0^0` and `0^-1` say so instead of
+  producing a node that turns into a NaN somewhere later. This is the §10.2 fix -- the
+  old API's nine sentinel returns each needed the caller to know the convention.
+- **A precedence-aware printer** (§10.3, which §11.1's `to_latex` was waiting on).
+  `2*x + 1` prints as `2*x + 1`, where the old printer gave
+  `((2.000000 * x) + 1.000000)`.
+- **`Result<T>`.** `evaluate` reports an unbound symbol, a division by zero and a
+  domain error rather than returning a double that cannot be told from an answer --
+  which is how `sym_eval("pi")` came to report `0.000000`.
+
+Automatic simplification only applies identities. `(x^2)^(1/2)` is `|x|` and stays as
+it is; the fold is allowed when the outer exponent is an integer or the inner base is a
+positive number, and those two cases only. Writing that condition as "the base is not a
+negative number" was the first attempt and was wrong -- a symbol is not a negative
+number and is not known to be non-negative either -- which the test for it caught.
+
+`tests/unit/sym2/test_sym2_differential.cpp` is the §10.5 discipline: 4,000 random
+expressions evaluated against the old engine at three points each, a round trip through
+the old representation and back, a check that everything the printer writes parses back
+to the same expression, and a check that the canonical form is a fixed point. The
+printer check found a defect in the printer: it formatted an inexact constant with the
+REPL's display rule, so `7/3` printed as `2.333333` and read back as a different
+number. What that function emits is an expression rather than a number for a person to
+skim, so it now prints exactly.
+
+Nothing calls `sym2` yet. The REPL, the transforms and `to_latex` come next.
+
 ### Engineering plan
 
 The whole-repository audit is in [`docs/ENGINEERING_PLAN.md`](docs/ENGINEERING_PLAN.md),

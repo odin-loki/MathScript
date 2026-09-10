@@ -363,10 +363,24 @@ and claiming otherwise would be inventing a number.
 
 ## §10 — Symbolic engine
 
-**Open.** The core rewrite — exact `Rational`, n-ary `Add`/`Mul`, hash-consing, a
-`Result<T>` API in place of the nine sentinel returns of §6.8, a precedence-aware
-printer — is the largest single item in the plan and the one two other tracks depend
-on. It has not been started.
+**Started.** The core the section specifies now exists as `ms::sym2`, built beside
+`ms::symbolic` as §10.5 directs rather than replacing it: exact `BigInt`/`Rational`
+atoms, n-ary sorted `Add`/`Mul` that collect like terms at construction, an interned
+DAG so equality is a pointer comparison, `Derivative`/`Integral`/`Limit` heads and an
+`undefined` value in place of the nine sentinel returns of §6.8, a precedence-aware
+printer, and `Result<T>` on `evaluate`. `x/3*3` is `x`; `2*x + 1` prints as `2*x + 1`
+rather than `((2.000000 * x) + 1.000000)`.
+
+The bridge in `ms/sym2/bridge.hpp` converts both ways so functions can be ported one at
+a time under the differential discipline §10.5 asks for, and
+`tests/unit/sym2/test_sym2_differential.cpp` runs it: 4,000 random expressions against
+the old engine at three points each, plus a round trip, a print-and-reparse check, and
+a fixed-point check on the canonical form.
+
+**What is left:** the transforms, series, limits, linear solve and ODE solvers are
+still the old engine's, and nothing in the REPL calls `sym2` yet. §10.6's capability
+roadmap — polynomial `gcd`/`factor`/`together`/`apart`, assumptions, `solve` beyond
+linear — all sits on top of what now exists.
 
 ### What was fixed without it
 
@@ -436,8 +450,9 @@ agrees with the bug.
 
 ## §11 — LaTeX and notation interchange
 
-**Open**, and blocked on §10.3 as the plan states: the printer that `to_latex` needs
-is part of the core rewrite.
+**Open**, and no longer blocked: §10.3's precedence-aware printer exists in
+`ms::sym2::to_string`, so §11.1's `to_latex` is now the week of work the plan estimated
+rather than a dependency on a rewrite that had not started.
 
 ## §12 — GUI
 

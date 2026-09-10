@@ -16,6 +16,7 @@ add_subdirectory(pde)
 add_subdirectory(fem)
 add_subdirectory(poly)
 add_subdirectory(symbolic)
+add_subdirectory(sym2)
 add_subdirectory(domain)
 add_subdirectory(distributed)
 add_subdirectory(frameworks)
@@ -58,6 +59,7 @@ set(_MS_LIBS
     ms_fem
     ms_poly
     ms_symbolic
+    ms_sym2
     ms_domain
     ms_distributed
     ms_frameworks
