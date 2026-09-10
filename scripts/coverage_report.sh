@@ -155,6 +155,20 @@ if [[ -x "${ROOT}/scripts/cov_rank.py" ]] || [[ -f "${ROOT}/scripts/cov_rank.py"
         || true
 fi
 
+# Branch coverage over lines that actually contain a decision, reported beside the
+# raw figure and never instead of it -- 43% of gcov's branch denominator here is
+# edges inside inlined library code, which no test can reach and which therefore
+# makes the raw number say less than it appears to about this project's own logic.
+if [[ -f "${ROOT}/scripts/decision_coverage.py" ]]; then
+    python3 "${ROOT}/scripts/decision_coverage.py" "${INFO}" --top 0 \
+        > "${BUILD_DIR}/coverage-decisions.txt" 2>/dev/null || true
+    if [[ -s "${BUILD_DIR}/coverage-decisions.txt" ]]; then
+        echo
+        echo "=== Branch detail ==="
+        cat "${BUILD_DIR}/coverage-decisions.txt"
+    fi
+fi
+
 echo
 printf 'Line coverage:     %s%% (minimum requested: %s%%)\n' "${PCT}" "${MIN_PCT}"
 printf 'Function coverage: %s%% (minimum requested: %s%%)\n' "${PCT_FUNC:-n/a}" "${MIN_FUNC}"

@@ -1,6 +1,6 @@
 # Status
 
-**Generated** by `scripts/gen_status.py` at 2026-09-10 02:40 UTC from commit `345e025`.
+**Generated** by `scripts/gen_status.py` at 2026-09-10 04:40 UTC from commit `b1951d9`.
 Do not edit by hand; run the script.
 
 Every figure here is read from a build artefact. Anything the script could not
@@ -25,7 +25,8 @@ prints how many lines they hid.
 |---|---|---|---|
 | Lines | 91.2% | 80% | 91.2% |
 | Functions | 98.3% | not measured | 98.3% |
-| Branches | 57.3% | not measured | 57.3% |
+| Branches (raw gcov) | 57.3% | not measured | 57.3% |
+| Branches (decision lines only) | 71.4% | — | — |
 
 Three columns, three different things. The measurement is what this build reported.
 The CI gate is the fixed minimum `ci.yml` sets. The ratchet floor is the previous
@@ -35,9 +36,19 @@ more than 0.5 points.
 They are separate on purpose. The README once claimed CI enforced 90% while
 `ci.yml` set 80%, and nothing reconciled them.
 
-Read the branch row before quoting the line row. This tree's largest files are
+Read the branch rows before quoting the line row. This tree's largest files are
 dispatch chains, and a dispatch chain reaches high line coverage with one branch of
 each test taken.
+
+The two branch rows measure different denominators and **neither replaces the
+other**. The raw gcov figure counts every edge gcov emits, including those inside
+library code inlined into our lines -- `std::vector` growth and allocation-failure
+arms, `std::string` short/long checks -- which is 43% of the denominator and largely
+unreachable from a test. The decision-line figure counts only slots on a line
+containing `if`, `while`, `for`, `switch`, `&&`, `||` or `?`. The first understates
+how well this project's logic is tested; the second ignores real edges the compiler
+generated. Quoting only the flattering one is how a 92.0% line figure measured over
+75% of the repository came to be published.
 
 ## Benchmarks
 

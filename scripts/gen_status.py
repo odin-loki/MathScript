@@ -105,6 +105,22 @@ def benchmarks() -> dict[str, str]:
     return info
 
 
+def decision_branches(build_dir: pathlib.Path) -> str:
+    """Branch coverage over lines that contain a decision.
+
+    Reported next to the raw gcov figure, never in place of it: the raw
+    denominator counts edges inside inlined library code that no test can reach,
+    and quietly swapping one number for the other is how a coverage figure stops
+    meaning anything.
+    """
+    path = build_dir / "coverage-decisions.txt"
+    if not path.is_file():
+        return UNKNOWN
+    m = re.search(r"on decision lines\s+\d+/\d+\s+=\s+([0-9.]+)%",
+                  path.read_text(encoding="utf-8", errors="replace"))
+    return f"{m.group(1)}%" if m else UNKNOWN
+
+
 def ratchet() -> dict[str, str]:
     """The committed coverage floor, which is a separate mechanism from the gate.
 
@@ -167,6 +183,7 @@ def render(build_dir: pathlib.Path) -> str:
     cov = coverage(build_dir)
     gates = ci_gates()
     floor = ratchet()
+    decisions = decision_branches(build_dir)
     bench = benchmarks()
     git = git_facts()
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -202,7 +219,8 @@ prints how many lines they hid.
 |---|---|---|---|
 | Lines | {cov['lines']} | {pct(gates['MS_COVERAGE_MIN'])} | {floor['lines']} |
 | Functions | {cov['functions']} | {pct(gates['MS_COVERAGE_FUNC_MIN'])} | {floor['functions']} |
-| Branches | {cov['branches']} | {pct(gates['MS_COVERAGE_BRANCH_MIN'])} | {floor['branches']} |
+| Branches (raw gcov) | {cov['branches']} | {pct(gates['MS_COVERAGE_BRANCH_MIN'])} | {floor['branches']} |
+| Branches (decision lines only) | {decisions} | — | — |
 
 Three columns, three different things. The measurement is what this build reported.
 The CI gate is the fixed minimum `ci.yml` sets. The ratchet floor is the previous
@@ -212,9 +230,19 @@ more than {floor['tolerance']} points.
 They are separate on purpose. The README once claimed CI enforced 90% while
 `ci.yml` set 80%, and nothing reconciled them.
 
-Read the branch row before quoting the line row. This tree's largest files are
+Read the branch rows before quoting the line row. This tree's largest files are
 dispatch chains, and a dispatch chain reaches high line coverage with one branch of
 each test taken.
+
+The two branch rows measure different denominators and **neither replaces the
+other**. The raw gcov figure counts every edge gcov emits, including those inside
+library code inlined into our lines -- `std::vector` growth and allocation-failure
+arms, `std::string` short/long checks -- which is 43% of the denominator and largely
+unreachable from a test. The decision-line figure counts only slots on a line
+containing `if`, `while`, `for`, `switch`, `&&`, `||` or `?`. The first understates
+how well this project's logic is tested; the second ignores real edges the compiler
+generated. Quoting only the flattering one is how a 92.0% line figure measured over
+75% of the repository came to be published.
 
 ## Benchmarks
 
