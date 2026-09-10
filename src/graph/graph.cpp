@@ -871,25 +871,36 @@ std::vector<int> eccentricity(const Graph& G) {
     return ecc;
 }
 
+// Both used to skip the unreachable pairs and answer from what was left, so a
+// disconnected graph reported the diameter of its largest component -- a real number
+// for a quantity that is infinite, with nothing to say the graph was disconnected.
+// eccentricity() next door already returns -1 for a vertex that cannot reach every
+// other, and these follow it: -1 means "not finite", which is what the diameter and
+// radius of a disconnected graph are.
 int diameter(const Graph& G) {
     auto d = floyd_warshall(G);
-    int n = G.n_vertices();
+    const int n = G.n_vertices();
     double diam = 0;
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            if (d[i][j] < INF) diam = std::max(diam, d[i][j]);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (d[i][j] >= INF) return -1;
+            diam = std::max(diam, d[i][j]);
+        }
+    }
     return static_cast<int>(diam);
 }
 
 int radius(const Graph& G) {
     auto d = floyd_warshall(G);
-    int n = G.n_vertices();
+    const int n = G.n_vertices();
     double rad = INF;
     for (int i = 0; i < n; ++i) {
         double ecc = 0;
-        for (int j = 0; j < n; ++j)
-            if (d[i][j] < INF) ecc = std::max(ecc, d[i][j]);
-        if (ecc > 0) rad = std::min(rad, ecc);
+        for (int j = 0; j < n; ++j) {
+            if (d[i][j] >= INF) return -1;
+            ecc = std::max(ecc, d[i][j]);
+        }
+        rad = std::min(rad, ecc);
     }
     return rad < INF ? static_cast<int>(rad) : 0;
 }

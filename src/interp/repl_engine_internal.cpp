@@ -686,6 +686,14 @@ Result<bignum::BigInt> bigint_from_scalar(double arg, const char* fn) {
     if (!std::isfinite(arg) || std::floor(arg) != arg) {
         return std::unexpected(DomainError{fn, "expected integer argument"});
     }
+    // A double past 2^63 has no `long long` to be cast to, and the cast is undefined
+    // behaviour rather than a saturating one -- so bigint_add(1e30, 1) produced whatever
+    // the hardware happened to leave in the register. 2^63 itself is the first double
+    // outside the range; -2^63 is inside it.
+    if (arg >= 9223372036854775808.0 || arg < -9223372036854775808.0) {
+        return std::unexpected(
+            DomainError{fn, "integer argument does not fit in 64 bits"});
+    }
     return bignum::BigInt(static_cast<long long>(arg));
 }
 
@@ -3731,6 +3739,15 @@ Result<double> eval_quantum_fidelity(const Matrix<double>& rho_m, const Matrix<d
     if (!sigma) {
         return std::unexpected(sigma.error());
     }
+    // quantum::fidelity answers 0.0 when the two states have different dimensions,
+    // and 0.0 is also the fidelity of two orthogonal states -- so a caller that passed
+    // a 2x2 and a 4x4 got a number that reads as "these states are perfectly
+    // distinguishable" rather than "these are not two states of the same system".
+    // eval_quantum_expectation_dm below already checks this; these two did not.
+    if (rho->size() != sigma->size()) {
+        return std::unexpected(
+            DomainError{"quantum_fidelity", "density matrices must have same dimension"});
+    }
     return quantum::fidelity(*rho, *sigma);
 }
 
@@ -3791,6 +3808,12 @@ Result<double> eval_quantum_trace_distance(const Matrix<double>& rho_m,
     auto sigma = matrix_to_density_matrix(sigma_m, "quantum_trace_distance");
     if (!sigma) {
         return std::unexpected(sigma.error());
+    }
+    // Same shape of leak: 0.0 is the trace distance of two identical states, so a
+    // dimension mismatch came back as "these states are the same".
+    if (rho->size() != sigma->size()) {
+        return std::unexpected(
+            DomainError{"quantum_trace_distance", "density matrices must have same dimension"});
     }
     return quantum::trace_distance(*rho, *sigma);
 }
@@ -5650,12 +5673,22 @@ Result<double> eval_cplx_blaschke_product(double zre, double zim, const Matrix<d
     return std::abs(cplx::blaschke_product(z, zeros));
 }
 
+// Symmetrised, like eval_graph_radius next door. They are a pair -- the radius of a
+// graph is never greater than its diameter -- and reading one as directed and the other
+// as undirected can make the pair contradict itself on the same input. Reading it as
+// directed also made the diameter of a chain infinite, which is true of a directed
+// chain and not what anyone means by the diameter of an adjacency matrix.
 Result<double> eval_graph_diameter(const Matrix<double>& adj_m) {
-    auto G = graph_from_adjacency(adj_m, "graph_diameter");
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_diameter");
     if (!G) {
         return std::unexpected(G.error());
     }
-    return static_cast<double>(graph::diameter(*G));
+    const int value = graph::diameter(*G);
+    if (value < 0) {
+        return std::unexpected(
+            DomainError{"graph_diameter", "the graph is disconnected: no finite diameter"});
+    }
+    return static_cast<double>(value);
 }
 
 Result<Matrix<double>> eval_compress_bytes_to_bits(const Matrix<double>& bytes_m) {
@@ -5691,7 +5724,12 @@ Result<double> eval_graph_radius(const Matrix<double>& adj_m) {
     if (!G) {
         return std::unexpected(G.error());
     }
-    return static_cast<double>(graph::radius(*G));
+    const int value = graph::radius(*G);
+    if (value < 0) {
+        return std::unexpected(
+            DomainError{"graph_radius", "the graph is disconnected: no finite radius"});
+    }
+    return static_cast<double>(value);
 }
 
 Result<Matrix<double>> eval_combo_all_subsets(int n) {

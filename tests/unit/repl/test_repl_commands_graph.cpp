@@ -38,6 +38,19 @@ TEST(ReplCommandsTest, graph_diameter) {
     expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
     expect_ok(interp, "diam = graph_diameter(Achain)");
     EXPECT_NEAR(interp.state().scalars.at("diam"), 3.0, 1e-9);
+
+    // A graph in two pieces has no finite diameter. It used to skip the unreachable
+    // pairs and report the diameter of the larger piece -- a real number for a quantity
+    // that is not finite, with nothing to say the graph was disconnected.
+    expect_ok(interp, "Adisc = [0, 1, 0, 0; 1, 0, 0, 0; 0, 0, 0, 1; 0, 0, 1, 0]");
+    expect_error_contains(interp, "graph_diameter(Adisc)", "disconnected");
+    expect_error_contains(interp, "graph_radius(Adisc)", "disconnected");
+    // The radius of a graph is never greater than its diameter, so the two have to be
+    // read off the same graph: they used to disagree about whether the input was
+    // directed.
+    expect_ok(interp, "rad2 = graph_radius(Achain)");
+    expect_ok(interp, "diam2 = graph_diameter(Achain)");
+    EXPECT_LE(interp.state().scalars.at("rad2"), interp.state().scalars.at("diam2"));
 }
 
 TEST(ReplCommandsTest, graph_spectral) {

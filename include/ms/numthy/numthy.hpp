@@ -31,10 +31,20 @@ std::vector<std::pair<uint64_t,int>> factor_exp(uint64_t n); // {p, e} pairs
 // --- Divisor functions ---
 std::vector<uint64_t> divisors(uint64_t n);
 uint64_t num_divisors(uint64_t n);       // tau(n)
-uint64_t sum_divisors(uint64_t n);       // sigma(n)
+// sigma(n). UINT64_MAX when the sum does not fit -- sigma is superlinear, so it leaves
+// the type well before n does, and the sum used to wrap to something smaller than n.
+uint64_t sum_divisors(uint64_t n);
 uint64_t euler_phi(uint64_t n);          // Euler totient
-// Jordan totient J_k(n) = n^k * prod_{p|n}(1 - 1/p).  J_1(n) == euler_phi(n).
-// Returns 0 if k == 0, n == 0, or the result would overflow uint64_t.
+/// @brief Jordan totient J_k(n) = n^k * prod_{p|n}(1 - 1/p^k).
+/// @note The exponent on p is k, not 1. This comment used to say (1 - 1/p), the
+///   implementation computed that, and the test asserted it: J_2(6) came out 12 where
+///   it is 24. J_k(n) counts the k-tuples (a_1..a_k) in [1,n]^k with
+///   gcd(a_1,...,a_k,n) = 1, and counting those directly for n = 6, k = 2 gives 24.
+///   J_1(n) == euler_phi(n), which is why the error was invisible at k = 1 -- and k = 1
+///   was the only case the REPL tests exercised.
+/// @return 0 when k == 0 or n == 0; UINT64_MAX when the result, or an intermediate
+///   prime power, does not fit in uint64_t. J_k(n) is never 0 for k, n >= 1, so the
+///   two are distinguishable.
 uint64_t jordan_totient(uint32_t k, uint64_t n);
 int64_t  mobius(uint64_t n);             // Möbius function: -1,0,1
 int      liouville(uint64_t n);          // Liouville lambda: ±1
@@ -46,14 +56,21 @@ uint64_t gcd(uint64_t a, uint64_t b);
 uint64_t lcm(uint64_t a, uint64_t b);
 // Returns {g, x, y} s.t. a*x + b*y = g
 std::tuple<int64_t,int64_t,int64_t> extended_gcd(int64_t a, int64_t b);
-Result<uint64_t> mod_inv(uint64_t a, uint64_t m);   // modular inverse
+// Modular inverse. Carries its Bezout coefficient reduced modulo m rather than in an
+// int64_t, so a modulus above 2^63 -- 2^63 + 9 is prime and an ordinary thing to want --
+// is the modulus asked about rather than a negative number.
+Result<uint64_t> mod_inv(uint64_t a, uint64_t m);
 /// @brief base^exp mod `mod` by binary exponentiation.
 /// @note A modulus of 0 or 1 returns 0: there is no residue class modulo 0, and every
 ///   value is 0 modulo 1. Modulus 0 used to reach `base %= mod` and raise SIGFPE.
 uint64_t mod_pow(uint64_t base, uint64_t exp, uint64_t mod);
 
 // --- Modular arithmetic ---
-// Chinese Remainder Theorem: find x s.t. x ≡ r[i] (mod m[i])
+// Chinese Remainder Theorem: find x s.t. x ≡ r[i] (mod m[i]).
+// The answer is modulo the product of the moduli. That product used to be accumulated
+// with a bare multiply, so past 2^64 it wrapped and the result came back reduced modulo
+// a number that was not the product of anything; a combined modulus that does not fit
+// is now reported. A zero modulus is reported rather than dividing by it.
 Result<uint64_t> crt(const std::vector<uint64_t>& r,
                      const std::vector<uint64_t>& m);
 
@@ -80,7 +97,11 @@ Result<std::pair<uint64_t,uint64_t>> cornacchia(uint64_t d, uint64_t p);
 
 // --- Continued fractions ---
 std::vector<int64_t> continued_fraction(double x, int max_terms = 20);
-// Convergents p/q from CF coefficients
+// Convergents p/q from CF coefficients.
+// Numerators and denominators grow at least as fast as the Fibonacci numbers, so a long
+// coefficient list runs out of int64_t whatever its values are. The sequence stops at the
+// last convergent that is representable: every entry returned is exact, there are simply
+// fewer of them than the input has terms.
 std::vector<std::pair<int64_t,int64_t>> convergents(
     const std::vector<int64_t>& cf);
 
@@ -137,8 +158,12 @@ bool is_carmichael(uint64_t n);
 //        division and are out of scope here; documented limitation, not silently wrong output).
 // @param P, Q sequence parameters (may be negative).
 // @return {U_k, V_k} as a pair.
-// @note Uses int64_t arithmetic with no overflow checking; large k/P/Q combinations can overflow
-//       silently. BigInt support is out of scope for this function.
+// @note Every product and sum is checked. U_k grows geometrically -- with P = Q = 1 it is
+//       the Fibonacci sequence and leaves int64_t at k = 92, and with larger P much sooner --
+//       and signed overflow is undefined behaviour rather than a wrapped number, so it could
+//       not be left to wrap and be documented. A combination that does not fit returns {0, 0};
+//       U_k and V_k are both 0 only at k = 0 with V_0 = 2, so the pair is unambiguous.
+//       BigInt support is out of scope for this function.
 std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q);
 
 // Multiplicative order of a modulo n: the smallest positive integer k such that

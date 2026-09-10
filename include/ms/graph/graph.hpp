@@ -117,7 +117,11 @@ ArborescenceResult min_arborescence(const Graph& G, int root);
 // If v cannot reach every other vertex (disconnected G), ecc[v] is -1
 // (unreachable/infinite eccentricity sentinel; floyd_warshall uses INF).
 std::vector<int> eccentricity(const Graph& G);
-int    diameter(const Graph& G);   // longest shortest path
+// Longest shortest path, and the smallest eccentricity. Both are -1 on a disconnected
+// graph, matching eccentricity()'s sentinel: they used to skip the unreachable pairs
+// and answer from the largest component, which is a finite number for a quantity that
+// is not finite. An empty graph has radius 0.
+int    diameter(const Graph& G);
 int    radius(const Graph& G);
 bool   is_tree(const Graph& G);
 // Necessary-but-not-sufficient planarity SCREEN: the Euler-formula bound

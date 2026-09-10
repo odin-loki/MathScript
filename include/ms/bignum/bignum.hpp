@@ -65,7 +65,15 @@ public:
     std::string to_string() const;
     /// Convert to `base` (2–36). Invalid base returns an empty string.
     std::string to_string(int base) const;
+    /// @brief Value as a `long long`, saturating at the ends of the range.
+    /// @note It used to accumulate the low three base-1e9 limbs into a `long long`.
+    ///   Three limbs reach 10^27, past 2^63, so that was undefined behaviour rather
+    ///   than a wrapped number -- and a value with more limbs came back as its low 27
+    ///   digits with nothing to mark it. Saturation is at least defined and monotone;
+    ///   `to_ll_exact` reports instead of guessing.
     long long to_ll() const;
+    /// @brief Exact value, or false when it does not fit in a `long long`.
+    bool to_ll_exact(long long& out) const;
     double to_double() const;
 
     // Helpers

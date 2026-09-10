@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/numthy/numthy.hpp"
+#include "ms/core/checked_arith.hpp"
 #include "ms/error/error_types.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <queue>
 #include <set>
@@ -259,10 +261,15 @@ uint64_t num_divisors(uint64_t n) {
     return tau;
 }
 
+// sigma(n) exceeds uint64_t well before n does -- sigma is superlinear, so a divisor
+// list summing past 2^64 wrapped and returned a number smaller than n itself.
 uint64_t sum_divisors(uint64_t n) {
     auto d = divisors(n);
     uint64_t s = 0;
-    for (auto x : d) s += x;
+    for (auto x : d) {
+        if (s > UINT64_MAX - x) return UINT64_MAX;
+        s += x;
+    }
     return s;
 }
 
@@ -339,45 +346,38 @@ uint64_t carmichael_lambda(uint64_t n) {
     return result;
 }
 
+// J_k(n) = n^k prod_{p|n} (1 - 1/p^k) = prod_{p^e || n} (p^(k*e) - p^(k*(e-1))).
+//
+// The second exponent is k*(e-1), and this computed p^(k*e - 1) -- the Euler-totient
+// shape, which is the same thing only at k = 1. So every J_k with k >= 2 was wrong:
+// J_2(6) came out 12 where it is 24, J_2(4) 8 where it is 12, J_3(12) 576 where it is
+// 1456. The header said (1 - 1/p) and the one test asserted 12, so all three agreed
+// with each other and none of them agreed with the Jordan totient.
+//
+// k*e was also formed in uint32_t, so a k past 2^32/e wrapped and asked for a small
+// power of p instead of an unrepresentable one. It is computed in uint64_t and refused
+// past what pow_u64 accepts.
 uint64_t jordan_totient(uint32_t k, uint64_t n) {
     if (n == 0 || k == 0) return 0;
     if (n == 1) return 1;
     auto fe = factor_exp(n);
-#if defined(__SIZEOF_INT128__)
-    __uint128_t result = 1;
-    for (auto& [p, e] : fe) {
-        uint64_t pk_e;
-        if (!pow_u64(p, k * static_cast<uint32_t>(e), pk_e)) return 0;
-        uint64_t pk_e1;
-        if (k * static_cast<uint32_t>(e) <= 1) {
-            pk_e1 = 1;
-        } else if (!pow_u64(p, k * static_cast<uint32_t>(e) - 1, pk_e1)) {
-            return 0;
-        }
-        if (pk_e < pk_e1) return 0;
-        __uint128_t term = static_cast<__uint128_t>(pk_e) - pk_e1;
-        result *= term;
-        if (result > UINT64_MAX) return 0;
-    }
-    return static_cast<uint64_t>(result);
-#else
     uint64_t result = 1;
     for (auto& [p, e] : fe) {
-        uint64_t pk_e;
-        if (!pow_u64(p, k * static_cast<uint32_t>(e), pk_e)) return 0;
-        uint64_t pk_e1;
-        if (k * static_cast<uint32_t>(e) <= 1) {
-            pk_e1 = 1;
-        } else if (!pow_u64(p, k * static_cast<uint32_t>(e) - 1, pk_e1)) {
-            return 0;
+        const uint64_t upper = static_cast<uint64_t>(k) * static_cast<uint64_t>(e);
+        const uint64_t lower = static_cast<uint64_t>(k) * static_cast<uint64_t>(e - 1);
+        if (upper > 64) return UINT64_MAX; // p >= 2, so p^65 cannot fit
+        uint64_t pk_e = 0;
+        if (!pow_u64(p, static_cast<uint32_t>(upper), pk_e)) return UINT64_MAX;
+        uint64_t pk_e1 = 1;
+        if (lower > 0 && !pow_u64(p, static_cast<uint32_t>(lower), pk_e1)) {
+            return UINT64_MAX;
         }
-        if (pk_e < pk_e1) return 0;
-        uint64_t term = pk_e - pk_e1;
-        if (result > UINT64_MAX / term) return 0;
+        if (pk_e < pk_e1) return UINT64_MAX;
+        const uint64_t term = pk_e - pk_e1;
+        if (term != 0 && result > UINT64_MAX / term) return UINT64_MAX;
         result *= term;
     }
     return result;
-#endif
 }
 
 int64_t mobius(uint64_t n) {
@@ -420,12 +420,37 @@ std::tuple<int64_t,int64_t,int64_t> extended_gcd(int64_t a, int64_t b) {
     return {old_r, old_s, old_t};
 }
 
+// The Bezout coefficients used to come from extended_gcd, which takes int64_t: a
+// modulus above 2^63 arrived as a negative number and the whole computation was on a
+// different pair of integers than the caller asked about. m = 2^63 + 9 (a prime) is an
+// ordinary thing to want an inverse modulo.
+//
+// Carrying the coefficient reduced modulo m instead keeps every value inside [0, m),
+// so nothing has to fit in a signed type. mulmod is already the module's portable
+// 64x64-mod-64 primitive.
 Result<uint64_t> mod_inv(uint64_t a, uint64_t m) {
-    auto [g, x, y] = extended_gcd(static_cast<int64_t>(a),
-                                   static_cast<int64_t>(m));
-    if (g != 1)
+    if (m < 2) {
+        return std::unexpected(Error{DomainError{"mod_inv", "expected a modulus >= 2"}});
+    }
+    uint64_t old_r = a % m;
+    uint64_t r = m;
+    uint64_t old_s = 1;
+    uint64_t s = 0;
+    while (r != 0) {
+        const uint64_t q = old_r / r;
+        uint64_t tmp = r;
+        r = old_r - q * r;
+        old_r = tmp;
+        // old_s - q*s, in the ring rather than in a signed type.
+        const uint64_t qs = mulmod(q % m, s, m);
+        tmp = s;
+        s = (old_s + m - qs) % m;
+        old_s = tmp;
+    }
+    if (old_r != 1) {
         return std::unexpected(Error{DomainError{"mod_inv", "gcd(a,m) != 1"}});
-    return static_cast<uint64_t>((x % static_cast<int64_t>(m) + m) % m);
+    }
+    return old_s % m;
 }
 
 uint64_t mod_pow(uint64_t base, uint64_t exp, uint64_t mod) {
@@ -436,12 +461,35 @@ Result<uint64_t> crt(const std::vector<uint64_t>& r,
                      const std::vector<uint64_t>& m) {
     if (r.size() != m.size() || r.empty())
         return std::unexpected(Error{DomainError{"crt", "bad input sizes"}});
-    uint64_t x = r[0], M = m[0];
+    for (const uint64_t modulus : m) {
+        if (modulus == 0) {
+            return std::unexpected(Error{DomainError{"crt", "expected non-zero moduli"}});
+        }
+    }
+    // The combined modulus is the product of all of them, and `M *= m[i]` wrapped
+    // silently past 2^64 -- the answer then came back reduced modulo a number that was
+    // not the product of anything. Two 5-digit moduli are fine; five 6-digit ones are
+    // not, and nothing said so.
+    uint64_t x = r[0] % m[0];
+    uint64_t M = m[0];
     for (size_t i = 1; i < r.size(); ++i) {
         auto inv = mod_inv(M % m[i], m[i]);
         if (!inv) return std::unexpected(inv.error());
-        uint64_t t = (r[i] + m[i] - x % m[i]) % m[i] * inv.value() % m[i];
-        x = x + M * t;
+        const uint64_t t = mulmod((r[i] % m[i] + m[i] - x % m[i]) % m[i], inv.value(), m[i]);
+        if (t != 0 && M > UINT64_MAX / t) {
+            return std::unexpected(
+                Error{DomainError{"crt", "combined modulus does not fit in 64 bits"}});
+        }
+        const uint64_t offset = M * t;
+        if (x > UINT64_MAX - offset) {
+            return std::unexpected(
+                Error{DomainError{"crt", "combined modulus does not fit in 64 bits"}});
+        }
+        x = x + offset;
+        if (M > UINT64_MAX / m[i]) {
+            return std::unexpected(
+                Error{DomainError{"crt", "combined modulus does not fit in 64 bits"}});
+        }
         M *= m[i];
         x %= M;
     }
@@ -592,18 +640,30 @@ std::vector<int64_t> continued_fraction(double x, int max_terms) {
     return cf;
 }
 
+// Numerators and denominators grow at least as fast as the Fibonacci numbers, so a
+// continued fraction of 92 terms overruns int64_t whatever its coefficients are -- and
+// signed overflow is undefined behaviour, not a wrapped number. The sequence now stops
+// at the last convergent that is representable. Every entry returned is exact; there
+// are simply fewer of them than the input has terms.
 std::vector<std::pair<int64_t,int64_t>> convergents(
     const std::vector<int64_t>& cf) {
     std::vector<std::pair<int64_t,int64_t>> conv;
+    if (cf.empty()) return conv;
     int64_t h_prev = 1, h_curr = cf[0];
     int64_t k_prev = 0, k_curr = 1;
     conv.push_back({h_curr, k_curr});
     for (size_t i = 1; i < cf.size(); ++i) {
-        int64_t h_next = cf[i] * h_curr + h_prev;
-        int64_t k_next = cf[i] * k_curr + k_prev;
-        conv.push_back({h_next, k_next});
-        h_prev = h_curr; h_curr = h_next;
-        k_prev = k_curr; k_curr = k_next;
+        const auto h_scaled = checked_mul<int64_t>(cf[i], h_curr);
+        if (!h_scaled) break;
+        const auto h_next = checked_add<int64_t>(*h_scaled, h_prev);
+        if (!h_next) break;
+        const auto k_scaled = checked_mul<int64_t>(cf[i], k_curr);
+        if (!k_scaled) break;
+        const auto k_next = checked_add<int64_t>(*k_scaled, k_prev);
+        if (!k_next) break;
+        conv.push_back({*h_next, *k_next});
+        h_prev = h_curr; h_curr = *h_next;
+        k_prev = k_curr; k_curr = *k_next;
     }
     return conv;
 }
@@ -807,32 +867,65 @@ bool is_carmichael(uint64_t n) {
 namespace {
 struct Mat2 { int64_t a, b, c, d; }; // [[a,b],[c,d]]
 
-Mat2 mat2_mul(const Mat2& x, const Mat2& y) {
-    return {x.a * y.a + x.b * y.c, x.a * y.b + x.b * y.d,
-            x.c * y.a + x.d * y.c, x.c * y.b + x.d * y.d};
+// Every product and sum is checked. U_k grows geometrically in P, so with P = Q = 1
+// it is the Fibonacci sequence and leaves int64_t at k = 92; with larger P it leaves
+// much sooner. Signed overflow is undefined behaviour rather than a wrapped number, so
+// this could not be left to wrap and be documented.
+bool mat2_mul(const Mat2& x, const Mat2& y, Mat2& out) {
+    const auto term = [](int64_t p, int64_t q, int64_t r, int64_t s, int64_t& into) {
+        const auto left = checked_mul<int64_t>(p, q);
+        if (!left) return false;
+        const auto right = checked_mul<int64_t>(r, s);
+        if (!right) return false;
+        const auto total = checked_add<int64_t>(*left, *right);
+        if (!total) return false;
+        into = *total;
+        return true;
+    };
+    Mat2 result{};
+    return term(x.a, y.a, x.b, y.c, result.a) && term(x.a, y.b, x.b, y.d, result.b) &&
+           term(x.c, y.a, x.d, y.c, result.c) && term(x.c, y.b, x.d, y.d, result.d) &&
+           (out = result, true);
 }
 
 // M^k for M = [[P,-Q],[1,0]] via binary exponentiation, analogous to mod_pow's approach.
-Mat2 mat2_pow(int64_t P, int64_t Q, int64_t k) {
+bool mat2_pow(int64_t P, int64_t Q, int64_t k, Mat2& out) {
+    if (Q == std::numeric_limits<int64_t>::min()) return false; // -Q would overflow
     Mat2 result{1, 0, 0, 1}; // identity
     Mat2 base{P, -Q, 1, 0};
     while (k > 0) {
-        if (k & 1) result = mat2_mul(result, base);
-        base = mat2_mul(base, base);
+        if (k & 1) {
+            if (!mat2_mul(result, base, result)) return false;
+        }
         k >>= 1;
+        if (k > 0 && !mat2_mul(base, base, base)) return false;
     }
-    return result;
+    out = result;
+    return true;
 }
 } // namespace
 
 std::pair<int64_t, int64_t> lucas_sequence(int64_t k, int64_t P, int64_t Q) {
     if (k < 0) k = 0; // negative indices need division; clamp defensively (documented in header)
     // [U_{k+1}; U_k] = M^k * [1; 0], M = [[P,-Q],[1,0]]
-    Mat2 mk = mat2_pow(P, Q, k);
-    int64_t u_next = mk.a; // U_{k+1}
-    int64_t u_k = mk.c;    // U_k
-    int64_t v_k = 2 * u_next - P * u_k; // V_k = 2*U_{k+1} - P*U_k
-    return {u_k, v_k};
+    Mat2 mk{};
+    if (!mat2_pow(P, Q, k, mk)) {
+        return {0, 0}; // not representable; the header says what that means
+    }
+    const int64_t u_next = mk.a; // U_{k+1}
+    const int64_t u_k = mk.c;    // U_k
+    // V_k = 2*U_{k+1} - P*U_k, associated as (U_{k+1} - P*U_k) + U_{k+1} rather than
+    // as 2*U_{k+1} - P*U_k. The two are the same number and not the same computation:
+    // at k = 90 with P = 1, Q = -1, 2*F(91) is 9320093220751060618 and leaves int64_t,
+    // while L(90) itself is 6440026026380244498 and does not. Doubling first would
+    // refuse an answer that fits.
+    const auto scaled = checked_mul<int64_t>(P, u_k);
+    if (!scaled) return {0, 0};
+    const auto difference = checked_sub<int64_t>(u_next, *scaled);
+    if (!difference) return {0, 0};
+    const auto v_k = checked_add<int64_t>(*difference, u_next);
+    if (!v_k) return {0, 0};
+    return {u_k, *v_k};
 }
 
 uint64_t partition(uint32_t n) {

@@ -146,20 +146,49 @@ std::string BigInt::to_string(int base) const {
     return digits_out;
 }
 
+// Three base-1e9 limbs reach 10^27, which is past 2^63, so the old accumulation could
+// overflow `long long` -- and signed overflow is undefined behaviour, not a wrapped
+// number. It also stopped at three limbs regardless, so a larger value came back as its
+// low 27 digits with nothing to say so.
+//
+// The magnitude is now built in unsigned arithmetic and the result saturates at the
+// ends of the range. Saturation is a defined answer and a monotone one; `to_ll_exact`
+// is there for a caller that needs to know rather than to guess.
 long long BigInt::to_ll() const {
-    long long v = 0;
-    long long base = 1;
-    const size_t n = digits.size() < 3 ? digits.size() : 3;
-    for (size_t i = 0; i < n; ++i) {
-        v += static_cast<long long>(digits[i]) * base;
-        if (i + 1 < n) {
-            if (base > (std::numeric_limits<long long>::max)() / BASE) {
-                break;
-            }
-            base *= BASE;
-        }
+    long long value = 0;
+    if (to_ll_exact(value)) {
+        return value;
     }
-    return negative ? -v : v;
+    return negative ? (std::numeric_limits<long long>::min)()
+                    : (std::numeric_limits<long long>::max)();
+}
+
+bool BigInt::to_ll_exact(long long& out) const {
+    constexpr unsigned long long kBase = static_cast<unsigned long long>(BASE);
+    unsigned long long magnitude = 0;
+    for (size_t i = digits.size(); i-- > 0;) {
+        if (magnitude > (~0ULL) / kBase) {
+            return false;
+        }
+        magnitude *= kBase;
+        if (magnitude > (~0ULL) - digits[i]) {
+            return false;
+        }
+        magnitude += digits[i];
+    }
+    const unsigned long long limit =
+        negative ? static_cast<unsigned long long>((std::numeric_limits<long long>::max)()) + 1ULL
+                 : static_cast<unsigned long long>((std::numeric_limits<long long>::max)());
+    if (magnitude > limit) {
+        return false;
+    }
+    if (negative) {
+        out = magnitude == limit ? (std::numeric_limits<long long>::min)()
+                                 : -static_cast<long long>(magnitude);
+    } else {
+        out = static_cast<long long>(magnitude);
+    }
+    return true;
 }
 
 double BigInt::to_double() const {

@@ -125,9 +125,16 @@ TEST(ReplResourceGuards, SieveAndPartitionRefuseUnsatisfiableSizes) {
     EXPECT_EQ(ms::numthy::partition(5u), 7u);
     EXPECT_NE(ms::numthy::partition(416u), UINT64_MAX);
 
+    // The REPL forms return rather than hanging, and now say what the marker means
+    // instead of printing it as 18446744073709551615.
     Interpreter interp;
-    EXPECT_TRUE(interp.execute("numthy_partition(3000000000)").has_value());
-    EXPECT_TRUE(interp.execute("numthy_prime_pi(1e18)").has_value());
+    for (const char* cmd : {"numthy_partition(3000000000)", "numthy_prime_pi(1e18)"}) {
+        const auto result = interp.execute(cmd);
+        ASSERT_FALSE(result.has_value()) << cmd;
+        const std::string message = ms::format_error(result.error());
+        EXPECT_NE(message.find("does not fit in 64 bits"), std::string::npos)
+            << cmd << " error: " << message;
+    }
 }
 
 TEST(ReplResourceGuards, RandomBytesAndTensorRankAreBounded) {

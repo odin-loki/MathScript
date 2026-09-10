@@ -265,6 +265,62 @@ and compared with the integrand, Laplace entries are checked against a numerical
 `integral f(t) e^{-st} dt`, inverse entries are forward-transformed numerically, and
 Fourier entries are integrated over the whole line.
 
+### An audit for answers that are wrong rather than missing
+
+A read-only sweep of the tree, eight dimensions in parallel, each finding then handed to
+an independent verifier told to refute it: 40 claims, **36 confirmed, 4 refuted**. What
+follows is the part of that acted on so far. The rest is listed in
+[`docs/PLAN_STATUS.md`](docs/PLAN_STATUS.md).
+
+The worst of them is not an overflow. **`numthy::jordan_totient` computed the wrong
+function.** J_k(n) = n^k prod_{p|n}(1 - 1/p^k), and it computed prod (p^(k*e) -
+p^(k*e - 1)) -- the Euler-totient shape, which agrees with the Jordan totient only at
+k = 1. J_2(6) came out 12 where it is 24, J_2(4) 8 where it is 12, J_3(12) 576 where it
+is 1456. The header comment stated the wrong formula, and the one test asserted 12 with
+a comment deriving it from that same formula: all three agreed with each other, and
+none of them agreed with the Jordan totient. `tests/unit/numthy/test_numthy_overflow.cpp`
+now checks it against a direct count of the k-tuples it is defined as, which no formula
+can be wrong about.
+
+The rest are values that left the range of their type without saying so:
+
+- `mod_inv` cast the uint64 modulus to `int64_t` before the extended gcd, so a modulus
+  above 2^63 -- 2^63 + 29 is prime and an ordinary thing to want an inverse modulo --
+  arrived as a negative number and the answer was about a different pair of integers,
+  normalised back into `[0, m)` so that it looked like a residue. It now carries its
+  Bezout coefficient reduced modulo m, where nothing has to fit in a signed type.
+- `crt` accumulated the product of the moduli with a bare multiply, so past 2^64 the
+  answer came back reduced modulo a number that was not the product of anything, and
+  satisfied none of the congruences. It reports instead.
+- `sum_divisors` wrapped: sigma is superlinear and leaves the type well before n does.
+- `convergents` and `lucas_sequence` overflowed `int64_t`, which is undefined behaviour
+  rather than a wrapped number. Both are checked now; `lucas_sequence` also associates
+  V_k as (U_{k+1} - P*U_k) + U_{k+1} rather than 2*U_{k+1} - P*U_k, because the doubling
+  leaves the type at k = 90 while the answer does not.
+- `BigInt::to_ll` accumulated three base-1e9 limbs -- up to 10^27 -- into a `long long`,
+  and stopped at three limbs regardless. It saturates now, and `to_ll_exact` reports.
+- `bigint_from_scalar` cast a REPL double straight to `long long` with no range check.
+- `numthy_prime_pi`, `numthy_partition`, `numthy_sum_divisors` and
+  `numthy_jordan_totient` printed their `UINT64_MAX` overflow markers as answers, as the
+  combo commands used to: `numthy_prime_pi(200000000)` said 18446744073709551615 where
+  pi(2e8) is 11078937.
+- `numthy_primitive_root` validated p as a uint64 prime and then narrowed it to `int`,
+  so a prime above 2^31 became negative, failed the function's own primality check, and
+  came back as its -1 "none found" marker.
+- `quantum_fidelity` and `quantum_trace_distance` returned the modules' 0.0 for a
+  dimension mismatch. 0.0 is also the fidelity of two orthogonal states and the trace
+  distance of two identical ones, so a 2x2 against a 4x4 read as a physics answer.
+- `graph_diameter` and `graph_radius` skipped the unreachable pairs and answered from
+  the largest component, reporting a finite diameter for a disconnected graph. Both
+  decline now, matching `eccentricity`'s existing -1. `graph_diameter` also read its
+  adjacency matrix as directed where `graph_radius` read the same matrix as undirected,
+  so the pair could contradict itself -- a radius larger than the diameter.
+- `save_session` wrote a matrix with no elements as `[; ; ]`, which `parse_matrix`
+  rejects, so a session containing one could never be loaded; a matrix with zero rows
+  and some columns came back 0x0, silently a different matrix. Both are written as
+  `[RxC]` now, which is also accepted from a user -- it is the only way to write down an
+  empty matrix that has columns.
+
 ### §10 — the symbolic core, built beside the old one
 
 `ms::sym2` is the core representation §10.4 specifies, in `include/ms/sym2/expr.hpp`.

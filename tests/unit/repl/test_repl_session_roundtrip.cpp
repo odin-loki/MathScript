@@ -174,4 +174,58 @@ TEST(SessionRoundTrip, AwkwardMagnitudesSurvive) {
     }
 }
 
+// A matrix with no elements still has a shape, and the bracket form cannot carry one.
+// A 3x0 matrix used to be written "[; ; ]", which parse_matrix rejects outright -- so
+// saving a session containing one produced a file that would not load. A 0x3 matrix was
+// written "[]" and came back 0x0, silently a different matrix.
+//
+// mat_submatrix is how such a matrix arises in practice: a zero row or column count is
+// a legitimate block request, and it is what the audit reached this through.
+TEST(SessionRoundTrip, EmptyMatricesKeepTheirShape) {
+    struct Shape {
+        const char* block;
+        std::size_t rows;
+        std::size_t cols;
+    };
+    const std::vector<Shape> shapes{
+        {"mat_submatrix(A, 0, 0, 3, 0)", 3, 0},
+        {"mat_submatrix(A, 0, 0, 0, 3)", 0, 3},
+        {"mat_submatrix(A, 0, 0, 0, 0)", 0, 0},
+        {"mat_submatrix(A, 0, 0, 1, 0)", 1, 0},
+    };
+    for (std::size_t i = 0; i < shapes.size(); ++i) {
+        SessionFile file(("empty" + std::to_string(i)).c_str());
+        Interpreter saver;
+        expect_ok(saver, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
+        expect_ok(saver, std::string("E = ") + shapes[i].block);
+        ASSERT_EQ(saver.state().matrices.count("E"), 1U) << shapes[i].block;
+        ASSERT_EQ(saver.state().matrices.at("E").rows(), shapes[i].rows) << shapes[i].block;
+        ASSERT_EQ(saver.state().matrices.at("E").cols(), shapes[i].cols) << shapes[i].block;
+        expect_ok(saver, "save " + file.path());
+
+        Interpreter loader;
+        const auto loaded = loader.execute("load " + file.path());
+        ASSERT_TRUE(loaded.has_value())
+            << shapes[i].block << " wrote: " << file.text();
+        ASSERT_EQ(loader.state().matrices.count("E"), 1U) << shapes[i].block;
+        EXPECT_EQ(loader.state().matrices.at("E").rows(), shapes[i].rows) << file.text();
+        EXPECT_EQ(loader.state().matrices.at("E").cols(), shapes[i].cols) << file.text();
+    }
+}
+
+// The shape-only spelling is readable back from a user as well as from a file: it is
+// the only way to write down an empty matrix that has columns.
+TEST(SessionRoundTrip, TheShapeOnlySpellingIsAcceptedFromAUser) {
+    Interpreter interp;
+    expect_ok(interp, "E = [0x3]");
+    ASSERT_EQ(interp.state().matrices.count("E"), 1U);
+    EXPECT_EQ(interp.state().matrices.at("E").rows(), 0U);
+    EXPECT_EQ(interp.state().matrices.at("E").cols(), 3U);
+    expect_ok(interp, "F = [4x0]");
+    EXPECT_EQ(interp.state().matrices.at("F").rows(), 4U);
+    EXPECT_EQ(interp.state().matrices.at("F").cols(), 0U);
+    // It is only for empty shapes: [2x2] would name four elements it does not carry.
+    expect_error(interp, "G = [2x2]");
+}
+
 } // namespace

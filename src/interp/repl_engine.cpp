@@ -96,6 +96,10 @@ namespace {
 // and looks exactly like a result once it reaches the surface.
 constexpr std::uint64_t kComboOverflow = UINT64_MAX;
 
+/// numthy uses the same marker. prime_pi declines any n at or past its sieve span and
+/// partition declines any n past 416, and both said so by returning UINT64_MAX -- which
+/// the REPL printed. numthy_prime_pi(200000000) answered 18446744073709551615 where
+/// pi(2e8) is 11078937.
 Result<double> combo_count_value(const std::string& fn, std::uint64_t count) {
     if (count == kComboOverflow) {
         return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
@@ -1745,6 +1749,24 @@ Result<Matrix<double>> Interpreter::parse_matrix(const std::string& text) const 
     if (s.empty()) {
         return Matrix<double>(0, 0);
     }
+    // "[RxC]" is the shape-only spelling for a matrix with no elements, which the
+    // element list cannot express. It is accepted from a user as well as from a
+    // session file: writing [0x3] for an empty three-column matrix is the only way to
+    // say that at all.
+    if (s.find_first_not_of("0123456789xX \t") == std::string::npos) {
+        const auto cross = s.find_first_of("xX");
+        if (cross != std::string::npos) {
+            const std::string rows_text = trim(s.substr(0, cross));
+            const std::string cols_text = trim(s.substr(cross + 1));
+            uint64_t rows = 0;
+            uint64_t cols = 0;
+            if (!rows_text.empty() && !cols_text.empty() && parse_uint64(rows_text, rows) &&
+                parse_uint64(cols_text, cols) && (rows == 0 || cols == 0) &&
+                rows <= 1000000 && cols <= 1000000) {
+                return Matrix<double>(static_cast<size_t>(rows), static_cast<size_t>(cols));
+            }
+        }
+    }
 
     std::vector<std::vector<double>> rows;
     std::stringstream row_stream(s);
@@ -3050,7 +3072,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_partition", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::partition(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, numthy::partition(static_cast<uint32_t>(arg)));
         }
         if (fn == "numthy_num_divisors") {
             if (arg < 0.0 || std::floor(arg) != arg) {
@@ -3073,8 +3095,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_sum_divisors", "expected non-negative integer n"});
             }
-            return static_cast<double>(
-                numthy::sum_divisors(static_cast<uint64_t>(arg)));
+            return combo_count_value(fn, numthy::sum_divisors(static_cast<uint64_t>(arg)));
         }
         if (fn == "numthy_isprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
@@ -3144,7 +3165,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_prime_pi", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::prime_pi(static_cast<uint64_t>(arg)));
+            return combo_count_value(fn, numthy::prime_pi(static_cast<uint64_t>(arg)));
         }
         if (fn == "numthy_prime_nth") {
             if (arg < 1.0 || std::floor(arg) != arg) {
@@ -3163,7 +3184,20 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return static_cast<double>(numthy::primitive_root(static_cast<int>(p)));
+            // primitive_root takes an int. p was validated as a uint64_t prime, so a
+            // prime above INT_MAX -- 2147483659 is one -- narrowed to a negative int,
+            // failed the function's own primality check, and came back as its -1
+            // "none found" marker, which the REPL then printed as the answer.
+            if (p > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                return std::unexpected(DomainError{
+                    "numthy_primitive_root", "p is too large: expected p <= 2147483647"});
+            }
+            const int root = numthy::primitive_root(static_cast<int>(p));
+            if (root < 0) {
+                return std::unexpected(
+                    DomainError{"numthy_primitive_root", "no primitive root found"});
+            }
+            return static_cast<double>(root);
         }
         if (fn == "mpi_allreduce_sum") {
             return ms::distributed::allreduce_sum(repl_mpi_context(), arg);
@@ -3830,8 +3864,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::jordan_totient(
-                static_cast<uint32_t>(k), static_cast<uint64_t>(args[1])));
+            return combo_count_value(fn, numthy::jordan_totient(
+                                             static_cast<uint32_t>(k),
+                                             static_cast<uint64_t>(args[1])));
         }
         if (fn == "cplx_joukowski") {
             const cplx::C z{args[0], args[1]};
@@ -5462,6 +5497,14 @@ Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const 
 
 std::string matrix_to_line(const Matrix<double>& m) {
     std::ostringstream out;
+    // A matrix with no elements still has a shape, and the bracket form cannot carry
+    // one: a 3x0 matrix wrote "[; ; ]", which parse_matrix rejects outright, so saving
+    // a session containing one produced a file that would not load. A 0x3 matrix wrote
+    // "[]" and came back 0x0, silently a different matrix.
+    if (m.rows() == 0 || m.cols() == 0) {
+        out << "[" << m.rows() << "x" << m.cols() << "]";
+        return out.str();
+    }
     out << "[";
     for (size_t i = 0; i < m.rows(); ++i) {
         if (i > 0) {
@@ -19878,9 +19921,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
-            return format_scalar(numthy::jordan_totient(
-                       static_cast<uint32_t>(k), static_cast<uint64_t>(n_d))) +
-                   "\n";
+            return combo_count_text(fn, numthy::jordan_totient(
+                                            static_cast<uint32_t>(k),
+                                            static_cast<uint64_t>(n_d)));
         }
 
         if (fn == "combo_combinations_with_rep") {
@@ -21072,7 +21115,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return format_scalar(numthy::primitive_root(static_cast<int>(p))) + "\n";
+            if (p > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                return std::unexpected(DomainError{
+                    "numthy_primitive_root", "p is too large: expected p <= 2147483647"});
+            }
+            const int root = numthy::primitive_root(static_cast<int>(p));
+            if (root < 0) {
+                return std::unexpected(
+                    DomainError{"numthy_primitive_root", "no primitive root found"});
+            }
+            return format_scalar(root) + "\n";
         }
 
         if (fn == "numthy_von_mangoldt") {
@@ -21161,7 +21213,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                        "\n";
             }
             if (fn == "numthy_prime_pi") {
-                return format_scalar(numthy::prime_pi(static_cast<uint64_t>(n_d))) + "\n";
+                return combo_count_text(fn, numthy::prime_pi(static_cast<uint64_t>(n_d)));
             }
             if (fn == "numthy_num_divisors") {
                 return format_scalar(
@@ -21174,11 +21226,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                        "\n";
             }
             if (fn == "numthy_sum_divisors") {
-                return format_scalar(
-                           numthy::sum_divisors(static_cast<uint64_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, numthy::sum_divisors(static_cast<uint64_t>(n_d)));
             }
-            return format_scalar(numthy::partition(static_cast<uint32_t>(n_d))) + "\n";
+            return combo_count_text(fn, numthy::partition(static_cast<uint32_t>(n_d)));
         }
 
         if (fn == "info_channel_capacity_bsc") {
