@@ -101,6 +101,14 @@ Two more silently-wrong results, and the rest of the tables:
   covers `t/(1+t)`; `(1+t)^-m` and `log(1+t)` are added. `sym_imellin` compares its
   `pi` to a tolerance matched to the six-decimal printer instead of for equality.
 
+`sym_to_string` printed constants through `std::to_string`, which is `printf("%f")`:
+six decimal places and nothing else. A coefficient below 5e-7 printed as `0.000000` and
+vanished from the expression, and a large one gained a spurious `.000000` tail, so an
+expression could be printed and read back as a different expression. Magnitudes `%f`
+represents faithfully keep that spelling; the rest now print in the shortest form that
+reads back as the same double, which the parser already accepts. (The REPL's own scalar
+results still go through `std::to_string` and are unchanged here.)
+
 `sym_limit` fabricated answers in two different ways, and could not report a failure at
 all. Its refinement loop initialised the running estimate to 0.0 and returned it
 unconditionally, so a function undefined on one side of the point fell through every

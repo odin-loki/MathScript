@@ -827,3 +827,21 @@ TEST(SymbolicTables, ExpansionIsBoundedAndStaysEqualToItsInput) {
         }
     }
 }
+
+TEST(SymbolicTables, PrintedConstantsReadBackAsThemselves) {
+    // sym_to_string went through std::to_string, which is printf("%f") -- six decimal
+    // places and nothing else. A coefficient below 5e-7 printed as 0.000000 and simply
+    // vanished from the expression; a large one gained a spurious ".000000" tail.
+    const double values[] = {1e-9,  1e-7,   -2.5e-8, 1e20,  -1e18,
+                             0.0,   2.0,    0.5,     -3.25, 1234.5};
+    for (const double value : values) {
+        // The value, not the node type: a negative literal reads back as Neg(Const),
+        // which is the parser's shape for it and not a round-trip failure.
+        const std::string text = sym_to_string(sym_const(value));
+        EXPECT_DOUBLE_EQ(sym_eval(parse_or_die(text), {}), value)
+            << value << " printed as " << text;
+    }
+    // The ordinary magnitudes keep the six-decimal spelling the corpus is written in.
+    EXPECT_EQ(sym_to_string(sym_const(2.0)), "2.000000");
+    EXPECT_EQ(sym_to_string(sym_const(0.5)), "0.500000");
+}

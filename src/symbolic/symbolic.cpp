@@ -3,6 +3,8 @@
 #include "ms/symbolic/symbolic.hpp"
 
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <limits>
 #include <functional>
 #include <optional>
@@ -2518,10 +2520,41 @@ double sym_eval(const SymExpr& expr, const std::map<std::string, double>& env) {
     return 0.0;
 }
 
+namespace {
+
+// std::to_string(double) is printf("%f"): six decimal places and nothing else. That
+// silently prints 1e-9 as 0.000000 and 1e20 with a spurious ".000000" tail, so an
+// expression could be printed and read back as a different expression -- and a small
+// but non-zero coefficient simply vanished.
+//
+// The six-decimal spelling is kept wherever it is faithful, because the whole test
+// corpus and every documented example is written in it. Only the magnitudes it cannot
+// represent switch to the shortest form that reads back as the same double; the parser
+// already accepts an exponent, so those round-trip.
+std::string format_const(double value) {
+    if (!std::isfinite(value)) {
+        return std::to_string(value);
+    }
+    const double magnitude = std::abs(value);
+    if (value == 0.0 || (magnitude >= 5e-7 && magnitude < 1e16)) {
+        return std::to_string(value);
+    }
+    char buffer[64];
+    for (int precision = 6; precision <= 17; ++precision) {
+        std::snprintf(buffer, sizeof(buffer), "%.*g", precision, value);
+        if (std::strtod(buffer, nullptr) == value) {
+            break;
+        }
+    }
+    return buffer;
+}
+
+} // namespace
+
 std::string sym_to_string(const SymExpr& expr) {
     switch (expr.op) {
     case SymOp::Const:
-        return std::to_string(expr.value);
+        return format_const(expr.value);
     case SymOp::Var:
         return expr.name;
     case SymOp::Add: {
