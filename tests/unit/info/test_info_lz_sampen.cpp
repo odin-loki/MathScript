@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for three audited defects.
 //
 //  * lz77_encode wrote a filler next_char of 0 when a match ran to the end of

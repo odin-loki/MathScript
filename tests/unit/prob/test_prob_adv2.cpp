@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Probability Distribution Tests (Wave 48)
 // Tests for norm, exp, binom, pois, chi2, t, uniform, gamma PDFs/CDFs/PPF
 

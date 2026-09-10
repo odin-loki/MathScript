@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // General (non-convex) polygon booleans.
 //
 // The pre-existing poly_union / poly_intersect / poly_diff helpers are documented as convex

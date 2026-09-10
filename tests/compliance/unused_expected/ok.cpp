@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MUST compile cleanly with the ms-profile Clang plugin active.
 // Local stand-in: the plugin matches any record named `expected` (libstdc++
 // may not expose std::expected to Clang + -fno-exceptions on CI).

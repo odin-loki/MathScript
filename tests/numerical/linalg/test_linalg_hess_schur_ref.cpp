@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Linalg: Hessenberg, Bidiagonalization, Schur Decomposition Tests
 
 #include <gtest/gtest.h>

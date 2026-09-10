@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Linear Algebra Basic Operations Numerical Reference Tests
 // Covers: tril, triu, diag, inv, trace, det, rank, cond, lsq
 

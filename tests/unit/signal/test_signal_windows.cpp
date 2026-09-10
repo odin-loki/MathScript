@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Signal Window Reference Tests
 // Placeholder for signal window basic tests (properties covered in test_signal_windows_adv4.cpp)
 

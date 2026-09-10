@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript CPU BLAS Kernel Unit Tests
 // Tests: ms::cpu::blas::avx512::dgemm_nn, available()
 //        ms::cpu::blas::ddot, daxpy, dgemv

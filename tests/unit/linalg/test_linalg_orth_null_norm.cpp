@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for orth(), null() and norm().
 //
 //   * orth() took the leading columns of an UNPIVOTED QR's Q, which is not

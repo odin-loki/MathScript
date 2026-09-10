@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Unsafe Registry - Tracks [[ms::unsafe]] annotation sites
 // Every unsafe site must be registered with a justification
 

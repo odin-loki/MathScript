@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmarks: Distributed and CellAI/Cypha
 // Benchmarks for MPIContext operations, DistMatrix scatter/gather,
 // distributed solve, CellMemory step/recall, DifModel update/predict

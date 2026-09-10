@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Iterative Solver Numerical Reference Tests
 // Tests CG, BiCGSTAB, and GMRES on known systems with exact solutions
 

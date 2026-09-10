@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Deeply nested and very long input.
 //
 // Three stack overflows, all reached from a single REPL line:

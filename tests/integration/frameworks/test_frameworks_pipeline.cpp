@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: Frameworks Pipeline
 // Tests Axiom GP evolution, CellAI memory, Cypha DIF model end-to-end
 

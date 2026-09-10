@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the audited ms::cpu::blas / ms::cpu::lapack kernel defects.
 //
 // Every assertion here is checked against something independent of the kernel

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // A contract sweep over the first-order ODE classifier.
 //
 // sym_dsolve_ode documents a hard guarantee: "a wrong closed form is never emitted, and no

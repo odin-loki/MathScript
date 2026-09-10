@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the iterative solvers.
 //
 //   * minres()'s direction-vector recurrence was wrong (the v term was never

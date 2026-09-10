@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced PDE Tests (Wave 45)
 // Tests for 1D Heat equation discretization and solver correctness
 

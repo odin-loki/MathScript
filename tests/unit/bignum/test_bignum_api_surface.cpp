@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Public arbitrary-precision entry points that no test called.
 //
 // BigInt::parse's Result overload, APFloat's compound assignments, ap_abs/ap_neg,

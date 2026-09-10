@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Linear Algebra Decomposition Benchmarks (Wave 46)
 // Benchmarks for SVD, EIG, QR, LU, CHOL on various matrix sizes
 

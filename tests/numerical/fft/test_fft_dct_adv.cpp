@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced DCT/DST Tests (Wave 47)
 // Tests for dct2/idct2/dst2: roundtrip, energy, linearity, basis properties
 

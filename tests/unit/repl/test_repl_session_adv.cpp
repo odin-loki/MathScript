@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript REPL Session and Eval API Advanced Tests
 // Tests: save_session, load_session, eval_scalar_op, assign_scalar_expr
 

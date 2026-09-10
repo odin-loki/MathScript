@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmark: finance (Black-Scholes, MC European) + info (entropy)
 // Wave 228 certification coverage for Wave 227 finance/info optimizations.
 

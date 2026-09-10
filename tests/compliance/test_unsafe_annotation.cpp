@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Compile-only smoke: a translation unit annotated with [[ms::unsafe]] must build
 // when MS_UNSAFE is defined in include/ms (see ms/error/error_types.hpp).
 

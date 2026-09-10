@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Optimization Tests (Wave 43)
 // Tests for golden_section, newton_1d, gradient_descent, newton_raphson, broyden
 

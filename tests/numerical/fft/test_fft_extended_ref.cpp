@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript FFT Extended Numerical Reference Tests
 // Tests: fft2, rfft/irfft roundtrip, and additional FFT properties
 

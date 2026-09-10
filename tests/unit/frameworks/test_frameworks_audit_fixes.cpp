@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for five audited framework defects.
 //
 //  * izaac::verify ignored the message entirely (its body ended with

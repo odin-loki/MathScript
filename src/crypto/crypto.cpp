@@ -1,4 +1,6 @@
-﻿#include "ms/crypto/crypto.hpp"
+﻿// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
+#include "ms/crypto/crypto.hpp"
 
 #include <array>
 #include <algorithm>

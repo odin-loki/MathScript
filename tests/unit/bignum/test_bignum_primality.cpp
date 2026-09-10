@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Miller-Rabin: the cases the old implementation got wrong.
 //
 // It drew its witnesses from `nm1.to_ll()`, which truncates anything wider than

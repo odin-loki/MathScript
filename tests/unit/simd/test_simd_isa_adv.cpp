@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: SIMD ISA Detection and isa_summary Advanced Tests
 
 #include <gtest/gtest.h>

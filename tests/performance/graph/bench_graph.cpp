@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmark: graph traversal (BFS, Dijkstra, Floyd-Warshall)
 
 #include <benchmark/benchmark.h>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for four audited stats defects.
 //
 //  * spearman assigned distinct ranks 1..n by sort position with no tie

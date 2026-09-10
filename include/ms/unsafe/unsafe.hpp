@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript [[ms::unsafe]] attribute macro (master plan §7.4)
 //
 // Usage: [[MS_UNSAFE("justification")]] on declarations or statements.

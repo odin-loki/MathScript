@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Axiom: per-individual provenance of the evolutionary operators.
 //
 // The Algorithm::evaluation / selection / mutation fields used to be the three

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/fft/fft.hpp"
 #include "ms/cuda/fft.hpp"
 #include "ms/runtime/dispatch.hpp"

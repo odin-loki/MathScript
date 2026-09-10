@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Iterative Linear Solver Tests (Wave 45)
 // Tests for CG, BiCGSTAB, GMRES on various SPD and non-symmetric systems
 

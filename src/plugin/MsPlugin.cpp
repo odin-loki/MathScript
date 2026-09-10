@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript C++ Profile Enforcement Plugin
 // Registers with Clang and runs all profile rules on every translation unit
 

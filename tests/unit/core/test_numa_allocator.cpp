@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for ms::memory::NumaTopology / NumaAllocator.
 //
 // Before the fix this header could not be compiled at all once NumaAllocator<T>

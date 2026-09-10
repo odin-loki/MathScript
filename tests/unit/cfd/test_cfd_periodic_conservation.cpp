@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression test for the periodic face velocities in the upwind FV advection.
 //
 // A finite-volume scheme conserves the cell-integrated field exactly when the

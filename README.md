@@ -16,6 +16,9 @@ Executables: `mathscriptc`, `mathscript-repl`, `mathscript-server`. Optional Qt 
 | [Contributing](docs/CONTRIBUTING.md) | Build, test, coverage, fuzz, plugin, packaging |
 | [Performance](docs/PERFORMANCE.md) | Benchmarks, baselines, known complexity trade-offs |
 | [Release](docs/RELEASE.md) | 1.0.0 tag criteria and remaining gates |
+| [Engineering plan](docs/ENGINEERING_PLAN.md) | The whole-repository audit, preserved as written |
+| [Plan status](docs/PLAN_STATUS.md) | What of it is done, what is open, and where the plan was wrong |
+| [Status](docs/STATUS.md) | Generated from build artefacts; never edited by hand |
 | [1.0 scope](docs/RELEASE_DECISIONS.md) | What the deferred-stub list became, and what is still out of scope |
 | [Unsafe surface](UNSAFE_REVIEW.md) | Approved `MS_UNSAFE` sites |
 | [Wave history](docs/WAVES.md) | How the library was built, wave by wave |

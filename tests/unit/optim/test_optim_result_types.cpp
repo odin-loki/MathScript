@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Optimization Result Types and Extended Coverage Tests
 // Tests GradientDescentResult struct access, broyden, minimize_with_constraints
 

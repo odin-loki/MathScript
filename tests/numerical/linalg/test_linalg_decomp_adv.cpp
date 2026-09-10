@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Linear Algebra Tests
 // Tests for eig, eig_sym, svd, ldl, lsq, cond, rank, rand/randn/diag
 

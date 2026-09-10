@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Scalable Distributed Linear Algebra Tests
 // Covers the ms::distributed primitive layer (dist_ops), the SUMMA matmul and
 // the row-distributed Krylov solvers. Every solver assertion is a PARITY

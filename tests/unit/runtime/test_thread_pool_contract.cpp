@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the audited ms::ThreadPool defects.
 //
 // The two things asserted here that the old implementation could not satisfy:

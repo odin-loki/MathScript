@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: New linalg functions — kron, linspace, repmat, pinv, null, orth, sinm, cosm, funm, minres
 #define _USE_MATH_DEFINES
 #include "ms/linalg/linalg.hpp"

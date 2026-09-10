@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Linear Algebra Structure Tests (Wave 43)
 // Tests for tril, triu (with k offset), hess, bidiag, schur
 

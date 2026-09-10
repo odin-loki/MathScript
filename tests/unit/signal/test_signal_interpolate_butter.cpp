@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for two audited signal defects.
 //
 //  * interpolate()'s frequency-domain fast path periodises the input spectrum as

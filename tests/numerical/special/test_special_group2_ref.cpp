@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Comprehensive reference tests for low-coverage special functions.
 // Reference values from NIST DLMF, Abramowitz & Stegun, and Wolfram Alpha.
 // Function behaviors verified against actual implementation outputs.

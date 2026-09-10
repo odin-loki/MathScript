@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Signal Processing Numerical Reference Tests
 // Verifies signal processing functions against known mathematical results
 

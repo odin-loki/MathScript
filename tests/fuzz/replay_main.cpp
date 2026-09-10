@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Replays a fuzz target's checked-in corpus, plus a bounded, deterministic set of
 // mutations of it, through LLVMFuzzerTestOneInput.
 //

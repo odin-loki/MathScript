@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Every REPL builtin can be called WITHOUT assigning its result, in which case
 // the interpreter prints the value under a fixed label instead of binding it.
 // That printing path is a second, separate dispatch chain from the assignment

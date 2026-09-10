@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Newton-Raphson and Broyden Optimizer Tests (Wave 50)
 // Tests for newton_raphson (2D root finder) and broyden (2D root finder)
 

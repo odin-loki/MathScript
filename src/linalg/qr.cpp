@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/core/operations.hpp"
 #include "ms/cpu/lapack.hpp"
 #include "ms/simd/simd.hpp"

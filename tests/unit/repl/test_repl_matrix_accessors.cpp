@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // The REPL could compute matrices but never look inside one: there was no way
 // to read its shape, pull out an element, take a row or a column, reshape it,
 // or cut out a block. A computed matrix could only ever be printed whole.

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression test for cmaes's stopping criterion.
 //
 // The test was `f_best < tol || sigma < tol || f_spread < tol` with tol = 1e-8.

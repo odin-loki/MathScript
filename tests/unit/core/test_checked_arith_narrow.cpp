@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for ms::narrow (include/ms/core/checked_arith.hpp).
 //
 // The old implementation converted the destination bound INTO the source type

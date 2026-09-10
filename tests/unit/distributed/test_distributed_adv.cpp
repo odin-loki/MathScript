@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Distributed Module Advanced Tests
 // Tests: MPIContext, block_cyclic_row_indices, allreduce_sum, barrier
 

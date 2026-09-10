@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: Geo/Graph/Topo/Tensorops/ML/Diffgeo/Control/Quantum (Wave 57-59)
 
 #include <cmath>

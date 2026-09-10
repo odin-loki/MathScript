@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Matrix Multiply Benchmark (CPU only)
 
 #include <benchmark/benchmark.h>

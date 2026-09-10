@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/interp/jit_backend.hpp"
 #include "ms/interp/jit_backend_impl.hpp"
 

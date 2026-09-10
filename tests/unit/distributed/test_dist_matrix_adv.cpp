@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript DistMatrix Advanced Tests
 // Tests: DistMatrix struct, scatter/gather/combine_gather, distributed::solve,
 //        MPIContext helpers, allreduce_sum, barrier

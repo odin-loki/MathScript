@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Unit tests for the real QMR, TFQMR, LSMR and SSOR/ILU(0)/PCG implementations.
 //
 // These four used to be stand-ins: qmr() ran a BiCGSTAB loop, tfqmr() forwarded

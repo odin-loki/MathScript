@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for ms::eig.
 //
 // The audit found that for non-symmetric input eig() ran an unshifted,

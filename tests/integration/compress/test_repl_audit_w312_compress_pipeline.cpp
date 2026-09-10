@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: REPL Interpreter – Audit Wave 312 Compress Pipeline
 //
 // Inventory found every user-facing ms::compress encode/decode pair already bound

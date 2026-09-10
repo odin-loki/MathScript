@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Statistics Advanced Numerical Reference Tests
 // Tests: min_value, max_value, skewness, kurtosis, two_sample_ttest, ztest
 

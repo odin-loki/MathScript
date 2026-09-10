@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // ISA detection must agree with the operating system, not only with the silicon.
 //
 // CPUID reports what the CPU implements. It does not report whether the OS has

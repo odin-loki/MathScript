@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the BASIS null() returns, as opposed to its nullity.
 //
 // The tolerance fix for null() moved the tall/square (m >= n) case onto the

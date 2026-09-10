@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration: Stats + Optim + Linalg full pipeline (Wave 53)
 
 #define _USE_MATH_DEFINES

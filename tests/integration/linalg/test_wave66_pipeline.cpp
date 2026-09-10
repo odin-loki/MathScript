@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: Waves 57–60 full cross-module pipelines (Wave 66)
 
 #define _USE_MATH_DEFINES

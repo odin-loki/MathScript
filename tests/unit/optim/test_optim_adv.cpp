@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Optimization - Advanced Tests
 // Covers: newton_1d, broyden, minimize_with_constraints, GradientDescentResult members
 

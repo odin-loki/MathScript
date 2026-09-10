@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Frameworks: Advanced Tests
 // Covers previously low-coverage functions in gria and izaac
 

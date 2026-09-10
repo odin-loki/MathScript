@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced ODE Tests (Wave): backward Euler, BVP shooting, DDE, events
 
 #define _USE_MATH_DEFINES

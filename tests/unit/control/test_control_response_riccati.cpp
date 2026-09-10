@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for two audited control defects.
 //
 //  * step_response / impulse_response sat under a section heading reading

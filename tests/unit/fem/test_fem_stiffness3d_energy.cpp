@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression test for the 3D P1 stiffness assembly.
 //
 // add_tet_stiffness applied J^-1 to the reference gradients where the chain rule

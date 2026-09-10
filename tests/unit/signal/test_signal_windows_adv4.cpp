@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced Signal Window Tests (Wave 54)
 // Parzen, Hanning, Hamming, Blackman, Triangular properties
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Checked Arithmetic
 // Overflow-safe, saturating, and wrapping numeric utilities
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Extended DLMF special-function reference tests
 // Cross-checks zeta, eta, polylog, clausen, and debye against independent
 // series/quadrature computations computed inline in this file.

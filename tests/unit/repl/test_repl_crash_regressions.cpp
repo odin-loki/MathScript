@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Named regressions for four crashes the malformed-input sweep turned up. The sweep
 // covers them too, but it probes by pattern, so these pin each specific input and the
 // behaviour that replaced the crash.

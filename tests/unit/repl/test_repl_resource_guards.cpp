@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regressions for the crashes an oversized argument used to cause.
 //
 // A sweep that calls every REPL builtin with 3e9 and 1e18 in each argument position found

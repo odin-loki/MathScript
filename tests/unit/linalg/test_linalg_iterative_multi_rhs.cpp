@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // qmr, tfqmr, lsqr and lsmr with a multi-column right-hand side.
 //
 // Six of the ten iterative solvers route a multi-column b through solve_per_column, which

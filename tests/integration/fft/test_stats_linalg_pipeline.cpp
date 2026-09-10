@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: Stats + Linalg + Signal Pipeline
 // End-to-end pipeline: generate data, run stats, fit, solve, filter
 

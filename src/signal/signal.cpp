@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/signal/signal.hpp"
 #include "ms/core/operations.hpp"
 #include "ms/fft/fft.hpp"

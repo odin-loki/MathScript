@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the audited defects in the `special` module.
 //
 // Every test here FAILS against the pre-fix implementation.  Where a defect had a closed form,

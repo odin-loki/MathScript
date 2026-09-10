@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Comprehensive numerical reference tests for special functions (extended set).
 // Reference values are taken from NIST DLMF, Abramowitz & Stegun, and
 // Wolfram Research.  Each TEST block covers at least one function family.

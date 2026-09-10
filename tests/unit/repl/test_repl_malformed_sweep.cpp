@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Malformed-input sweep over every REPL builtin name.
 //
 // Roughly half of the interpreter's uncovered lines were error propagation --

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the quantum information measures: the Hermitian Jacobi
 // spectral engine and the four quantities built on it (von Neumann entropy,
 // Uhlmann fidelity, trace distance, Wootters concurrence).

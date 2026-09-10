@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced RNG and Random Matrix Tests (Wave 52)
 // Tests statistical properties of rand/randn and seed reproducibility.
 

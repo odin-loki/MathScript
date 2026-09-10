@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: REPL prob/stats/fft/optim backlog bindings (Waves 182-185)
 
 #include <gtest/gtest.h>

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: Stats time-series, bootstrap, new descriptive tests
 #include "ms/stats/stats.hpp"
 #include <cmath>

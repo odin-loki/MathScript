@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the linalg decomposition contracts that the audit
 // found violated:
 //   * hess() applied its Householder reflectors only from the LEFT, so it was

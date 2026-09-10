@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: Image → ML → Compress → Bignum pipeline (Wave 60)
 
 #include <cmath>

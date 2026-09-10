@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Small public entry points that no test called: Tensor's accessors, Matrix's
 // initializer-list constructor, BigInt's unary minus, the precision() accessors, and the
 // float instantiation of expm. Each is one or two lines, so a wrong index or a dropped

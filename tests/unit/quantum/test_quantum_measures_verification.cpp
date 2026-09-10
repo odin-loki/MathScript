@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Independent verification tests for the quantum information measures.
 //
 // Every expected value here was derived by hand or from an identity that does

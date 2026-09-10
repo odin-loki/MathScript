@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/cplx/cplx.hpp"
 #include <algorithm>

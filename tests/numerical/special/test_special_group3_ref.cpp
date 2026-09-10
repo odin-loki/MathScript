@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Smoke/finite tests for low-coverage special functions (Group 3).
 // Verifies FINITE output and NO CRASH for each function.
 

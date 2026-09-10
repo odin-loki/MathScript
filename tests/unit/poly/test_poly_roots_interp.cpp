@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for three audited poly defects. Each of these fails against
 // the pre-fix code:
 //   * poly_roots returned all-zero roots for the entire family x^n +/- c,

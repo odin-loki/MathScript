@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript headless compute node.
 //
 // `mathscript-server` is the SPMD entry point described in docs/ARCHITECTURE.md:

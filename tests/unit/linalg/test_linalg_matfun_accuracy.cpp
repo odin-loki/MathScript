@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Regression tests for the matrix functions.
 //
 //   * expm() was a bare 12-term Taylor truncation with no scaling and
