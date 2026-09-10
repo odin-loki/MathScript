@@ -576,28 +576,110 @@ SymExpr ihankel_inverse_rpow_exp_neg(int n, double a, const std::string& r) {
     return sym_mul(sym_pow(sym_var(r), sym_const(static_cast<double>(n))), std::move(decay));
 }
 
-bool match_one_over_one_plus_t(const SymExpr& expr, const std::string& t_var) {
+// c / (a + t^n) with a > 0 and n a small positive integer, which is the whole
+// rational family of the Mellin table in one shape. The matcher it replaces insisted
+// on the numerator being exactly 1, the constant being exactly 1 and the power being
+// exactly t, so 3/(1+t) (linearity), 1/(2+t) (the scaling rule) and 1/(1+t^2) (the
+// n = 2 row, on the same table line as n = 1) were each refused.
+//
+//   M{c/(a + t^n)}(s) = (c/n) * a^(s/n - 1) * pi / sin(pi*s/n)
+//
+// which reduces to c*pi/sin(pi*s) at a = n = 1.
+struct MellinRational {
+    double coefficient = 1.0;
+    double offset = 1.0;
+    int power = 1;
+};
+
+std::optional<MellinRational> match_mellin_rational(const SymExpr& expr, const std::string& t_var) {
     if (expr.op != SymOp::Div || !expr.left || !expr.right) {
-        return false;
+        return std::nullopt;
     }
-    double numerator = 0.0;
-    if (!try_get_const_value(*expr.left, numerator) || numerator != 1.0) {
-        return false;
+    MellinRational matched;
+    if (!try_get_const_value(*expr.left, matched.coefficient)) {
+        return std::nullopt;
     }
     if (expr.right->op != SymOp::Add || !expr.right->left || !expr.right->right) {
-        return false;
+        return std::nullopt;
     }
-    double one = 0.0;
+    auto match_power = [&](const SymExpr& term, int& power) {
+        if (is_bare_var(term, t_var)) {
+            power = 1;
+            return true;
+        }
+        double exponent = 0.0;
+        return term.op == SymOp::Pow && term.left && term.right && is_bare_var(*term.left, t_var) &&
+               try_get_const_value(*term.right, exponent) && is_small_nonneg_int(exponent, power) &&
+               power >= 1;
+    };
     const SymExpr& left = *expr.right->left;
     const SymExpr& right = *expr.right->right;
-    if (try_get_const_value(left, one) && one == 1.0 && is_bare_var(right, t_var)) {
-        return true;
+    if (match_power(right, matched.power) && try_get_const_value(left, matched.offset)) {
+        return matched.offset > 0.0 ? std::optional{matched} : std::nullopt;
     }
-    if (try_get_const_value(right, one) && one == 1.0 && is_bare_var(left, t_var)) {
-        return true;
+    if (match_power(left, matched.power) && try_get_const_value(right, matched.offset)) {
+        return matched.offset > 0.0 ? std::optional{matched} : std::nullopt;
     }
-    return false;
+    return std::nullopt;
 }
+
+// (1 + t)^(-m) for a small positive integer m. M{(1+t)^-m}(s) = Gamma(s)Gamma(m-s)/Gamma(m),
+// which the reflection formula turns into an elementary rational multiple of
+// pi/sin(pi*s) whenever m is an integer:
+//
+//   M{(1+t)^-m}(s) = pi/sin(pi*s) * product_{j=1}^{m-1} (j - s) / (m-1)!
+// pi/sin(pi*s) * product_{j=1}^{m-1} (j - s) / (m-1)!  -- see match_one_plus_t_power.
+SymExpr build_mellin_one_plus_t_power(int m, const std::string& s) {
+    SymExpr reflection =
+        sym_div(sym_const(std::numbers::pi),
+                sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var(s))));
+    if (m == 1) {
+        return reflection;
+    }
+    SymExpr product = sym_sub(sym_const(1.0), sym_var(s));
+    for (int j = 2; j < m; ++j) {
+        product = sym_mul(std::move(product),
+                          sym_sub(sym_const(static_cast<double>(j)), sym_var(s)));
+    }
+    return sym_div(sym_mul(std::move(reflection), std::move(product)),
+                   sym_const(factorial_int(m - 1)));
+}
+
+std::optional<int> match_one_plus_t_power(const SymExpr& expr, const std::string& t_var) {
+    double exponent = 0.0;
+    const SymExpr* base = nullptr;
+    if (expr.op == SymOp::Div && expr.left && expr.right) {
+        double numerator = 0.0;
+        if (!try_get_const_value(*expr.left, numerator) || numerator != 1.0) {
+            return std::nullopt;
+        }
+        if (expr.right->op != SymOp::Pow || !expr.right->left || !expr.right->right ||
+            !try_get_const_value(*expr.right->right, exponent) || exponent <= 0.0) {
+            return std::nullopt;
+        }
+        base = expr.right->left.get();
+    } else if (expr.op == SymOp::Pow && expr.left && expr.right &&
+               try_get_const_value(*expr.right, exponent) && exponent < 0.0) {
+        exponent = -exponent;
+        base = expr.left.get();
+    } else {
+        return std::nullopt;
+    }
+    int m = 0;
+    if (!is_small_nonneg_int(exponent, m) || m < 1) {
+        return std::nullopt;
+    }
+    if (!base || base->op != SymOp::Add || !base->left || !base->right) {
+        return std::nullopt;
+    }
+    double one = 0.0;
+    if ((try_get_const_value(*base->left, one) && one == 1.0 && is_bare_var(*base->right, t_var)) ||
+        (try_get_const_value(*base->right, one) && one == 1.0 && is_bare_var(*base->left, t_var))) {
+        return m;
+    }
+    return std::nullopt;
+}
+
 
 bool match_exp_neg_at(const SymExpr& expr, const std::string& t_var, double& a) {
     if (expr.op != SymOp::Exp || !expr.left) {
@@ -1236,6 +1318,13 @@ bool sym_is_unsupported(const SymExpr& result, const std::string& var) {
 // ...) return sym_deriv(expr, var) as an explicit sentinel; so does any expression
 // with an unsupported subterm, via decline_if_unsupported.
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var) {
+    // Anything that does not mention the integration variable is a constant with
+    // respect to it, whatever its shape. Only a literal and a bare foreign variable
+    // used to be recognised, so k*x integrated and (1/k)*x did not -- and dy/dx = y/k,
+    // an ordinary way to write a time constant, failed on that alone.
+    if (!expression_uses_var(expr, var)) {
+        return sym_mul(clone_expr(expr), sym_var(var));
+    }
     switch (expr.op) {
     case SymOp::Const:
         return sym_mul(clone_expr(expr), sym_var(var));
@@ -1424,6 +1513,21 @@ std::optional<SymExpr> sym_extract_y_multiplier(const SymExpr& expr, const std::
             return clone_expr(*expr.right);
         }
     }
+    // y/g is the k(x)*y row with k = 1/g. Only the multiplied spelling was matched, so
+    // dy/dx = y/2 -- exponential growth with a time constant, the commonest first-order
+    // ODE there is -- declined while dy/dx = 0.5*y solved. Recursing rather than
+    // requiring a bare y also covers (k*y)/g and (-y)/g, which is how -y/2 parses.
+    if (expr.op == SymOp::Div && expr.left && expr.right &&
+        !contains_var_name(*expr.right, dep_var)) {
+        if (auto inner = sym_extract_y_multiplier(*expr.left, dep_var)) {
+            return sym_div(std::move(*inner), clone_expr(*expr.right));
+        }
+    }
+    if (expr.op == SymOp::Neg && expr.left) {
+        if (auto inner = sym_extract_y_multiplier(*expr.left, dep_var)) {
+            return sym_neg(std::move(*inner));
+        }
+    }
     return std::nullopt;
 }
 
@@ -1498,16 +1602,64 @@ std::optional<SymExpr> ode_try_legacy_separable(const SymExpr& rhs, const std::s
         return sym_add_integration_constant(std::move(integrated));
     }
 
-    if (rhs.op == SymOp::Pow && rhs.left && rhs.right && is_bare_var(*rhs.left, dep_var) &&
-        rhs.right->op == SymOp::Const) {
-        const double n = rhs.right->value;
-        if (n != 1.0) {
-            const double one_minus_n = 1.0 - n;
-            if (one_minus_n != 0.0) {
-                SymExpr x_plus_c = sym_add(sym_var(indep_var), sym_var("C"));
-                SymExpr inner = sym_mul(sym_const(one_minus_n), std::move(x_plus_c));
-                return sym_pow(std::move(inner), sym_const(1.0 / one_minus_n));
+    // dy/dx = c*y^n separates to y^(1-n)/(1-n) = c*x + C. The exponent is read through
+    // try_get_const_value because a negative literal is Neg(Const), so y^(-1) never
+    // reached this rule though the header's own table row promises it for every n != 1;
+    // and 1/y, which is the spelling a user types, is a Div rather than a Pow.
+    {
+        double coefficient = 1.0;
+        double n = 0.0;
+        bool matched = false;
+        const SymExpr* power = &rhs;
+        if (rhs.op == SymOp::Mul && rhs.left && rhs.right) {
+            if (try_get_const_value(*rhs.left, coefficient)) {
+                power = rhs.right.get();
+            } else if (try_get_const_value(*rhs.right, coefficient)) {
+                power = rhs.left.get();
             }
+        }
+        if (power->op == SymOp::Pow && power->left && power->right &&
+            is_bare_var(*power->left, dep_var) && try_get_const_value(*power->right, n)) {
+            matched = true;
+        } else if (power->op == SymOp::Div && power->left && power->right) {
+            double numerator = 0.0;
+            double denominator_power = 0.0;
+            if (try_get_const_value(*power->left, numerator)) {
+                // A constant factor in the denominator is part of the coefficient:
+                // 1/(2*y) is (1/2)*y^(-1).
+                const SymExpr* denominator = power->right.get();
+                double denominator_factor = 1.0;
+                if (denominator->op == SymOp::Mul && denominator->left && denominator->right) {
+                    double factor = 0.0;
+                    if (try_get_const_value(*denominator->left, factor) && factor != 0.0) {
+                        denominator_factor = factor;
+                        denominator = denominator->right.get();
+                    } else if (try_get_const_value(*denominator->right, factor) && factor != 0.0) {
+                        denominator_factor = factor;
+                        denominator = denominator->left.get();
+                    }
+                }
+                if (is_bare_var(*denominator, dep_var)) {
+                    coefficient *= numerator / denominator_factor;
+                    n = -1.0;
+                    matched = true;
+                } else if (denominator->op == SymOp::Pow && denominator->left &&
+                           denominator->right && is_bare_var(*denominator->left, dep_var) &&
+                           try_get_const_value(*denominator->right, denominator_power)) {
+                    coefficient *= numerator / denominator_factor;
+                    n = -denominator_power;
+                    matched = true;
+                }
+            }
+        }
+        const double one_minus_n = 1.0 - n;
+        if (matched && n != 1.0 && one_minus_n != 0.0 && coefficient != 0.0) {
+            SymExpr forcing = coefficient == 1.0
+                                  ? sym_var(indep_var)
+                                  : sym_mul(sym_const(coefficient), sym_var(indep_var));
+            SymExpr shifted = sym_add(std::move(forcing), sym_var("C"));
+            SymExpr inner = sym_mul(sym_const(one_minus_n), std::move(shifted));
+            return sym_pow(std::move(inner), sym_const(1.0 / one_minus_n));
         }
     }
 
@@ -1843,21 +1995,22 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
         }
         return sym_mellin_unsupported(expr, t);
     case SymOp::Add:
-        return sym_add(
-            sym_mellin(*expr.left, t, s),
-            sym_mellin(*expr.right, t, s));
+        return decline_if_unsupported(
+            sym_add(sym_mellin(*expr.left, t, s), sym_mellin(*expr.right, t, s)), expr, t);
     case SymOp::Sub:
-        return sym_sub(
-            sym_mellin(*expr.left, t, s),
-            sym_mellin(*expr.right, t, s));
+        return decline_if_unsupported(
+            sym_sub(sym_mellin(*expr.left, t, s), sym_mellin(*expr.right, t, s)), expr, t);
     case SymOp::Neg:
-        return sym_neg(sym_mellin(*expr.left, t, s));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_mellin(*expr.right, t, s));
+        return decline_if_unsupported(sym_neg(sym_mellin(*expr.left, t, s)), expr, t);
+    case SymOp::Mul: {
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_mellin(*expr.right, t, s)), expr, t);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_mellin(*expr.left, t, s));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_mellin(*expr.left, t, s)), expr, t);
         }
         if (const auto matched = match_tpow_exp_neg(expr, t)) {
             const int n = matched->first;
@@ -1866,8 +2019,85 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
                 sym_const(factorial_int(n)),
                 sym_pow(sym_const(a), sym_add(sym_var(s), sym_const(static_cast<double>(n)))));
         }
+        // The shifting rule M{t^a f(t)}(s) = M{f}(s + a), which is the Mellin
+        // analogue of the Laplace first shifting theorem and, like it, supplies a
+        // whole column of the table from one statement.
+        int shift = 0;
+        const SymExpr* shifted = nullptr;
+        if (match_var_power_small_int(*expr.left, t, shift)) {
+            shifted = expr.right.get();
+        } else if (match_var_power_small_int(*expr.right, t, shift)) {
+            shifted = expr.left.get();
+        }
+        if (shifted != nullptr) {
+            SymExpr transformed = sym_mellin(*shifted, t, s);
+            if (!contains_unsupported_sentinel(transformed, t)) {
+                return sym_simplify(sym_substitute(
+                    transformed, s,
+                    sym_add(sym_var(s), sym_const(static_cast<double>(shift)))));
+            }
+        }
+        return sym_mellin_unsupported(expr, t);
+    }
+    case SymOp::Div: {
+        double denominator = 0.0;
+        if (expr.right && try_get_const_value(*expr.right, denominator) && denominator != 0.0) {
+            return decline_if_unsupported(
+                sym_div(sym_mellin(*expr.left, t, s), sym_const(denominator)), expr, t);
+        }
+        if (const auto rational = match_mellin_rational(expr, t)) {
+            const double n = static_cast<double>(rational->power);
+            SymExpr reflection = sym_div(
+                sym_const(std::numbers::pi),
+                sym_sin(sym_div(sym_mul(sym_const(std::numbers::pi), sym_var(s)), sym_const(n))));
+            SymExpr scaled = sym_mul(sym_const(rational->coefficient / n), std::move(reflection));
+            if (rational->offset == 1.0) {
+                return sym_simplify(std::move(scaled));
+            }
+            return sym_simplify(sym_mul(
+                std::move(scaled),
+                sym_pow(sym_const(rational->offset),
+                        sym_sub(sym_div(sym_var(s), sym_const(n)), sym_const(1.0)))));
+        }
+        if (const auto m = match_one_plus_t_power(expr, t)) {
+            return sym_simplify(build_mellin_one_plus_t_power(*m, s));
+        }
+        // t^k / D is the shifting rule as well -- the power sits in the numerator of a
+        // quotient rather than in a product, which is how t/(1+t) is written.
+        int shift = 0;
+        if (expr.left && match_var_power_small_int(*expr.left, t, shift)) {
+            SymExpr reciprocal =
+                sym_mellin(sym_div(sym_const(1.0), clone_expr(*expr.right)), t, s);
+            if (!contains_unsupported_sentinel(reciprocal, t)) {
+                return sym_simplify(sym_substitute(
+                    reciprocal, s,
+                    sym_add(sym_var(s), sym_const(static_cast<double>(shift)))));
+            }
+        }
+        return sym_mellin_unsupported(expr, t);
+    }
+    case SymOp::Log:
+        // M{log(1 + t)}(s) = pi / (s * sin(pi*s)), valid for -1 < Re(s) < 0. A
+        // canonical table entry, and elementary.
+        if (expr.left && expr.left->op == SymOp::Add && expr.left->left && expr.left->right) {
+            double one = 0.0;
+            const bool one_plus_t =
+                (try_get_const_value(*expr.left->left, one) && one == 1.0 &&
+                 is_bare_var(*expr.left->right, t)) ||
+                (try_get_const_value(*expr.left->right, one) && one == 1.0 &&
+                 is_bare_var(*expr.left->left, t));
+            if (one_plus_t) {
+                return sym_div(
+                    sym_const(std::numbers::pi),
+                    sym_mul(sym_var(s),
+                            sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var(s)))));
+            }
+        }
         return sym_mellin_unsupported(expr, t);
     case SymOp::Pow:
+        if (const auto m = match_one_plus_t_power(expr, t)) {
+            return sym_simplify(build_mellin_one_plus_t_power(*m, s));
+        }
         if (is_bare_var(*expr.left, t) && expr.right->op == SymOp::Const) {
             return sym_div(
                 sym_const(1.0),
@@ -1881,13 +2111,6 @@ SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string&
         }
         return sym_mellin_unsupported(expr, t);
     }
-    case SymOp::Div:
-        if (match_one_over_one_plus_t(expr, t)) {
-            return sym_div(
-                sym_const(std::numbers::pi),
-                sym_sin(sym_mul(sym_const(std::numbers::pi), sym_var(s))));
-        }
-        return sym_mellin_unsupported(expr, t);
     default:
         return sym_mellin_unsupported(expr, t);
     }
@@ -1936,11 +2159,18 @@ SymExpr sym_imellin(const SymExpr& expr, const std::string& s, const std::string
         if (is_bare_var(*expr.right, s)) {
             return sym_const(numerator);
         }
-        if (expr.right->op == SymOp::Sin && expr.right->left &&
-            numerator == std::numbers::pi) {
+        // pi/sin(pi*s) -> 1/(1+t). Both pi's are compared to a tolerance rather than
+        // for equality: sym_to_string prints six decimals, so a spectrum copied back
+        // out of the REPL carries 3.141593 and an exact comparison could not read the
+        // module's own output. The tolerance is matched to the printer.
+        auto is_pi = [](double value) {
+            return std::abs(value - std::numbers::pi) <= 1e-5 * std::numbers::pi;
+        };
+        double sin_coefficient = 0.0;
+        if (expr.right->op == SymOp::Sin && expr.right->left && is_pi(numerator)) {
             const SymExpr& sin_arg = *expr.right->left;
             if (sin_arg.op == SymOp::Mul && sin_arg.left && sin_arg.right &&
-                sin_arg.left->op == SymOp::Const && sin_arg.left->value == std::numbers::pi &&
+                try_get_const_value(*sin_arg.left, sin_coefficient) && is_pi(sin_coefficient) &&
                 is_bare_var(*sin_arg.right, s)) {
                 return sym_div(sym_const(1.0), sym_add(sym_const(1.0), sym_var(t)));
             }

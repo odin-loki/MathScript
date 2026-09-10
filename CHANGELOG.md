@@ -82,6 +82,32 @@ The table gaps are closed by stating the general rule instead of adding rows:
 - `try_get_const_value` folds constant arithmetic, so a coefficient written as `2*3` or
   `1/2` counts as the constant it is.
 
+Two more silently-wrong results, and the rest of the tables:
+
+- `pi` and `e` parsed as free variables. An unbound variable evaluates to zero, so
+  `sym_eval("pi")` returned `0.000000` and `sym_eval("2*pi*r")` returned 0 for every
+  `r`, with nothing reporting that a symbol was missing. They are constants now, and a
+  name that merely begins with one of them is still a variable.
+- `sym_dsolve` matched only the multiplied spelling `k*y` and not the divided one
+  `y/k`, so `dy/dx = y/2` -- exponential growth written with a time constant, the
+  commonest first-order ODE there is -- declined while `dy/dx = 0.5*y` solved. It also
+  read the exponent of `y^n` with an `op == Const` test, and a negative literal is
+  `Neg(Const)`, so `y^(-1)` never reached the rule the header's own table row promises
+  for every `n != 1`. All eight audited ODEs solve now and are checked by substituting
+  the solution back into the equation.
+- `sym_mellin` required the numerator to be exactly 1, the constant exactly 1 and the
+  power exactly `t`. One rule, `M{c/(a + t^n)}(s) = (c/n) a^(s/n - 1) pi / sin(pi s/n)`,
+  covers the whole rational column; the shifting rule `M{t^a f(t)}(s) = M{f}(s + a)`
+  covers `t/(1+t)`; `(1+t)^-m` and `log(1+t)` are added. `sym_imellin` compares its
+  `pi` to a tolerance matched to the six-decimal printer instead of for equality.
+
+The AES S-box was the one secret-dependent memory access in the cipher, and its index
+derives from the key. Both tables are now read by a masked scan of all 256 entries, so
+the address sequence does not depend on the value. Output is unchanged -- a 290-command
+probe sweeping every S-box index plus the NIST vectors is byte-identical -- and it costs
+26x throughput; `docs/PERFORMANCE.md` has the measurement and the AES-NI follow-up that
+would recover it.
+
 `tests/unit/symbolic/test_symbolic_tables.cpp` checks each entry against the definition
 it comes from rather than against the implementation: antiderivatives are differentiated
 and compared with the integrand, Laplace entries are checked against a numerical

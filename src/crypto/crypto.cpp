@@ -628,9 +628,41 @@ inline std::uint8_t aes_mul(std::uint8_t x, std::uint8_t y) {
         ((y >> 4 & 1) * aes_xtime(aes_xtime(aes_xtime(aes_xtime(x))))));
 }
 
+// Constant-time table read.
+//
+// The only secret-dependent memory access in this implementation was the S-box
+// lookup: kAesSbox[state[i]] and kAesInvSbox[state[i]], 256-byte tables indexed by
+// a byte derived from the key and the data, plus kAesSbox[word[i]] in the key
+// expansion, where the index is key material directly. On any machine where an
+// attacker can observe cache state -- a shared host, a co-resident process, a
+// browser on the same core -- which cache line is touched leaks the index, and the
+// index is enough to recover the key. This is the classic AES cache-timing channel.
+//
+// The rest of the cipher was already free of it: aes_xtime and aes_mul are
+// branchless arithmetic with no tables, and ShiftRows/MixColumns move bytes by
+// fixed offsets. The S-box was the whole exposure.
+//
+// This reads every entry of the table and selects one with a mask, so the sequence
+// of addresses touched is identical for every index. It costs 256 iterations per
+// byte rather than one load; see docs/PERFORMANCE.md for the measured price.
+//
+// The mask arithmetic is the load-bearing part: for diff == 0 (the entry we want),
+// (0 - 1) >> 8 is -1 and narrows to 0xFF; for any diff in 1..255, (diff - 1) is in
+// 0..254 and >> 8 is 0. No comparison, no branch, no conditional move to be
+// second-guessed by a compiler.
+inline std::uint8_t aes_table_lookup_ct(const std::uint8_t table[256], std::uint8_t index) {
+    std::uint8_t result = 0;
+    for (int i = 0; i < 256; ++i) {
+        const std::uint8_t diff = static_cast<std::uint8_t>(static_cast<std::uint8_t>(i) ^ index);
+        const std::uint8_t mask = static_cast<std::uint8_t>((static_cast<int>(diff) - 1) >> 8);
+        result = static_cast<std::uint8_t>(result | (table[i] & mask));
+    }
+    return result;
+}
+
 inline void aes_sub_word(std::uint8_t word[4]) {
     for (int i = 0; i < 4; ++i) {
-        word[i] = kAesSbox[word[i]];
+        word[i] = aes_table_lookup_ct(kAesSbox, word[i]);
     }
 }
 
@@ -682,13 +714,13 @@ inline void aes_add_round_key(std::uint8_t state[16], const std::uint8_t* round_
 
 inline void aes_sub_bytes(std::uint8_t state[16]) {
     for (int i = 0; i < 16; ++i) {
-        state[i] = kAesSbox[state[i]];
+        state[i] = aes_table_lookup_ct(kAesSbox, state[i]);
     }
 }
 
 inline void aes_inv_sub_bytes(std::uint8_t state[16]) {
     for (int i = 0; i < 16; ++i) {
-        state[i] = kAesInvSbox[state[i]];
+        state[i] = aes_table_lookup_ct(kAesInvSbox, state[i]);
     }
 }
 

@@ -130,6 +130,60 @@ seeding contract" in [`API.md`](API.md).
 The tolerance the kernels are held to, and the differential tests that enforce it,
 are described in [`PLAN_STATUS.md`](PLAN_STATUS.md) under §9.
 
+## AES S-box: constant time, and what it costs
+
+The S-box lookup was the only secret-dependent memory access in the AES
+implementation: `kAesSbox[state[i]]` and `kAesInvSbox[state[i]]` in the rounds, and
+`kAesSbox[word[i]]` in the key expansion, where the index is key material directly.
+Two 256-byte tables span four cache lines, so which line is touched leaks the index,
+and the index is enough to recover the key. This is the classic AES cache-timing
+channel, and it is exploitable by anything that can observe cache state on the same
+machine.
+
+The rest of the cipher was already clear of it: `aes_xtime` and `aes_mul` are
+branchless arithmetic over GF(2^8) with no tables, and ShiftRows and MixColumns move
+bytes by fixed offsets. The S-box was the whole exposure.
+
+`aes_table_lookup_ct` now reads all 256 entries and selects one with a mask, so the
+address sequence is identical whatever the index. The mask is
+`(static_cast<int>(diff) - 1) >> 8`: for `diff == 0` that is `-1`, which narrows to
+`0xFF`; for `diff` in 1..255 it is 0. No comparison, no branch, and no conditional
+move for a compiler to turn back into one.
+
+### Measured
+
+1 MiB through `aes128_cbc_encrypt`, five repetitions, this machine, `-O2`:
+
+| S-box              | Throughput   | Relative |
+|--------------------|--------------|----------|
+| Table-indexed      | 30.5 MiB/s   | 1.00x    |
+| Masked full scan   | 1.15 MiB/s   | 0.038x   |
+
+**The constant-time S-box is 26x slower.** That is the honest price of one load
+becoming 256, and it is not a small price: AES here is a utility, not a bulk
+transport, but 1.15 MiB/s is slow enough to matter for anything that encrypts more
+than a few hundred kilobytes.
+
+It is not gated by the benchmark job, which records no median for any crypto
+benchmark, so nothing in CI would have caught this regression. It is recorded here
+instead.
+
+The output is unchanged: the 290-command probe -- all 256 S-box indices swept through
+`crypto_aes128_encrypt_block`, the same sweep inverted, and the NIST AES-128/192/256
+known-answer vectors -- is byte-identical before and after, and the AES-256 vector
+still lands on `f3eed1bdb5d2a03c064b5a7e3db181f8`. The 148 crypto tests pass and take
+the same time, because their payloads are small.
+
+### The follow-up that recovers the speed
+
+AES-NI is both constant-time in hardware and several times faster than the
+table-indexed version, so the right end state is an AES-NI path with this masked scan
+as the portable fallback. That needs runtime CPUID detection (leaf 1, ECX bit 25),
+a separate translation unit built with `-maes`, and care with the AES-256 key schedule
+and the equivalent-inverse-cipher form used for decryption. It is deliberately not
+folded into this change: the side channel closes now, and the optimisation is a
+separate change that the same byte-identical probe can verify.
+
 ### What is not built
 
 No NEON kernel, so Graviton and Apple silicon fall to the scalar path. No `sgemm`.

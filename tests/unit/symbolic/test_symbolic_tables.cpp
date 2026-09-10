@@ -31,6 +31,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <numbers>
 
 #include "ms/symbolic/symbolic.hpp"
 
@@ -514,4 +515,167 @@ TEST(SymbolicTables, SolveLinearRefusesWhatIsNotLinear) {
         EXPECT_FALSE(solved.has_value())
             << c.equation << " was solved as if it were linear";
     }
+}
+
+// ---------------------------------------------------------------------------
+// Separable ODEs, checked by substituting the solution back into the equation.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Residual of dy/dx = rhs(x, y) at one point, with y' taken by central difference.
+// Checking the solution against the equation, rather than against an expected closed
+// form, keeps these tests independent of which of several equivalent forms the solver
+// happens to produce -- C*exp(log(x)) and C*x are the same solution.
+double ode_residual(const SymExpr& rhs, const SymExpr& solution, double x, double c) {
+    const std::map<std::string, double> params{{"C", c}, {"k", 3.0}};
+    auto value_at = [&](double point) {
+        std::map<std::string, double> env = params;
+        env["x"] = point;
+        return sym_eval(solution, env);
+    };
+    const double h = 1e-6;
+    const double derivative = (value_at(x + h) - value_at(x - h)) / (2.0 * h);
+    std::map<std::string, double> env = params;
+    env["x"] = x;
+    env["y"] = value_at(x);
+    return derivative - sym_eval(rhs, env);
+}
+
+} // namespace
+
+TEST(SymbolicTables, SeparableOdesSolveTheEquationTheyWereGiven) {
+    // Every one of these declined before. The exponential ones were refused because
+    // only the multiplied spelling k*y was matched and not the divided one y/k, though
+    // a time constant is the ordinary way to write such an equation; the power ones
+    // because a negative exponent parses as Neg(Const) and never reached the rule the
+    // header's own table row promises for every n != 1.
+    const char* equations[] = {
+        "y/2",   "-y/2",    "y/x",      "y^(-1)", "1/y",      "y/(x^2)",
+        "y^(-2)", "y/k",    "1/(2*y)",  "3/y^2",  "y/(2*x)",  "2*y",
+    };
+    for (const char* text : equations) {
+        const SymExpr rhs = parse_or_die(text);
+        const SymExpr solution = sym_dsolve(rhs, "x", "y");
+        ASSERT_FALSE(sym_is_unsupported(solution, "x")) << "dy/dx = " << text << " declined";
+        for (const double x : {0.7, 1.3, 2.1}) {
+            for (const double c : {1.5, 2.0}) {
+                const double residual = ode_residual(rhs, solution, x, c);
+                EXPECT_NEAR(residual, 0.0, 1e-4)
+                    << "dy/dx = " << text << " solved to " << sym_to_string(solution)
+                    << ", which does not satisfy it at x=" << x << ", C=" << c;
+            }
+        }
+    }
+}
+
+TEST(SymbolicTables, SeparableOdesStillDeclineWhatTheyCannotSolve) {
+    // y^1 is the case the power rule excludes (it is the linear equation, handled
+    // elsewhere), and the rest are genuinely outside the separable table.
+    for (const char* text : {"y*sin(y)", "exp(x^2)", "y^2+y", "y*x*y"}) {
+        const SymExpr rhs = parse_or_die(text);
+        const SymExpr solution = sym_dsolve(rhs, "x", "y");
+        EXPECT_TRUE(sym_is_unsupported(solution, "x"))
+            << "dy/dx = " << text << " was answered: " << sym_to_string(solution);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mellin: integrate the defining integral, on a mesh that reaches both ends.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// M{f}(s) = integral from 0 to infinity of t^(s-1) f(t) dt, evaluated numerically.
+//
+// The integral runs over a half-line and its integrand is singular at both ends, so it
+// is split at 1 and each half is substituted onto [0, 1] in a way that removes the
+// singularity exactly rather than truncating it:
+//
+//   near 0    f(t) ~ t^alpha,  so with q = s + alpha > 0 and t = v^(1/q),
+//             integral from 0 to 1 of t^(s-1) f(t) dt = (1/q) * integral of f(v^(1/q)) v^(-alpha/q) dv
+//   near inf  f(t) ~ t^(-beta), so with p = beta - s > 0 and t = 1/w^(1/p),
+//             integral from 1 to inf = (1/p) * integral of f(1/w^(1/p)) w^(-beta/p) dw
+//
+// Both results are bounded on (0, 1]. A further v = z^4 grading concentrates the mesh
+// at the origin, which the power cases do not need and the logarithmic one does.
+double mellin_numeric(const SymExpr& f, const std::string& t, double s, double alpha,
+                      double beta) {
+    const double q = s + alpha;
+    const double p = beta - s;
+    EXPECT_GT(q, 0.0) << "the near-zero exponent puts s outside the strip of convergence";
+    EXPECT_GT(p, 0.0) << "the decay exponent puts s outside the strip of convergence";
+    const int panels = 200000;
+    const double head = simpson(
+        [&](double z) {
+            const double v = z * z * z * z;
+            if (v <= 0.0) {
+                return 0.0;
+            }
+            return 4.0 * z * z * z * at(f, t, std::pow(v, 1.0 / q)) * std::pow(v, -alpha / q);
+        },
+        0.0, 1.0, panels);
+    const double tail = simpson(
+        [&](double z) {
+            const double w = z * z * z * z;
+            if (w <= 0.0) {
+                return 0.0;
+            }
+            return 4.0 * z * z * z * at(f, t, 1.0 / std::pow(w, 1.0 / p)) * std::pow(w, -beta / p);
+        },
+        0.0, 1.0, panels);
+    return head / q + tail / p;
+}
+
+} // namespace
+
+TEST(SymbolicTables, MellinEntriesMatchTheDefiningIntegral) {
+    struct Case {
+        const char* f;
+        double s;
+        double alpha;  // f ~ t^alpha as t -> 0
+        double beta;   // f ~ t^(-beta) as t -> infinity
+    };
+    // Every one of these declined before: the matcher required the numerator to be
+    // exactly 1, the constant exactly 1 and the power exactly t, so linearity, the
+    // scaling rule and the whole 1/(1+t^n) column were each refused.
+    const Case cases[] = {
+        {"1/(1+t)", 0.5, 0.0, 1.0},      {"3/(1+t)", 0.5, 0.0, 1.0},
+        {"1/(2+t)", 0.5, 0.0, 1.0},      {"1/(1+t^2)", 1.0, 0.0, 2.0},
+        {"1/(1+t^3)", 1.5, 0.0, 3.0},    {"1/(1+t)^2", 0.5, 0.0, 2.0},
+        {"t/(1+t)", -0.5, 1.0, 0.0},     {"t^2/(1+t^3)", 0.5, 2.0, 1.0},
+        {"2/(3+t^2)", 1.0, 0.0, 2.0},    {"log(1+t)", -0.5, 1.0, 0.0},
+    };
+    for (const Case& c : cases) {
+        const SymExpr f = parse_or_die(c.f);
+        const SymExpr transformed = sym_mellin(f, "t", "s");
+        ASSERT_FALSE(sym_is_unsupported(transformed, "t")) << "M{" << c.f << "} declined";
+        const double want = mellin_numeric(f, "t", c.s, c.alpha, c.beta);
+        const double got = at(transformed, "s", c.s);
+        EXPECT_NEAR(got, want, 1e-5 * std::max(1.0, std::abs(want)))
+            << "M{" << c.f << "} at s=" << c.s << " gave " << sym_to_string(transformed);
+    }
+}
+
+TEST(SymbolicTables, MellinPairRoundTripsThroughItsOwnOutput) {
+    // pi used to parse as a free variable, so sym_imellin("pi/sin(pi*s)") -- a verbatim
+    // row of the module's own documented inverse table -- could not be typed at all.
+    const SymExpr spectrum = parse_or_die("pi/sin(pi*s)");
+    const SymExpr back = sym_imellin(spectrum, "s", "t");
+    ASSERT_FALSE(sym_is_unsupported(back, "s")) << "the reflection row declined";
+    for (const double t : {0.5, 1.0, 2.5}) {
+        EXPECT_NEAR(at(back, "t", t), 1.0 / (1.0 + t), 1e-12);
+    }
+}
+
+TEST(SymbolicTables, PiAndEAreConstantsNotFreeVariables) {
+    // An unbound variable evaluates to zero, so parsing pi as one meant sym_eval("pi")
+    // returned 0.000000 and every formula a user wrote pi into was silently wrong.
+    EXPECT_NEAR(sym_eval(parse_or_die("pi"), {}), std::numbers::pi, 1e-12);
+    EXPECT_NEAR(sym_eval(parse_or_die("e"), {}), std::numbers::e, 1e-12);
+    EXPECT_NEAR(sym_eval(parse_or_die("2*pi*r"), {{"r", 3.0}}), 6.0 * std::numbers::pi, 1e-12);
+    EXPECT_NEAR(sym_eval(parse_or_die("sin(pi/2)"), {}), 1.0, 1e-12);
+    // A name that merely starts with one of them is still a variable.
+    EXPECT_NEAR(sym_eval(parse_or_die("pizza"), {{"pizza", 7.0}}), 7.0, 1e-12);
+    EXPECT_NEAR(sym_eval(parse_or_die("ex"), {{"ex", 5.0}}), 5.0, 1e-12);
 }

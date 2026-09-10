@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/symbolic/symbolic.hpp"
+#include <numbers>
 
 #include <charconv>
 #include <cctype>
@@ -345,6 +346,18 @@ private:
             skip_ws();
             if (peek() == '(') {
                 return parse_function_call(*ident);
+            }
+            // pi and e are constants, not free variables. Parsed as variables they
+            // reached sym_eval unbound, and an unbound variable evaluates to zero --
+            // so sym_eval("pi") returned 0.000000 and sym_eval("2*pi*r") returned 0
+            // for every r, with nothing reporting that a symbol was missing. It also
+            // meant the transform tables, which compare a coefficient against
+            // std::numbers::pi, could not match an expression a user had typed pi into.
+            if (*ident == "pi") {
+                return sym_expr_ok(sym_const(std::numbers::pi));
+            }
+            if (*ident == "e") {
+                return sym_expr_ok(sym_const(std::numbers::e));
             }
             return sym_expr_ok(sym_var(std::move(*ident)));
         }

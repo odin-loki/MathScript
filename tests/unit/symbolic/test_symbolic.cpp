@@ -383,10 +383,12 @@ TEST(SymbolicCasTest, mellin_t_squared_exp_neg_at_and_bad_reciprocal) {
         "t", "s");
     EXPECT_NEAR(sym_eval(matched, {{"s", 1.0}}), 2.0 / std::pow(2.0, 3.0), 1e-12);
 
-    const auto miss = sym_mellin(
+    // 2/(1+t) is linearity over the reflection row, which the matcher used to refuse
+    // because it required the numerator to be exactly 1.
+    const auto scaled = sym_mellin(
         sym_div(sym_const(2.0), sym_add(sym_const(1.0), sym_var("t"))), "t", "s");
-    EXPECT_EQ(miss.op, SymOp::Deriv);
-    EXPECT_EQ(miss.name, "t");
+    EXPECT_FALSE(sym_is_unsupported(scaled, "t"));
+    EXPECT_NEAR(sym_eval(scaled, {{"s", 0.5}}), 2.0 * std::numbers::pi, 1e-9);
 }
 
 TEST(SymbolicCasTest, hankel_r_squared_exp_and_sqrt_const_sum) {
@@ -864,10 +866,13 @@ TEST(SymbolicCasTest, integrate_linearity_and_matcher_misses) {
     EXPECT_FALSE(sym_is_unsupported(linear_arg, "x"));
     EXPECT_NEAR(sym_eval(linear_arg, {{"x", 0.7}}), -std::cos(1.4) / 2.0, 1e-12);
 
-    const auto mellin_miss = sym_mellin(
+    // 1/(2+t) is the scaling rule M{f(a*t)}(s) = a^(-s) M{f}(s) applied to the same
+    // row: pi * a^(s-1) / sin(pi*s). The matcher used to require the constant to be 1.
+    const auto shifted_pole = sym_mellin(
         sym_div(sym_const(1.0), sym_add(sym_const(2.0), sym_var("t"))), "t", "s");
-    EXPECT_EQ(mellin_miss.op, SymOp::Deriv);
-    EXPECT_EQ(mellin_miss.name, "t");
+    EXPECT_FALSE(sym_is_unsupported(shifted_pole, "t"));
+    EXPECT_NEAR(sym_eval(shifted_pole, {{"s", 0.5}}),
+                std::numbers::pi / std::sqrt(2.0), 1e-9);
 
     const auto ih_miss = sym_ihankel(
         sym_div(sym_exp(sym_var("k")), sym_var("k")), "k", "r");
