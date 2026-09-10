@@ -153,11 +153,11 @@ in the repository reconciled them.
 | 6.1 CPUID without OSXSAVE/XGETBV (SIGILL) | Done | `src/simd/isa.cpp` |
 | 6.2 Miller-Rabin for large inputs | Done | defect 1 fixed; 2 and 3 proved unreachable |
 | 6.3 `crypto::random_bytes` not a CSPRNG | Done | OS CSPRNG on every platform |
-| 6.4 AES is table-driven (cache timing) | Open | plan's own sequencing puts this in Tier 4 |
+| 6.4 AES is table-driven (cache timing) | Done | masked full-table scan; 26x slower, `docs/PERFORMANCE.md` |
 | 6.5 `--allow-multiple-definition` | Done | bundle built from `$<TARGET_OBJECTS:>` |
 | 6.6 Sole handler without an arity guard | Done | `izaac_vrf_keygen.cpp` |
 | 6.7 Undocumented fixed RNG seeds | Done | `docs/API.md`, "Randomness and the seeding contract" |
-| 6.8 Sentinel returns in the symbolic API | Open | part of §10 |
+| 6.8 Sentinel returns in the symbolic API | Partly | leak fixed and detection made recursive; the `Result<T>` API is still §10 |
 
 **6.1** is the item the plan ranks highest, and it is worth being precise about what
 it was. CPUID reports what the silicon implements; it does not report whether the OS
@@ -367,6 +367,48 @@ and claiming otherwise would be inventing a number.
 `Result<T>` API in place of the nine sentinel returns of §6.8, a precedence-aware
 printer — is the largest single item in the plan and the one two other tracks depend
 on. It has not been started.
+
+### What was fixed without it
+
+An audit drove the REPL over the standard tables of all twelve symbolic families:
+10,153 commands, 80 claimed gaps, 35 double-confirmed by an independent empirical and
+mathematical check. Acting on it turned up nine results that were not declines but
+**wrong answers with no error attached**, which are worse than the missing table rows
+that prompted the audit:
+
+| Defect | Symptom |
+|---|---|
+| Unary minus bound tighter than `^` | `-t^2` evaluated to `+9` at `t = 3`; `-2^2` to `4`; `-t^0.5` to NaN |
+| `pi` and `e` parsed as free variables | `sym_eval("pi")` returned `0.000000`, as does any unbound variable |
+| `sym_ztransform` folded a coefficient into the pole | `Z{3*2^n}` returned `z/(z-6)` instead of `3z/(z-2)` |
+| `sym_solve_linear` dropped terms it could not read | `x + sin(y) - 1` solved to `x = 1`; `x^2 + x - 1` was answered as if linear |
+| The unsupported sentinel leaked through linearity | one unsupported term in a sum returned part transform, part `d/dt(...)`, reported as success |
+| `sym_hankel` on `r^n exp(-a r)`, `n >= 1` | `H0[r^2 e^{-2r}]` at `k = 1` returned exactly twice the true value |
+| `sym_limit` on a one-sided domain | returned its `0.0` initialiser: `sqrt(x) + 5` at 0 gave `0.000000` |
+| `sym_limit` under cancellation | drove `h` to 1e-15 and returned the resulting 0 as converged |
+| `sym_to_string` on small constants | printed `1e-9` as `0.000000`, losing the term entirely |
+
+and one that was neither a decline nor a wrong answer: `sym_expand("((x+1)^8)^8")` did
+not terminate.
+
+The table gaps behind the audit are closed in `sym_integrate`, `sym_laplace`,
+`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_mellin`/`sym_imellin`,
+`sym_hankel`/`sym_ihankel`, `sym_ztransform`/`sym_iztransform` and `sym_dsolve`, mostly
+by stating a general rule — the shifting theorems, frequency differentiation, a
+first-degree numerator over three denominator families — rather than adding rows.
+
+`tests/unit/symbolic/test_symbolic_tables.cpp` checks entries against the definitions
+they come from rather than against the implementation: antiderivatives are
+differentiated and compared with the integrand, forward transforms against their
+defining integral evaluated numerically, inverse transforms by forward-transforming the
+result, ODE solutions by substitution into the equation, and Mellin entries on a mesh
+substituted to remove the singularity at each end exactly. That is what caught the
+Hankel factor of two, which no amount of asserting the expected closed form would have.
+
+Still open here, recorded so they are not lost: the REPL's own scalar output does not
+round-trip (only `sym_to_string` was fixed), and `sym_expand` does not collect like
+terms, which is why `(x+1)^3` prints as eight products and why nested powers need a
+size ceiling at all.
 
 ## §11 — LaTeX and notation interchange
 
