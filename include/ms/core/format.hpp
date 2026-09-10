@@ -24,13 +24,20 @@ namespace ms {
 /// shortest form that reads back as the same double everywhere else. The fallback is
 /// found by asking for successively more significant digits until strtod returns the
 /// value it started from, which is what makes it a round trip rather than a guess.
+///
+/// "Faithful" here is a display's standard, not a file's: six decimals may round a
+/// value, they may not erase it. So the lower bound is not a constant -- an early
+/// version guessed 5e-7 and was wrong, because printf("%f", 5e-7) is "0.000000" -- it
+/// is the question itself, asked of the spelling that was actually produced.
 inline std::string format_scalar(double value) {
     if (!std::isfinite(value)) {
         return std::to_string(value);
     }
-    const double magnitude = std::abs(value);
-    if (value == 0.0 || (magnitude >= 5e-7 && magnitude < 1e16)) {
-        return std::to_string(value);
+    if (std::abs(value) < 1e16) {
+        std::string text = std::to_string(value);
+        if (value == 0.0 || std::strtod(text.c_str(), nullptr) != 0.0) {
+            return text;
+        }
     }
     char buffer[64];
     for (int precision = 6; precision <= 17; ++precision) {
@@ -49,6 +56,40 @@ inline std::string format_scalar(double value) {
 template <std::integral T>
 inline std::string format_scalar(T value) {
     return std::to_string(value);
+}
+
+/// A compact spelling for a preview: a cell in a variable list, a tooltip, a truncated
+/// matrix dump. It rounds to `decimals` places and drops the trailing zeros, which is
+/// what a preview wants -- but a preview may abbreviate a value, not erase it. At four
+/// decimals 1e-9 renders "0.0000", which trims to "0", and the reader is then looking
+/// at a cell that says the entry is zero when it is not. Where the rounded form would
+/// claim that, or where the magnitude is past what %f spells readably, this falls back
+/// to the round-tripping spelling instead.
+inline std::string format_preview(double value, int decimals = 4) {
+    if (!std::isfinite(value) || std::abs(value) >= 1e16) {
+        return format_scalar(value);
+    }
+    char buffer[64];
+    std::snprintf(buffer, sizeof(buffer), "%.*f", decimals, value);
+    std::string text(buffer);
+    // Only the digits after the point are padding. Trimming unconditionally would turn
+    // a whole number into a different one -- "100" with decimals = 0 has no point to
+    // stop at, and comes out "1".
+    if (text.find('.') != std::string::npos) {
+        while (!text.empty() && text.back() == '0') {
+            text.pop_back();
+        }
+        if (!text.empty() && text.back() == '.') {
+            text.pop_back();
+        }
+    }
+    if (text.empty()) {
+        text = "0";
+    }
+    if (value != 0.0 && std::strtod(text.c_str(), nullptr) == 0.0) {
+        return format_scalar(value);
+    }
+    return text;
 }
 
 /// Full precision, for a file rather than a screen. Saving a session is not a

@@ -15445,14 +15445,13 @@ Result<std::string> format_ode_trajectory(const OdeResult& result) {
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -15825,12 +15824,11 @@ std::map<std::string, double> build_optim_env(const std::vector<double>& x) {
 
 Result<std::string> format_optim_result(const OptimResult& result) {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
     oss << "x_opt =\n";
     for (double xi : result.x) {
-        oss << "  [" << xi << "]\n";
+        oss << "  [" << format_scalar(xi) << "]\n";
     }
-    oss << "f_val = " << result.f_val << "\n";
+    oss << "f_val = " << format_scalar(result.f_val) << "\n";
     oss << "iterations = " << result.iterations << "\n";
     oss << "converged = " << (result.converged ? 1 : 0) << "\n";
     return oss.str();
@@ -15838,9 +15836,8 @@ Result<std::string> format_optim_result(const OptimResult& result) {
 
 Result<std::string> format_scalar_optim_result(double x_opt, double f_val) {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
-    oss << "x_opt = " << x_opt << "\n";
-    oss << "f_val = " << f_val << "\n";
+    oss << "x_opt = " << format_scalar(x_opt) << "\n";
+    oss << "f_val = " << format_scalar(f_val) << "\n";
     return oss.str();
 }
 
@@ -16597,14 +16594,13 @@ Result<std::string> format_ode_trajectory_vec(const OdeResultVec& result) {
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16623,14 +16619,13 @@ Result<std::string> format_ode_verlet_trajectory(const OdeVerletResult& result) 
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16661,14 +16656,13 @@ Result<std::string> format_ode_verlet_trajectory_vec(const OdeVerletResultVec& r
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16917,14 +16911,13 @@ Result<std::string> format_dae_trajectory(const DaeResult& result) {
         }
     }
     oss << "y_traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < y_out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < y_out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << y_out(i, j);
+            oss << format_scalar(y_out(i, j));
         }
         oss << "]\n";
     }
@@ -16935,7 +16928,7 @@ Result<std::string> format_dae_trajectory(const DaeResult& result) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << z_out(i, j);
+            oss << format_scalar(z_out(i, j));
         }
         oss << "]\n";
     }
@@ -16960,14 +16953,13 @@ Result<std::string> format_ode_bvp_trajectory(const OdeBvpResult& result) {
         out(i, 2) = result.yp[i];
     }
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16982,21 +16974,22 @@ Result<std::string> format_ode_event_trajectory(const OdeEventResult& result) {
         return std::unexpected(DomainError{"ode", "internal event value size mismatch"});
     }
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
     oss << "traj =\n";
     for (size_t i = 0; i < result.t.size(); ++i) {
-        oss << "  [" << result.t[i] << ", " << result.y[i] << "]\n";
+        oss << "  [" << format_scalar(result.t[i]) << ", " << format_scalar(result.y[i])
+            << "]\n";
     }
     oss << "event_count = " << result.event_times.size() << "\n";
     if (!result.event_times.empty()) {
         oss << "events =\n";
         for (size_t i = 0; i < result.event_times.size(); ++i) {
-            oss << "  [" << result.event_times[i] << ", " << result.event_values[i] << "]\n";
+            oss << "  [" << format_scalar(result.event_times[i]) << ", "
+                << format_scalar(result.event_values[i]) << "]\n";
         }
     }
     oss << "event_values =\n";
     for (size_t i = 0; i < result.event_values.size(); ++i) {
-        oss << "  [" << result.event_values[i] << "]\n";
+        oss << "  [" << format_scalar(result.event_values[i]) << "]\n";
     }
     return oss.str();
 }

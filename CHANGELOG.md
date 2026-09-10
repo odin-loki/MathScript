@@ -228,6 +228,29 @@ Underneath the last of those, the counting functions were wrapping silently:
   used factorials and binomials past the range of a rank, so they returned or consumed
   sentinels as if they were numbers. Each now declines.
 
+The other two surfaces that print numbers were doing it by hand and had the same
+fault:
+
+- Nine trajectory and optimiser formatters in `src/interp/repl_engine_internal.cpp`
+  set `std::fixed << std::setprecision(6)` and inserted doubles straight into the
+  stream, which is `std::to_string` by another spelling. A decaying solution printed a
+  column of `0.000000` where its tail was: `ode_rk4("-20*y", 0, 1, 2, 400)` now ends at
+  `4.248508191707469e-18` instead of at zero. Ordinary magnitudes are unchanged.
+- The Qt IDE's `format_matrix_cell` rounded to four decimals and trimmed the trailing
+  zeros, so `1e-9` became `0.0000` and then `0`, and a cell claimed the entry was zero.
+  It now calls the new `ms::format_preview`, which keeps the compact spelling and falls
+  back to a faithful one exactly where the compact one would lie. `MS_BUILD_GUI` is off
+  by default and off in CI, and Qt6 is not present in the environment this was written
+  in, so that one file is not compiled by any current build; the decision it now
+  delegates is compiled and tested.
+
+`format_scalar`'s lower boundary was a guessed constant, `5e-7`, and it was wrong by
+exactly one value: `printf("%f", 5e-7)` is `0.000000`. It is no longer a constant. The
+function formats the value and then asks whether the result reads back as zero when the
+value is not, which is the property the constant was standing in for.
+`tests/unit/core/test_format.cpp` covers all three spellings and asserts that property
+directly over a range of magnitudes.
+
 `tests/unit/combo/test_combo_overflow.cpp` checks the counts against values computed in
 exact arithmetic outside the program, and against Pascal's rule and
 `P(n,k) = C(n,k) k!` -- identities the implementation does not use. Pinning the old

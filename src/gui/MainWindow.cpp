@@ -9,6 +9,8 @@
 #include "gui/ReplWorker.hpp"
 #include "gui/ScriptHighlighter.hpp"
 
+#include "ms/core/format.hpp"
+
 #include <QApplication>
 #include <QAction>
 #include <QCloseEvent>
@@ -1462,18 +1464,12 @@ constexpr size_t kTooltipMaxCols = 6;
 constexpr size_t kDumpMaxRows = 8;
 constexpr size_t kDumpMaxCols = 8;
 
+// Four decimals with the padding trimmed, which is the right density for a cell in a
+// list -- except that it used to print 1e-9 as "0.0000", trim that to "0", and show the
+// reader a cell claiming the entry is zero. ms::format_preview keeps the compact
+// spelling and falls back to a faithful one exactly where the compact one would lie.
 std::string format_matrix_cell(double value) {
-    std::ostringstream out;
-    out << std::fixed << std::setprecision(4);
-    out << value;
-    std::string text = out.str();
-    while (!text.empty() && text.back() == '0') {
-        text.pop_back();
-    }
-    if (!text.empty() && text.back() == '.') {
-        text.pop_back();
-    }
-    return text.empty() ? "0" : text;
+    return ms::format_preview(value, 4);
 }
 
 void append_matrix_cells(std::ostringstream& out, const ms::Matrix<double>& matrix, size_t max_rows,
@@ -1520,7 +1516,6 @@ QString matrix_tooltip_text(const std::string& name, const ms::Matrix<double>& m
     }
 
     std::ostringstream out;
-    out << std::fixed << std::setprecision(4);
     const size_t rows = std::min(matrix.rows(), kTooltipMaxRows);
     const size_t cols = std::min(matrix.cols(), kTooltipMaxCols);
     for (size_t i = 0; i < rows; ++i) {
@@ -1561,14 +1556,13 @@ QString matrix_dump_text(const std::string& name, const ms::Matrix<double>& matr
     if (truncated) {
         const size_t rows = std::min(matrix.rows(), kDumpMaxRows);
         const size_t cols = std::min(matrix.cols(), kDumpMaxCols);
-        out << std::fixed << std::setprecision(6);
         for (size_t i = 0; i < rows; ++i) {
             out << "  [";
             for (size_t j = 0; j < cols; ++j) {
                 if (j > 0) {
                     out << ", ";
                 }
-                out << matrix(i, j);
+                out << ms::format_scalar(matrix(i, j));
             }
             if (matrix.cols() > cols) {
                 out << ", ...";
