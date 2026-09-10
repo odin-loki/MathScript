@@ -246,10 +246,21 @@ public:
             return text;
         }
         std::string exponent = text.substr(at + 1);
-        if (!exponent.empty() && exponent[0] == '+') {
+        std::string sign;
+        if (!exponent.empty() && (exponent[0] == '+' || exponent[0] == '-')) {
+            if (exponent[0] == '-') {
+                sign = "-";
+            }
             exponent.erase(0, 1);
         }
-        return text.substr(0, at) + "*^" + exponent;
+        // `format_exact` pads the exponent to two digits, so 1.5e-8 arrives as
+        // "1.5e-08". `*^-08` is read as `*^-8` by every Wolfram front end, but a
+        // zero-padded exponent is not a spelling anyone writes and it is one more
+        // thing between the reader and believing the paste.
+        while (exponent.size() > 1 && exponent.front() == '0') {
+            exponent.erase(0, 1);
+        }
+        return text.substr(0, at) + "*^" + sign + exponent;
     }
 
     std::string constant(const std::string& name) const override {

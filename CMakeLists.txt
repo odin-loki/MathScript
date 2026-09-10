@@ -6,7 +6,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    add_compile_options(/W4 /permissive- /Zc:__cplusplus)
+    # /utf-8 sets both the source and the execution character set to UTF-8. Without it
+    # MSVC reads the source in the system codepage, and src/sym2/notation_unicode.cpp
+    # is the first file in this tree whose non-ASCII bytes are inside string literals
+    # rather than comments -- its `pi`, `sqrt` and `dot` glyphs would be decoded as
+    # CP-1252 and reach the user as mojibake. That failure is invisible to the tests
+    # that cover the printers: mangled bytes still balance their delimiters and are
+    # still deterministic, so the suite would pass while Windows produced the wrong
+    # characters. It also silences C4819 on the eight existing files with non-ASCII
+    # comments, which was a warning about exactly this.
+    add_compile_options(/W4 /permissive- /Zc:__cplusplus /utf-8)
     if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 19.30)
         add_compile_options(/std:c++latest)
     endif()
