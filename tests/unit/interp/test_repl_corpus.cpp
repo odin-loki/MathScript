@@ -193,6 +193,20 @@ TEST(ReplCorpus, EveryTranscriptMatches) {
         const std::string want_out = normalise(read_file(out_path));
         const std::string want_err = normalise(read_file(err_path)); // absent reads empty
 
+        // A transcript that produced NOTHING on either stream is not a content
+        // difference and should not be reported as one. `mathscriptc` cannot reach a
+        // non-zero exit without writing to standard error, so empty-empty-nonzero means
+        // the process died before its buffered stdout was flushed -- which is what
+        // Windows did with the combined symbolic transcript, and the message said only
+        // that line 1 was missing.
+        if (got_out.empty() && got_err.empty() && status != 0) {
+            ADD_FAILURE() << stem << ".ms produced no output on either stream and exited "
+                          << status << ". mathscriptc cannot do that through any normal "
+                          << "path -- it writes to stderr before returning non-zero -- so "
+                          << "the process almost certainly died before flushing. This is a "
+                          << "crash to find, not a transcript to re-record.";
+            continue;
+        }
         EXPECT_EQ(got_out, want_out)
             << stem << ".ms stdout differs -- " << first_difference(want_out, got_out);
         EXPECT_EQ(got_err, want_err)

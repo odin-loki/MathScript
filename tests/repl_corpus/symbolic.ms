@@ -1,20 +1,13 @@
-# The symbolic surface, including §11.1's notation export.
+# The legacy symbolic surface: the ms::symbolic engine, reached through sym_*.
+#
+# Split from the notation and limit transcripts so that a failure names which of the
+# three it is. Windows produced NO output at all for the combined file -- empty stdout,
+# empty stderr, exit 1, which mathscriptc cannot reach through any normal path -- so the
+# process died before its buffered stdout was flushed and the transcript could not say
+# where.
 sym_simplify("x + x")
 sym_expand("(x + 1)^2")
 sym_diff("x^3", "x")
 sym_integrate("x^2", "x")
 sym_eval("x*x", "x=3")
-sym_limit("sin(x)/x", "x", 0)
-sym_limit("(1-cos(x))/x^2", "x", 0)
 sym_collect("2*x + 3*x", "x")
-sym_latex("x^2 + 1")
-sym_latex("(x + 1)/(y - 1)")
-sym_export("x^2 + 1", "latex")
-sym_export("x^2 + 1", "unicode")
-sym_export("x^2 + 1", "sympy")
-sym_export("x^2 + 1", "mathematica")
-sym_export("x^2 + 1", "python")
-sym_export("x^2 + 1", "c")
-sym_export("sqrt(x)", "latex")
-sym_export("1/3", "sympy")
-sym_export("1/3", "mathematica")
