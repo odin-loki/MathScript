@@ -65,6 +65,27 @@ ctest --test-dir build -R test_fft          # FFT unit tests
 ctest --test-dir build -R int_linalg         # linear-algebra REPL pipelines
 ```
 
+### Golden transcripts (`tests/repl_corpus`)
+
+A transcript is a `.ms` script beside the exact output it produces: `x.ms` prints
+`x.out` on standard output and `x.err` on standard error, and `x.err` being absent
+means it writes nothing there. `test_repl_corpus` runs each one through the real
+`mathscriptc` and compares.
+
+Adding one is adding two files. The corpus directory is read at run time, so nothing
+in the build system needs to change, and a behaviour change shows up as a diff in an
+expected file — which a reviewer can read — rather than as an edit to an assertion,
+which a reviewer has to reconstruct.
+
+After an intentional change, regenerate and then **read the diff**:
+
+```bash
+MS_REPL_CORPUS_UPDATE=1 ./build/bin/test_repl_corpus
+git diff tests/repl_corpus
+```
+
+An expected file that is regenerated without being read is not a record of anything.
+
 ### Adding a matrix REPL callee
 
 1. Create `src/interp/matrix_calls/<domain>/<callee>.cpp` implementing `handle_<name>` and `ms_register_matrix_call_<name>()` that calls `register_matrix_call("name", &handle_<name>)`. Domain folders match the library (`linalg`, `fft`, `signal`, `stats`, …).

@@ -1,0 +1,11 @@
+error: sym_eval: unknown variable 'y' (this call binds x)
+error: bfgs: unknown variable 'x' (this call binds x0)
+error: bisection: unknown variable 'x' (this call binds x0)
+error: sym_limit: limit does not exist or could not be determined numerically
+error: sym_mellin: no closed form found for this expression
+error: resolve: unknown matrix: "495.0"
+error: assign: invalid variable name: A(1, 1) (element assignment like A(i,j) = v is not supported)
+error: repl: unknown function: stats_one_way_anova
+error: repl: unknown function: rle_encode_vec
+error: ode: step budget exhausted before t_end: the equation is too stiff or too oscillatory for this solver over that interval
+error: numthy_prime_pi: result does not fit in 64 bits

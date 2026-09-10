@@ -321,6 +321,100 @@ The rest are values that left the range of their type without saying so:
   `[RxC]` now, which is also accepted from a user -- it is the only way to write down an
   empty matrix that has columns.
 
+### §11.1 — one tree walk, ten notations
+
+`ms::sym2::to_latex` and its nine siblings. The plan is explicit that these are not ten
+printers -- "Build one visitor interface and five tables, not five printers" -- and the
+reason is that almost everything a printer does is structural rather than lexical:
+which factors of a product are really a denominator, which sum terms are subtractions,
+which powers are roots, what display order a person expects, where a grouping is
+needed, how a symbol name splits into a base and a subscript. Get one of those wrong in
+a printer and it prints a different expression. Get it wrong in ten printers and it
+prints ten different expressions, nine of which nobody will read closely enough to
+notice.
+
+So the decisions live in `src/sym2/notation.cpp`, once, and a notation is a `Syntax`
+table that only says how to spell what the walk has already decided. The tables are
+LaTeX, Presentation MathML, Content MathML, Unicode, ASCII, SymPy, Mathematica, and C /
+C++ / Python source.
+
+Each of them has one spelling where the obvious string is wrong rather than merely
+ugly, and each is commented where it is made:
+
+- **LaTeX.** `format_exact(1e20)` is `1e+20`, which math mode sets as *1 times Euler's
+  number, plus 20*. It comes out `1 \times 10^{20}` -- which is a product, so it is not
+  an atom, and in a superscript slot it has to be grouped or LaTeX rejects the document
+  outright with "Double superscript". A symbol name is data and may contain any of the
+  ten special characters, so it is escaped before it is ever emitted.
+- **Content MathML.** The only output here that round-trips exactly by construction,
+  because it encodes the tree rather than a rendering of it. It needs no groupings at
+  all -- `<apply>` has a fixed operator-then-operands shape -- so the walk is told not
+  to emit any, rather than the table returning an empty string for a structural
+  request.
+- **SymPy.** `1/3` in a Python session is `0.333...`. An exact rational prints
+  `Rational(1, 3)`, because the expression the reader gets has to be the expression that
+  was printed.
+- **Mathematica.** The same `1/3` *is* exact there, and square brackets are function
+  application while parentheses are grouping only. `1.5e-8` is not a number in Wolfram
+  Language input; it is `1.5*^-8`.
+- **C and C++.** `1/3` is zero. Every rational becomes a floating-point quotient and
+  there is no power operator, so a power is a `pow()` call.
+- **Python.** `-x**2` is `-(x**2)`, and `2**-1` is a syntax error without parentheses.
+- **Unicode.** A radical has no vinculum in text, so `√` does not group its argument and
+  `√(a+b)` needs real parentheses. The walk is told so and adds them.
+
+A derivative, integral or limit has no source form at all, and emitting a plausible
+call would be a fabricated answer -- the defect class the two audits were about. The
+source tables emit an identifier that does not exist, so the code fails to compile and
+says why.
+
+In the REPL: `sym_latex("expr")` and `sym_export("expr", "notation")`. An unknown
+notation name is reported with the list of known ones rather than defaulting to
+something the caller did not ask for.
+
+### §8.3 — golden transcripts
+
+`tests/repl_corpus/x.ms` is a script; the committed `x.out` beside it is exactly what
+running it through `mathscriptc` prints, and `x.err` is exactly what it writes to
+standard error, with the file's absence meaning "nothing".
+
+The REPL's dispatch is about 40,000 lines in two files and the test that covered it was
+one 21,000-line source. Adding a command meant editing that file, which is why nobody
+could tell from a diff what a change to it was for. A transcript is a different shape:
+adding a command is adding two files, and a behaviour change shows up as a diff in an
+expected output -- which a reviewer can read -- rather than as an edit to an assertion,
+which a reviewer has to reconstruct.
+
+The corpus is discovered at run time, so a new transcript needs no build-system edit.
+That also means an empty corpus directory would let the file pass while testing
+nothing, so the first assertion is that the corpus is not empty.
+
+### §8.5 — properties, not cases
+
+A fixed case proves a function returns the value someone wrote down once. An invariant
+proves it returns the right value for inputs nobody wrote down at all, and the inputs
+nobody wrote down are where every finding of both audits was: a binomial that was right
+for the twelve values in its test and wrong at C(67,33), a Jordan totient that agreed
+with its own test and with nothing else.
+
+`test_linalg_properties` checks `P*A = L*U`, `Q^T Q = I` and `Q*R = A`, `L*L^T = A`,
+`A*x = b`, `det(A*B) = det(A)*det(B)`, `trace(A*B) = trace(B*A)`,
+`A*pinv(A)*A = A`, `U*S*V^T = A` with singular values non-negative and ordered,
+`expm(A)*expm(-A) = I`, transpose as an involution, `ifft(fft(x)) = x`,
+`idft(dft(x)) = x` at every length, and the triangle inequality and absolute
+homogeneity of `norm`. Each runs over 40 generated well-conditioned inputs from a fixed
+seed, so a failure is reproducible by rerunning the binary rather than being a flake
+report.
+
+`test_sym2_notation_roundtrip` applies the same technique to §11.1, and the numeric
+property there is the one that matters: a printer defect is almost never visible in the
+printer's own output -- `\frac{x}{y+1}` and `x/y+1` are both plausible strings and
+reading them does not say which denotes the expression that was printed. So the
+assertion is made by a reader: print it, parse it back, and evaluate both. It also
+checks that every notation is total and deterministic, that delimiters balance, that
+the MathML is well-formed and its text escaped, and that every LaTeX backslash starts a
+real control sequence.
+
 ### The rest of the audit
 
 Twenty-two more of the 36 confirmed findings, in four groups.

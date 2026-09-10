@@ -196,14 +196,50 @@ strongest evidence available that the parser is reading the guards correctly.
 | Item | Status | Note |
 |---|---|---|
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
-| 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against the 282 of audit bookkeeping that had never run); the Clang AST rules themselves are still covered only by the plugin smoke job |
-| 8.3 REPL golden corpus | Open | |
+| 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
+| 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
 | 8.4 Mutation testing | Open | |
-| 8.5 Property-based testing | Open | |
+| 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
 | 8.8 Group 573 integration targets | Done | 573 executables → 31 |
 | 8.9 Lock it in | Done | four source-only gates plus the coverage ratchet, all gating in CI |
+
+### What the corpus found on its first run
+
+§8.3's first eight transcripts turned up seven things on the run that generated them,
+which is the argument for the shape of the test rather than for the tests in it. None
+were regressions; all were already true and none had a test.
+
+- **`^` is not an operator in the REPL's scalar evaluator.** `2^3` does not parse.
+  `pow(2, 3)` is the only spelling, while `^` *is* an operator in every symbolic
+  command and in the matrix literal syntax, so the same character means different
+  things on adjacent lines. Fixing it has to cover the ORC JIT too, which carries its
+  own copy of the expression evaluator -- the two backends already disagreed once
+  about unary minus, and that is the reason to do it as its own change rather than
+  inside another one.
+- **`transpose(A)` has no no-target form** although `matmul(A, A)` does. The CHANGELOG
+  says the registry gives every matrix-returning callee a bare form; it does not reach
+  this one.
+- **The no-target matrix form labels its result `C`**, not `_` as the CHANGELOG says.
+  No variable of that name is created, so the label names something that does not
+  exist.
+- **`stats_one_way_anova` and `rle_encode_vec` are unknown in the bare form** and
+  reachable only through an assignment.
+- **`1 / 0` reports "could not parse"** rather than anything about division.
+- **`not_a_function(1)` reports `unknown matrix: 1`** -- the diagnostic names the
+  argument rather than the function it could not find.
+- **`sym_simplify("x + x")` returns `(x + x)`.** Like terms are collected during
+  `sym_expand` and not during `sym_simplify`.
+
+The transcripts record all seven as they are, with the two most misleading marked in
+the script files, so each becomes a readable diff the day it is fixed rather than an
+assertion someone has to reconstruct.
+
+One further note the corpus settled: the one-dimensional root finders bind **`x0`**,
+not `x`. `c88f0ef`'s message says `x` -- the guard it describes is correct and the
+name in the prose is not. `docs/API.md` now states the binding on the row a user
+reads.
 
 ### 8.1, the number the plan asked for
 
@@ -511,9 +547,40 @@ disagreeing about `-2 + 1` -- which is a worse state than both being wrong.
 
 ## §11 — LaTeX and notation interchange
 
-**Open**, and no longer blocked: §10.3's precedence-aware printer exists in
-`ms::sym2::to_string`, so §11.1's `to_latex` is now the week of work the plan estimated
-rather than a dependency on a rewrite that had not started.
+| Item | Status |
+|---|---|
+| 11.1 Output — `to_latex(ExprRef)` and the sibling formats | Done |
+| 11.2 Input — parsing LaTeX | Open |
+
+**§11.1 is done, as one walk and five tables rather than as ten printers.** The plan
+insisted on that shape and the reason held up: almost everything a printer does is
+structural, and structure is the same in every notation. `src/sym2/notation.cpp` makes
+every structural decision once -- which factors are a denominator, which sum terms are
+subtractions, which powers are roots, display order, where a grouping is needed, how a
+symbol name splits -- and a notation is a `Syntax` table that only spells what has
+already been decided.
+
+Ten notations come out of five tables: LaTeX, Presentation MathML, Content MathML,
+Unicode, ASCII, SymPy, Mathematica, and C / C++ / Python source. In the REPL:
+`sym_latex("expr")` and `sym_export("expr", "notation")`.
+
+What made this worth doing as one walk rather than ten printers is visible in what each
+table got wrong on its own terms and had to be told: `1e+20` is not a LaTeX numeral,
+`1/3` in a Python session is a float, `1/3` in Wolfram Language is not, `1/3` in C is
+zero, `Sin(x)` in Wolfram Language is a product rather than a call, `√` has no vinculum
+in text so it does not group its argument, and a LaTeX value written as a product may
+not enter a superscript without a grouping or the document does not compile. Every one
+of those is a case where the *obvious* string parses to a different expression than the
+one printed -- and none of them are visible by reading the output.
+
+Also settled, and recorded because it is the same defect class as the audits: a
+derivative, integral or limit has no source form. The C, C++ and Python tables emit an
+identifier that does not exist, so the code fails to compile and names the problem,
+rather than emitting a plausible call.
+
+**§11.2 stays open**, and the plan's assessment of it stands: LaTeX is presentation
+markup and there is no correct general parser, so the work is to define a subset, parse
+it strictly, and reject everything outside it with a source position.
 
 ## §12 — GUI
 

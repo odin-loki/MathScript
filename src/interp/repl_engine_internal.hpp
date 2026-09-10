@@ -2407,6 +2407,12 @@ Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char*
 Result<std::string> eval_sym_diff_strings(const std::string& expr_arg, const std::string& var_arg);
 
 Result<std::string> eval_sym_simplify_string(const std::string& expr_arg);
+/// §11.1: the expression in another notation. `notation` is one of the names
+/// `ms::sym2::notation_from_name` accepts, and an unknown one is reported rather than
+/// falling back to a default the caller did not ask for.
+Result<std::string> eval_sym_export_strings(const std::string& expr_arg,
+                                            const std::string& notation_arg);
+Result<std::string> eval_sym_latex_string(const std::string& expr_arg);
 
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg);
 

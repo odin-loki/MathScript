@@ -1,0 +1,17 @@
+error: resolve: unknown matrix: 1
+error: repl: could not parse: sqrt()
+error: resolve: unknown matrix: 1, 2
+error: resolve: unknown matrix: 1, 2
+error: dimension mismatch: got 2x1
+error: mat_at: row index 5 is out of range (matrix has 2)
+error: mat_at: expected a non-negative integer row index
+error: mat_row: expected a non-negative integer row index
+error: mat_reshape: element count 4 does not fit 3x3
+error: repl: could not parse: C + D
+error: repl: could not parse: C * D
+error: dimension mismatch: got 2x1
+error: singular matrix
+error: repl: could not parse: 1 / 0
+error: sym_diff: unexpected end of expression
+error: notation_from_name: unknown notation 'klingon'; known: latex, tex, mathml, presentation-mathml, content-mathml, contentmathml, unicode, utf8, ascii, text, sympy, python-sympy, mathematica, wolfram, c, c++, cpp, python
+error: repl: could not parse: undefined_variable

@@ -98,6 +98,18 @@ target_compile_definitions(test_mathscriptc_cli PRIVATE "MATHSCRIPTC_PATH=\"$<TA
 add_dependencies(test_mathscriptc_cli mathscriptc)
 add_test(NAME test_mathscriptc_cli COMMAND test_mathscriptc_cli)
 
+# §8.3's golden transcripts. It drives the real mathscriptc rather than the library,
+# because the transcript is a record of what the program prints and the program is what
+# a user runs. The corpus directory is discovered at run time, so adding a transcript is
+# adding two files and nothing else.
+add_executable(test_repl_corpus unit/interp/test_repl_corpus.cpp)
+target_link_libraries(test_repl_corpus PRIVATE GTest::gtest_main)
+target_compile_definitions(test_repl_corpus PRIVATE
+    "MATHSCRIPTC_PATH=\"$<TARGET_FILE:mathscriptc>\""
+    "MS_REPL_CORPUS_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/repl_corpus\"")
+add_dependencies(test_repl_corpus mathscriptc)
+add_test(NAME test_repl_corpus COMMAND test_repl_corpus)
+
 add_executable(test_repl_cli unit/interp/test_repl_cli.cpp)
 target_link_libraries(test_repl_cli PRIVATE GTest::gtest_main)
 target_compile_definitions(test_repl_cli PRIVATE "MATHSCRIPT_REPL_PATH=\"$<TARGET_FILE:mathscript-repl>\"")
@@ -119,6 +131,7 @@ set(_MS_UNIT_SKIP
     unit/plugin/test_unsafe_registry.cpp
     unit/repl/test_repl_commands.cpp
     unit/interp/test_mathscriptc_cli.cpp
+    unit/interp/test_repl_corpus.cpp
     unit/interp/test_repl_cli.cpp
     unit/interp/test_server_cli.cpp
     unit/gui/test_gui_text_transforms.cpp

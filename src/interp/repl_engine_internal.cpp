@@ -48,6 +48,8 @@
 #include "ms/poly/poly.hpp"
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
+#include "ms/sym2/bridge.hpp"
+#include "ms/sym2/notation.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
 #include "ms/crypto/crypto.hpp"
@@ -15359,6 +15361,45 @@ Result<std::string> eval_sym_simplify_string(const std::string& expr_arg) {
     return sym_to_string(result) + "\n";
 }
 
+// §11.1. The notation printers live on `ms::sym2`, so this parses through the bridge
+// rather than printing the legacy tree: the legacy printer parenthesises every node and
+// formats every number with six decimals, and a LaTeX printer built on it would have
+// inherited both faults in a notation where they are harder to see.
+Result<std::string> eval_sym_export_strings(const std::string& expr_arg,
+                                            const std::string& notation_arg) {
+    std::string notation_text;
+    if (!parse_quoted_string(notation_arg, notation_text) || notation_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_export", "expected sym_export(\"expr\", \"notation\")"});
+    }
+    const auto notation = sym2::notation_from_name(notation_text);
+    if (!notation) {
+        return std::unexpected(notation.error());
+    }
+    std::string expr_text;
+    if (!parse_quoted_string(expr_arg, expr_text) || expr_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_export", "expected sym_export(\"expr\", \"notation\")"});
+    }
+    const auto expr = sym2::parse(expr_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_notation(*expr, *notation) + "\n";
+}
+
+Result<std::string> eval_sym_latex_string(const std::string& expr_arg) {
+    std::string expr_text;
+    if (!parse_quoted_string(expr_arg, expr_text) || expr_text.empty()) {
+        return std::unexpected(DomainError{"sym_latex", "expected sym_latex(\"expr\")"});
+    }
+    const auto expr = sym2::parse(expr_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_latex(*expr) + "\n";
+}
+
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg) {
     auto expr = parse_sym_quoted_expr(expr_arg, "sym_integrate");
     if (!expr) {
@@ -17424,7 +17465,8 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         fn != "sym_ilaplace" && fn != "sym_mellin" && fn != "sym_imellin" &&
         fn != "sym_hankel" && fn != "sym_ihankel" &&
         fn != "sym_fourier" && fn != "sym_ifourier" &&
-        fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve") {
+        fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve" &&
+        fn != "sym_latex" && fn != "sym_export") {
         return std::nullopt;
     }
     const auto args = split_call_args(cmd);
@@ -17439,6 +17481,19 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
             return eval_sym_simplify_string(args->at(0));
         }
         return eval_sym_expand_string(args->at(0));
+    }
+    if (fn == "sym_latex") {
+        if (args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected sym_latex(\"expr\")"});
+        }
+        return eval_sym_latex_string(args->at(0));
+    }
+    if (fn == "sym_export") {
+        if (args->size() != 2) {
+            return std::unexpected(
+                DomainError{fn, "expected sym_export(\"expr\", \"notation\")"});
+        }
+        return eval_sym_export_strings(args->at(0), args->at(1));
     }
     if (fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_collect" ||
         fn == "sym_solve_linear") {
@@ -18470,7 +18525,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_hankel" || fn == "sym_ihankel" ||
             fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
-            fn == "sym_dsolve" ||
+            fn == "sym_dsolve" || fn == "sym_latex" || fn == "sym_export" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_min_cut" ||

@@ -199,9 +199,11 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `sym_limit("expr", "var", point)` | Symbolic/numeric limit at `point` |
 | `sym_series("expr", "var", point, order)` | Taylor series expansion to given order |
 | `sym_solve_linear("eqs", "vars")` | Solve linear equation(s) for variable(s); semicolon-separated for systems |
+| `sym_latex("expr")` | The expression as LaTeX, via `ms::sym2`'s precedence-aware printer |
+| `sym_export("expr", "notation")` | The expression in `latex`, `mathml`, `content-mathml`, `unicode`, `ascii`, `sympy`, `mathematica`, `c`, `c++` or `python`. An unknown name is reported rather than defaulted. |
 | `sym_laplace("expr", "t", "s")` | Laplace transform (time → s-domain) |
 | `sym_ilaplace("expr", "s", "t")` | Inverse Laplace transform (s-domain → time) |
-| `sym_mellin("expr", "t", "s")` | Mellin transform (t-domain → s-domain; table: `c`, `t^a`, `exp(-a*t)`, `t^n*exp(-a*t)`, `1/(1+t)`) |
+| `sym_mellin("expr", "t", "s")` | Mellin transform (t-domain → s-domain; table: `c`, `t^a`, `1/(1+t)`). The two exponential rows were removed: `M{e^{-a t}}` is `Gamma(s)/a^s` and the table answered `1/a^s`, right only at `s = 1`. `SymOp` has no Gamma to state them with, so they decline until §10's core does. |
 | `sym_hankel("expr", "r", "k")` / `sym_ihankel(...)` | Hankel transform MVP |
 | `sym_imellin("expr", "s", "t")` | Inverse Mellin transform (s-domain → t); unsupported → `sym_deriv` sentinel |
 | `sym_hankel("expr", "r", "k")` | Hankel transform (r-domain → k-domain; table: `exp(-a*r)`, `r^n*exp(-a*r)`, `1/sqrt(r^2+a^2)`) |
@@ -224,7 +226,7 @@ Most C++ library modules are header-only; the REPL exposes a subset as matrix/sc
 | `rmsprop("formula", x0[, lr, max_iter])` | RMSprop adaptive gradient |
 | `adadelta("formula", x0[, lr, max_iter])` | Adadelta adaptive gradient |
 | `golden_section("formula", a, b)` | 1-D golden-section search on `[a, b]` |
-| `bisection("formula", a, b[, tol[, max_iter]])` | Bracketed root finding |
+| `bisection("formula", a, b[, tol[, max_iter]])` | Bracketed root finding. The formula is evaluated over **`x0`**, not `x`: `bisection("x0^2 - 2", 0, 2)` finds sqrt(2), and a formula written in any other name is reported rather than being solved as a constant. |
 | `brentq("formula", a, b[, tol[, max_iter]])` | Brent's method root finding |
 | `secant("formula", x0, x1[, tol[, max_iter]])` | Secant root finding |
 | `halley("f", "df", "d2f", x0[, tol[, max_iter]])` | Halley's method root finding |
