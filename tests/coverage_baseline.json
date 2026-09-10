@@ -1,0 +1,12 @@
+{
+  "comment": "Coverage ratchet baseline. Raise with scripts/coverage_ratchet.py --update; lowering needs --force and shows in the diff.",
+  "tolerance": 0.5,
+  "tolerance_evidence": "Local (container, g++ 13.3.0) and CI (ubuntu-24.04, gcc-13, MS_LINK_TESTS_SHARED=ON) measured the same tree at 54bcbd0 and agreed on all three metrics to within the 0.1 resolution lcov reports -- CI's regenerated docs/STATUS.md differed from the local one by the timestamp line alone. 0.5 points is ~10x that observed spread: above any noise seen so far, and far below what removing a test suite would cost.",
+  "measured_at": "2026-09-10 02:37 UTC",
+  "commit": "54bcbd0",
+  "metrics": {
+    "branches": 57.3,
+    "functions": 98.3,
+    "lines": 91.2
+  }
+}

@@ -73,7 +73,21 @@ ctest --test-dir build -R int_linalg         # linear-algebra REPL pipelines
 
 ## Coverage
 
-Linux Debug build with gcov instrumentation (CI enforces **80%** minimum line coverage of compiled `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars; the **90%** `v1.0.0` tag goal is met, last measured **91.3%**):
+Linux Debug build with gcov instrumentation. CI enforces **80%** minimum line coverage.
+Last measured: **91.2%** lines, **98.3%** functions, **57.3%** branches.
+
+Read the branch figure before quoting the line figure. This tree's largest files are
+dispatch chains, and a dispatch chain reaches high line coverage with one branch of
+each test taken — the 34-point gap is that, not an accident. Branch coverage was not
+measured at all until `coverage_report.sh` was fixed to use lcov 2.x's
+`branch_coverage` RC name in place of the `lcov_branch_coverage` it renamed; the old
+name is still accepted, still warns, and collects nothing.
+
+What is excluded is declared in `scripts/coverage_exclusions.txt`, one glob per line
+with the reason it cannot execute on a runner, and every run prints how many lines
+the exclusions hid (currently 8%). The exclusions used to be inline in the script and
+removed about a quarter of `src/`, which is how a figure covering 75% of the
+repository came to be published as if it covered all of it.
 
 ```bash
 cmake -S . -B build-cov -G Ninja \
@@ -91,6 +105,60 @@ Or run the CMake target after configuring with coverage enabled:
 ```bash
 cmake --build build-cov --target coverage_report
 ```
+
+### The coverage ratchet
+
+`scripts/coverage_ratchet.py` compares a run against `tests/coverage_baseline.json`
+and fails if any metric fell by more than the recorded tolerance:
+
+```bash
+python3 scripts/coverage_ratchet.py build-cov            # check
+python3 scripts/coverage_ratchet.py build-cov --update   # raise the baseline
+```
+
+It allows a small slack rather than failing on any decrease at all, because a gate
+that fires on noise is a gate people learn to re-run until it passes — the benchmark
+job in this repository is the cautionary example. `--update` raises the baseline and
+refuses to lower it without `--force`, so a deliberate drop leaves a trace in the
+diff.
+
+## Generated sources
+
+Two directories are generated and must not be hand-edited. CI regenerates both and
+fails on a dirty tree, so a new handler cannot land without its dispatch tests:
+
+```bash
+python3 scripts/extract_manifest.py        # tests/unit/matrix_calls/matrix_calls_manifest.json
+python3 scripts/gen_matrix_call_tests.py   # tests/unit/matrix_calls/test_matrix_calls_*.cpp
+```
+
+The manifest reads every handler's dispatch guard as a predicate over the argument
+count and solves it. A guard it cannot read is an anomaly, and `--strict` makes that
+a failure: a handler nothing can parse is a handler whose dispatch nothing tests.
+
+Other source-only checks, all of which run in the `Compliance` CI job and need no
+build:
+
+```bash
+python3 scripts/add_spdx.py --check        # every source file carries a licence
+python3 scripts/gen_sbom.py --check        # the SBOM matches the tree
+python3 scripts/check_test_names.py        # no duplicate test names within one binary
+```
+
+`check_test_names.py` exists because integration tests are grouped one executable per
+domain. `TEST(Suite, Name)` expands to a class whose members are implicitly inline, so
+two files in one binary declaring the same pair link without a diagnostic and one body
+silently replaces the other — the test count does not move while a test stops running.
+
+## Pushing while CI is running
+
+The CI workflow sets `cancel-in-progress: true`, so **any push to a branch cancels
+the run already in flight on it**. The Windows MSVC job takes around 65 minutes, so a
+push made 50 minutes in throws away 50 minutes and restarts from zero.
+
+If a Windows build is in flight and the change is documentation or anything else that
+cannot affect the result, hold the push until it reports. This has cost several full
+cycles.
 
 ## Clang plugin (Linux, LLVM 18)
 

@@ -230,6 +230,15 @@ jobs:
           MS_COVERAGE_MIN: "80"
         run: bash scripts/coverage_report.sh build-cov
 
+      # The ratchet, not a threshold: it compares against the previous committed
+      # figure and fails on a decrease larger than the recorded tolerance. A fixed
+      # minimum invites an argument about the number; a ratchet only asks that the
+      # tree not go backwards. The tolerance is set from measurement -- see
+      # tests/coverage_baseline.json -- because a gate that fires on noise is a gate
+      # people learn to re-run until it passes.
+      - name: Coverage ratchet
+        run: python3 scripts/coverage_ratchet.py build-cov
+
       - name: Upload coverage summary
         uses: actions/upload-artifact@v4
         with:
