@@ -1,12 +1,29 @@
 # MathScript 1.0.0 release
 
-CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, AddressSanitizer + UBSan, and packaging smoke. Remaining for the tag is the 24 h fuzz marathon; the **90%** coverage goal is now met (CI gate is **80%**, last measured **92.0%** line / **97.9%** function over the full 873-suite run). What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux, AddressSanitizer + UBSan, and packaging smoke. Remaining for the tag: the 24 h fuzz marathon, an honest coverage measurement over the corrected denominator (criterion 3 — the previously published 92.0% covered only 75% of `src/`), and the authorship decision in [`PLAN_STATUS.md`](PLAN_STATUS.md) §4.5. What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
 
 ## Tag criteria
 
 1. **CI green** on `main` with no `continue-on-error`. Linux GCC 13 `-fno-exceptions` syntax gate on `build-test-linux` must pass.
-2. **Tests** — full CTest passing. Current catalogue: **873** suites (Linux GCC 13, CUDA off), grouped by mathematical domain.
-3. **Coverage** — CI gate **80%** (`coverage-linux`). Measured **92.0%** line and **97.9%** function coverage of library `src/`, excluding plugin, GUI, CUDA stubs, and `matrix_calls` registrars, over the full suite with `MS_BUILD_INTEGRATION=ON`. The **90%** `v1.0.0` tag goal is met.
+2. **Tests** — full CTest passing. Current catalogue: **336** CTest suites (Linux GCC 13, CUDA off).
+   That number fell from 873 without a single test being removed: the 573 integration executables were grouped
+   into 31 per-domain binaries (plan §8.8), and the 1,377 generated matrix-call dispatch tests are one binary
+   rather than 29. CTest suites are executables, not tests, and the two are worth not confusing —
+   `test_matrix_calls` alone contains 1,377. Grouping cut the build graph from 2,431 steps to 1,460.
+   Test *names* are now checked for uniqueness within each executable (`scripts/check_test_names.py`) because
+   71 pairs collided during the grouping and 29 of them had different bodies: without that check the count
+   would have stayed put while the tests silently stopped running.
+3. **Coverage** — CI gate **80%** (`coverage-linux`). **The previously published 92.0% line / 97.9% function
+   figures are withdrawn.** They were measured over a denominator that excluded 37,738 lines — 25% of `src/` —
+   because `scripts/coverage_exclusions.txt` was not present in this tree, so the exclusions were open-ended
+   rather than limited to paths that cannot execute on a CI runner. The number covered 75% of the repository
+   and was reported as if it covered all of it.
+
+   `scripts/coverage_report.sh` now measures against the declared exclusion list and prints how many lines it
+   hid. **The honest figure has not yet been measured**, and until an instrumented run over the corrected
+   denominator completes, this criterion is open and the 90% tag goal is not claimed. Expect the number to fall;
+   that is the exclusions coming off. `docs/STATUS.md` is generated from the artefacts and writes
+   "not measured" rather than carrying a stale value forward.
 4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. Last local run: **300/300 passing with zero sanitizer reports** — the sanitizer tree is configured `MS_BUILD_INTEGRATION=OFF`, so it carries the unit suites only, not the full catalogue. Full **873** suites run on `build-test-linux` and `build-test-windows`.
 5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`). Last local run: real libFuzzer under Clang 18, 7 targets × 10 min seeded from the checked-in corpora = **353 193 095 executions, zero crashes**. The corpus-replay harness (7 targets × 5 seeds × 200 000 mutations = 7 000 000 inputs) is also clean, and the corpora are replayed on every build by the `replay_fuzz_*` CTest suites, so a regression is caught even where no libFuzzer runtime is installed.
 

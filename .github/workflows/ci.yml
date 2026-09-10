@@ -163,6 +163,37 @@ jobs:
       - name: Vendor checksum verify
         run: bash scripts/verify_vendor.sh
 
+  compliance-linux:
+    name: Compliance (source-only checks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # None of these need a build, so they fail in under a minute rather than
+      # after the forty it takes to find out the same thing from a test run.
+
+      - name: SPDX headers present
+        run: python3 scripts/add_spdx.py --check
+
+      - name: SBOM matches the tree
+        run: python3 scripts/gen_sbom.py --check
+
+      # --strict because the manifest is the input to the generated tests: a
+      # handler it cannot parse is a handler whose dispatch nothing checks, and
+      # that must be a failure rather than a line of console output nobody reads.
+      - name: Matrix-call manifest is current
+        run: python3 scripts/extract_manifest.py --check --strict
+
+      - name: Generated dispatch tests are current
+        run: python3 scripts/gen_matrix_call_tests.py --check
+
+      # Integration tests are grouped one executable per domain. Two files in one
+      # executable declaring the same TEST(Suite, Name) link without a diagnostic
+      # and one body replaces the other, so the count stays put while a test stops
+      # running. Nothing else in the toolchain notices.
+      - name: Test names unique within each executable
+        run: python3 scripts/check_test_names.py
+
   coverage-linux:
     name: Coverage (Linux GCC 13)
     runs-on: ubuntu-24.04
@@ -211,6 +242,24 @@ jobs:
         with:
           name: coverage-report
           path: build-cov/coverage.info
+          if-no-files-found: error
+
+      # STATUS.md is generated from build artefacts, and the coverage figure in it
+      # is only measurable here. Regenerating it is worth doing; gating on it is
+      # not -- run-to-run variation would make the gate fail on noise rather than
+      # on a stale claim, and a gate that cries wolf is how the stale numbers got
+      # published in the first place.
+      - name: Regenerate STATUS.md and report drift
+        run: |
+          python3 scripts/gen_status.py --build-dir build-cov
+          git --no-pager diff --stat -- docs/STATUS.md || true
+          git --no-pager diff -- docs/STATUS.md || true
+
+      - name: Upload generated status
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-md
+          path: docs/STATUS.md
           if-no-files-found: error
 
   fuzz-linux:

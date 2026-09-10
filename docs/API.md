@@ -985,3 +985,64 @@ limit is documented on the declaration; this is the summary.
 `numthy::prime_nth` and `numthy::sum_divisors` are deliberately *not* capped: their cost is
 proportional to the argument rather than to an allocation, so they are slow but bounded for
 a large input, and the interpreter's cancel flag interrupts them.
+
+## Randomness and the seeding contract
+
+Two unrelated kinds of randomness live in this library, and conflating them is the
+mistake this section exists to prevent.
+
+### Cryptographic randomness
+
+`crypto::random_bytes` and `crypto::random_bytes_into` read the operating system
+CSPRNG — `BCryptGenRandom` on Windows, `arc4random_buf` on the BSDs and macOS,
+`getrandom(2)` on Linux with a `/dev/urandom` fallback. They are **not seedable and
+not reproducible**, deliberately. Nothing in this section applies to them, and no
+option described below will make a key or a nonce repeat.
+
+### Numerical randomness
+
+Everything else — Monte Carlo integration, stochastic optimisers, random matrix
+generation, bootstrap resampling, `ml_train_test_split`, t-SNE initialisation — is
+driven by `std::mt19937`. The contract is:
+
+**Every such routine is deterministic given its seed, and every one of them has a
+fixed default seed.** Calling a Monte Carlo routine twice with the same arguments
+returns the same answer, on the same build and the same ISA path. That is the
+intended behaviour: a numerical result you cannot re-derive is a numerical result
+you cannot defend. It is documented here because the alternative is a user
+discovering it, concluding the RNG is broken, and being right to worry.
+
+To get different draws, pass a different seed. Routines that accept one take it as
+their last optional argument:
+
+    simulated_annealing("f", x0, T0, cooling, max_iter, seed)
+    differential_evolution("f", bounds, pop, F, CR, max_iter, seed)
+    particle_swarm("f", bounds, n_particles, max_iter, seed)
+    Xtr, ytr, Xte, yte = ml_train_test_split(X, y, test_size, seed)
+
+Routines that do not accept a seed are seeded from a fixed constant and cannot be
+varied. That is a real limitation, and where it matters the routine should grow a
+seed parameter rather than acquire a hidden dependence on the clock.
+
+### What determinism does and does not cover
+
+Same seed, same build, same ISA path, same thread count → identical results.
+
+Change any of the last three and the result may differ in the last few bits, because
+a vectorised reduction sums in a different order from a scalar one and a parallel
+reduction partitions differently. This is ordinary floating-point behaviour rather
+than a defect, but it is the reason the seed alone is not a sufficient record of a
+run.
+
+`ms::runtime::capture()` (`ms/runtime/repro.hpp`) returns all four together —
+version and commit, the ISA path actually taken after the OS register-state check,
+the worker count, and the seed — as text or JSON. Record it alongside any result
+that may have to be reproduced later. `ms::runtime::set_global_seed(n)` sets the
+number the manifest reports; it does not reach into the routines above, which keep
+their own seed arguments.
+
+`MS_FORCE_ISA` pins the dispatch path to a named ceiling (`scalar`, `sse2`, `sse41`,
+`avx`, `avx2`, `avx512`), which is how two machines with different hardware can be
+made to agree. It only ever narrows what was detected — it cannot enable a path the
+CPU or the OS does not support — and a run made under it is recorded as such in the
+manifest.

@@ -30,6 +30,58 @@ stub has been closed; see that file for the before/after table.
 - ML model packing: three out-of-bounds accesses in the REPL's model serialisers, all of them reachable from an ordinary `ml_*_fit` call. The NaiveBayes packer sized the matrix `max(n_features, 1)` columns wide and then wrote the header at column 1, so a single-feature model corrupted the heap; the KNN packer sized it `n_features + 1` wide and wrote the header at column 2; and the LDA packer sized its per-class loop by `classes.size()`, which `LDA::fit` fills before it gives up on a single-class problem, so it indexed the empty `discrim_const`. The LDA path now reports "expected at least two distinct class labels in y" instead of returning a model that was never fitted, and the QDA packer got the same consistency check.
 - ML ensemble sizes are bounded. `n_trees`, `n_estimators` and `max_depth` arrived from the command line unchecked, so `ml_random_forest_fit(X, y, 3000000000)` and `ml_gradient_boosting_fit(X, y, 3000000000)` grew trees until the process was killed, and `ml_isolation_forest_fit(X, 1e18)` asked for an allocation that aborts rather than reports under `-fno-exceptions`. The caps are 10000 members, depth 512, and a forest sample of 1000000, each reported as a `DomainError`.
 
+### Engineering plan
+
+The whole-repository audit is in [`docs/ENGINEERING_PLAN.md`](docs/ENGINEERING_PLAN.md),
+preserved as written; [`docs/PLAN_STATUS.md`](docs/PLAN_STATUS.md) records what is
+done, what is open, and the three places the plan itself turned out to be wrong. The
+largest of those: the coverage tooling the plan describes as already finished was not
+present in this tree, so 37,738 lines -- 25% of `src/` -- sat outside the denominator
+and the 92.0% figure published repeatedly was measured over 75% of the repository.
+
+- Matrix-call manifest and generated dispatch tests. `scripts/extract_manifest.py`
+  reads all 485 handlers' guards as predicates over the argument count and solves
+  them; `scripts/gen_matrix_call_tests.py` emits 1,377 tests across 29 translation
+  units -- registration, wrong arity, and undefined operands. Happy paths are
+  deliberately not generated: a generator that invented inputs would assert whatever
+  the implementation currently does.
+- Integration tests grouped from 573 executables into 31, one per domain. Linking is
+  what dominates a test build, and on an instrumented build it dominated it badly
+  enough that measuring coverage was a nightly event. The build graph went from 2,431
+  steps to 1,460. This required disambiguating 71 colliding `TEST(Suite, Name)` pairs
+  first -- 29 of them had different bodies, and grouping without fixing that would
+  have silently stopped running them while the test count stayed put.
+- AVX2/FMA `dgemm`, with B-panel packing and BLIS-style cache blocking. There was no
+  AVX2 kernel at all, so every machine without AVX-512 -- Zen 1 through 3, every
+  Intel client part since Alder Lake, and the CI configuration itself -- fell to a
+  rank-1 update loop for matrix multiply.
+- The AVX-512 kernel rewritten onto the same blocking. It had been reading B through
+  eight strided scalar loads per vector on every iteration of the innermost loop, and
+  writing C back through a stack buffer and eight scattered scalar stores.
+- `src/simd/isa.cpp` now builds at baseline ISA. It had been compiled with
+  `-mavx2 -mfma`, which permits an AVX instruction inside the routine whose job is to
+  decide whether AVX instructions will fault. Latent rather than active -- the object
+  contained none -- but it depended on a compiler's choice.
+- `izaac_vrf_keygen` guarded its arity with `assign.args.empty()` where the other 484
+  handlers use an explicit count. Identical to the compiler, not to the manifest
+  parser, which is how one handler dropped out of the generated tests with nothing
+  failing.
+- Reproducibility manifest (`ms/runtime/repro.hpp`): version, commit, the ISA path
+  actually taken after the OS register-state check, any `MS_FORCE_ISA` ceiling, the
+  worker count and the seed, as text or JSON.
+- The RNG seeding contract is documented in [`docs/API.md`](docs/API.md). Every
+  numerical routine is deterministic given its seed and every one has a fixed
+  default; `crypto::random_bytes` is neither seedable nor reproducible, deliberately.
+- SPDX identifiers on all 1,735 source files, with the 18 CUDA-linked translation
+  units additionally naming `LICENSE.exceptions`. `vendor/` is untouched.
+- A source-only CI job that gates SPDX, the SBOM, the manifest (`--strict`), the
+  generated suites and test-name uniqueness, and fails in under a minute rather than
+  after a full build.
+
+Two items are deliberately **not** done, both one-way doors for the repository owner
+rather than a contributor: the `git filter-repo` authorship rewrite (§4.5), which
+rewrites all 1,440 commit SHAs, and the rename off "MathScript" (§4.2).
+
 ### Testing
 
 - The seven libFuzzer targets' checked-in corpora are now replayed by ordinary CTest
