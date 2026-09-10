@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <string>
 
+#include "../scoped_env.hpp"
 #include "ms/runtime/repro.hpp"
 #include "ms/simd/isa.hpp"
 #include "ms/simd/simd.hpp"
@@ -89,14 +90,10 @@ TEST(ReproManifest, ClearingTheSeedReturnsToTheDefault) {
 TEST(ReproManifest, RecordsAForcedIsaCeiling) {
     // A run under MS_FORCE_ISA is not comparable with one that was not, so the
     // ceiling has to appear in the manifest rather than being invisible.
-    const char* const previous = std::getenv("MS_FORCE_ISA");
-    const std::string saved = previous != nullptr ? previous : std::string();
-    ::setenv("MS_FORCE_ISA", "sse2", 1);
-    const auto forced = ms::runtime::capture();
-    if (previous != nullptr) {
-        ::setenv("MS_FORCE_ISA", saved.c_str(), 1);
-    } else {
-        ::unsetenv("MS_FORCE_ISA");
+    ms::runtime::ReproManifest forced;
+    {
+        const ms::testing::ScopedEnv env("MS_FORCE_ISA", "sse2");
+        forced = ms::runtime::capture();
     }
 
     EXPECT_EQ(forced.forced_isa, "sse2");

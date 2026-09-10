@@ -55,9 +55,26 @@ fi
 # --ignore-errors is deliberately narrow. The previous form passed
 # "source,gcov,empty,mismatch,unused", which suppressed exactly the errors that
 # indicate stale gcov data -- the report would come out clean while describing a
-# previous build. "unused" is kept because an exclusion glob that matches nothing
-# is a maintenance signal, not a failure, and it is reported below instead.
-LCOV_IGNORE="unused"
+# previous build. "source", "gcov" and "empty" stay off for that reason.
+#
+# Two are kept, for opposite reasons:
+#
+#   unused    an exclusion glob that matches nothing is a maintenance signal, not
+#             a failure, and it is reported below instead of aborting the run.
+#
+#   mismatch  not a staleness signal at all, and removing it was a mistake that
+#             cost a CI cycle. This tree builds the library with -fno-exceptions
+#             and gives the test executables -fexceptions under coverage, because
+#             GoogleTest's EXPECT_NO_THROW expands to try/catch. The same inline
+#             function in a libstdc++ header therefore carries different exception
+#             tags in different objects, and lcov 2.x treats that as a hard error:
+#
+#               geninfo: ERROR: bits/stl_construct.h:97: mismatched exception tag
+#
+#             The line counts either side of the mismatch are correct; what
+#             differs is metadata about a deliberate configuration. Suppressing it
+#             hides nothing about whether the data is current.
+LCOV_IGNORE="unused,mismatch"
 
 lcov --quiet --capture --directory "${BUILD_DIR}" --output-file "${INFO_RAW}" \
     --rc lcov_branch_coverage=1 --ignore-errors "${LCOV_IGNORE}"

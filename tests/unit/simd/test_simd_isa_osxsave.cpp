@@ -19,41 +19,18 @@
 #include <cstdlib>
 #include <string>
 
+#include "../scoped_env.hpp"
 #include "ms/simd/isa.hpp"
 
 using namespace ms::simd;
 
 namespace {
 
-// RAII around the environment variable so a failing expectation cannot leak a
-// forced ceiling into the tests that run after it.
-class ScopedForceIsa {
-public:
-    explicit ScopedForceIsa(const char* level) {
-        if (const char* const prev = std::getenv("MS_FORCE_ISA")) {
-            had_previous_ = true;
-            previous_ = prev;
-        }
-        if (level == nullptr) {
-            ::unsetenv("MS_FORCE_ISA");
-        } else {
-            ::setenv("MS_FORCE_ISA", level, 1);
-        }
-    }
-    ~ScopedForceIsa() {
-        if (had_previous_) {
-            ::setenv("MS_FORCE_ISA", previous_.c_str(), 1);
-        } else {
-            ::unsetenv("MS_FORCE_ISA");
-        }
-    }
-    ScopedForceIsa(const ScopedForceIsa&) = delete;
-    ScopedForceIsa& operator=(const ScopedForceIsa&) = delete;
-
-private:
-    bool had_previous_ = false;
-    std::string previous_;
-};
+// MS_FORCE_ISA for the duration of a scope, restored afterwards so a failing
+// expectation cannot leak a forced ceiling into the tests that run after it.
+// setenv and unsetenv are POSIX; ms::testing::ScopedEnv is the portable form, and
+// this file is why it exists.
+using ScopedForceIsa = ms::testing::ScopedEnv;
 
 // The hierarchy the dispatcher relies on: a wider path is never reported without
 // every narrower one it is built on.
@@ -73,7 +50,7 @@ void expect_consistent(const IsaFeatures& f) {
 } // namespace
 
 TEST(SimdIsaOsEnablement, DetectedSetIsInternallyConsistent) {
-    const ScopedForceIsa clear(nullptr);
+    const ScopedForceIsa clear("MS_FORCE_ISA", nullptr);
     expect_consistent(detect_isa());
 }
 
@@ -82,7 +59,7 @@ TEST(SimdIsaOsEnablement, FmaIsGatedOnTheSameOsStateAsAvx) {
     // them just as AVX does, even though its CPUID bit sits apart from AVX's.
     // Reporting FMA on a host where AVX is masked off would send callers down a
     // path whose registers the OS does not preserve.
-    const ScopedForceIsa clear(nullptr);
+    const ScopedForceIsa clear("MS_FORCE_ISA", nullptr);
     const IsaFeatures f = detect_isa();
     if (!f.avx) {
         EXPECT_FALSE(f.fma);
@@ -91,7 +68,7 @@ TEST(SimdIsaOsEnablement, FmaIsGatedOnTheSameOsStateAsAvx) {
 
 TEST(SimdIsaOsEnablement, ForceIsaOnlyNarrows) {
     const IsaFeatures detected = [] {
-        const ScopedForceIsa clear(nullptr);
+        const ScopedForceIsa clear("MS_FORCE_ISA", nullptr);
         return detect_isa();
     }();
 
@@ -103,7 +80,7 @@ TEST(SimdIsaOsEnablement, ForceIsaOnlyNarrows) {
     // Each forced level must leave the detected set unchanged or smaller, never
     // larger: a ceiling that could raise the level would reintroduce the fault.
     for (const char* level : {"avx512", "avx2", "avx", "sse41", "sse2", "scalar"}) {
-        const ScopedForceIsa forced(level);
+        const ScopedForceIsa forced("MS_FORCE_ISA", level);
         const IsaFeatures f = detect_isa();
         SCOPED_TRACE(level);
         expect_consistent(f);
@@ -118,24 +95,24 @@ TEST(SimdIsaOsEnablement, ForceIsaOnlyNarrows) {
 
 TEST(SimdIsaOsEnablement, ForceIsaCeilingsClearEverythingAbove) {
     {
-        const ScopedForceIsa forced("scalar");
+        const ScopedForceIsa forced("MS_FORCE_ISA", "scalar");
         const IsaFeatures f = detect_isa();
         EXPECT_FALSE(f.sse2);
         EXPECT_FALSE(f.avx512f);
         EXPECT_EQ(isa_summary(f), "scalar");
     }
     {
-        const ScopedForceIsa forced("avx2");
+        const ScopedForceIsa forced("MS_FORCE_ISA", "avx2");
         EXPECT_FALSE(detect_isa().avx512f);
     }
     {
-        const ScopedForceIsa forced("avx");
+        const ScopedForceIsa forced("MS_FORCE_ISA", "avx");
         const IsaFeatures f = detect_isa();
         EXPECT_FALSE(f.avx2);
         EXPECT_FALSE(f.fma);
     }
     {
-        const ScopedForceIsa forced("sse2");
+        const ScopedForceIsa forced("MS_FORCE_ISA", "sse2");
         const IsaFeatures f = detect_isa();
         EXPECT_FALSE(f.sse41);
         EXPECT_FALSE(f.avx);
@@ -144,10 +121,10 @@ TEST(SimdIsaOsEnablement, ForceIsaCeilingsClearEverythingAbove) {
 
 TEST(SimdIsaOsEnablement, UnrecognisedForceIsaDoesNotRaiseTheCeiling) {
     const IsaFeatures detected = [] {
-        const ScopedForceIsa clear(nullptr);
+        const ScopedForceIsa clear("MS_FORCE_ISA", nullptr);
         return detect_isa();
     }();
-    const ScopedForceIsa forced("definitely-not-an-isa");
+    const ScopedForceIsa forced("MS_FORCE_ISA", "definitely-not-an-isa");
     const IsaFeatures f = detect_isa();
     // An unrecognised value is ignored rather than treated as "everything".
     EXPECT_EQ(f.avx512f, detected.avx512f);
@@ -155,11 +132,17 @@ TEST(SimdIsaOsEnablement, UnrecognisedForceIsaDoesNotRaiseTheCeiling) {
     EXPECT_EQ(f.sse2, detected.sse2);
 }
 
+// On POSIX this sets the variable to an empty string and detect_isa has to treat
+// that as "no ceiling requested". On Windows there is no way to hold an empty
+// environment variable -- assigning "" removes it -- so the same test exercises the
+// unset path there. Both are the behaviour the assertion asks for; only one of them
+// tests the empty-string branch, and that is worth knowing when reading a green
+// Windows run.
 TEST(SimdIsaOsEnablement, EmptyForceIsaIsTreatedAsUnset) {
     const IsaFeatures detected = [] {
-        const ScopedForceIsa clear(nullptr);
+        const ScopedForceIsa clear("MS_FORCE_ISA", nullptr);
         return detect_isa();
     }();
-    const ScopedForceIsa forced("");
+    const ScopedForceIsa forced("MS_FORCE_ISA", "");
     EXPECT_EQ(detect_isa().avx512f, detected.avx512f);
 }
