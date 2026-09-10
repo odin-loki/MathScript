@@ -94,10 +94,10 @@ noticed nothing if a handler changed its rejection message; this one notices.
 | Item | Status | Where |
 |---|---|---|
 | 4.1 AGPL-3.0, `COPYRIGHT`, SPDX headers, CUDA §7 exception | Done | `LICENSE`, `COPYRIGHT`, `LICENSE.exceptions`, `scripts/add_spdx.py` |
-| 4.2 Rename off "MathScript" | **Held** | see below |
+| 4.2 Rename off "MathScript" | **Declined** | see below |
 | 4.3 Export-control position | Done | `docs/EXPORT_CONTROL.md` |
 | 4.4 `SECURITY.md` and SBOM | Done | `SECURITY.md`, `sbom.cdx.json`, `scripts/gen_sbom.py` |
-| 4.5 Commit authorship | **Held** | see below |
+| 4.5 Commit authorship | **Declined** | see below |
 
 SPDX headers are on all 1,735 source files; the 18 translation units that link the
 NVIDIA libraries additionally name `LICENSE.exceptions`, because a file that
@@ -105,22 +105,32 @@ participates in that link should say so rather than leaving the grant discoverab
 only from the repository root. `vendor/` is untouched: it is not ours to mark.
 `scripts/add_spdx.py --check` fails CI if a file lands without one.
 
-### The two held items
+### The two decisions
 
-Both are one-way doors, and both are the repository owner's decision rather than a
-contributor's:
+Both were one-way doors, both belonged to the repository owner rather than to a
+contributor, and both have now been decided. Neither was ever blocked on work.
 
-**§4.5, the authorship rewrite.** `git filter-repo --mailmap` followed by a force
-push rewrites all 1,440 commit SHAs. Every existing clone, every branch, every link
-to a commit and every review comment anchored to one stops resolving. It is the
-right fix for the stated problem and it cannot be undone.
+**§4.2, the rename — declined. The project keeps the name MathScript.**
 
-**§4.2, the rename.** The collision with National Instruments' MathScript is real.
-Acting on it touches the namespace, the binaries, the `.ms` file extension, every
-CMake target, the package names and the repository URL — and it is a naming and
-trademark decision before it is an engineering one.
+The plan's finding stands on its facts: National Instruments ships a MathScript
+alongside LabVIEW, so the name is not distinctive in this field. Keeping it is an
+accepted risk rather than a refutation of the finding, and the risk is not constant —
+it is small for a personal repository and grows if the project is ever sold, packaged
+commercially under that name, or put forward as a mark. Recorded here so a later
+reader does not mistake the absence of a rename for the absence of the question.
 
-Neither is blocked on work. Both are waiting on a decision.
+**§4.5, the authorship rewrite — declined.**
+
+`git filter-repo --mailmap` and a force push would have rewritten all 1,440 commit
+SHAs, breaking every existing clone and every link to a commit. The owner's judgement
+is that the benefit does not justify that, which is a reasonable reading: the
+repository is not disputed and the history is not load-bearing evidence of anything.
+
+One thing worth separating out, because it is not what was declined: a checked-in
+`.mailmap` maps author identities for `git log`, `git shortlog` and GitHub's own
+display **without rewriting a single commit**. It is additive and reversible. It
+addresses the presentation half of §4.5's concern and none of the provenance half. It
+has not been added — this is a note, not a plan.
 
 ## §5 — False and stale claims
 
@@ -394,12 +404,16 @@ The plan names five items that must close before the tag:
 |---|---|
 | §4.1 Licence, including the CUDA §7 exception | Done |
 | §4.3 Export-control determination | Done |
-| §4.5 Authorship | **Held** — awaiting the repository owner |
+| §4.5 Authorship | **Waived** — declined by the repository owner |
 | §6.1 SIGILL in `dgemm` | Done |
 | §6.3 CSPRNG | Done |
 
-Four of five are closed. The fifth is not work; it is a decision that rewrites 1,440
-commit SHAs and cannot be taken back.
+All five are now resolved: four closed by work, the fifth by an explicit decision not
+to do it. **On the plan's own criteria the tag is no longer blocked.**
+
+What still gates `v1.0.0` is `RELEASE.md`'s own eleven criteria rather than this list
+— in practice criterion 1 (CI green) and criterion 5 (the 24 h fuzz marathon, which
+the author is running on their own hardware).
 
 ---
 
