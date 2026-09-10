@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -130,8 +131,13 @@ TEST(Sym2NotationLatex, NonFiniteRealsUseTheConstantSpellings) {
     // `format_exact` hands a non-finite value to std::to_string, which gives the letters
     // `inf` -- a product of three italic variables on the page, one of them Euler's
     // number. A Real that overflowed has to print as the infinity it is.
-    EXPECT_EQ(to_latex(real(1.0 / 0.0)), "\\infty");
-    EXPECT_EQ(to_latex(real(-1.0 / 0.0)), "-\\infty");
+    // Written through numeric_limits rather than as `1.0 / 0.0`: the latter is a
+    // constant expression, and MSVC rejects it outright with C2124 ("divide or mod by
+    // zero") where GCC folds it to the IEEE infinity. This built clean locally and
+    // broke the Windows job.
+    constexpr double kInfinity = std::numeric_limits<double>::infinity();
+    EXPECT_EQ(to_latex(real(kInfinity)), "\\infty");
+    EXPECT_EQ(to_latex(real(-kInfinity)), "-\\infty");
 }
 
 // --- Structure ----------------------------------------------------------------------
