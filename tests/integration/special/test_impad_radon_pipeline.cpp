@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -42,7 +44,7 @@ TEST(IntegrationSpecial,  ImpadRadonTail16) {
     EXPECT_EQ(interp.state().matrices.at("S").cols(), 3u);
 }
 
-TEST(IntegrationSpecial,  JacobiNcScalar) {
+TEST(IntegrationSpecial, JacobiNcScalar_ImpadRadonPipeline) {
     Interpreter interp;
     expect_ok(interp, "jnc = jacobi_nc(0.2, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("jnc"), ms::jacobi_nc(0.2, 0.3), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationGraph,  SccLouvainTail15) {
     EXPECT_EQ(interp.state().matrices.at("louv").rows(), 2u);
 }
 
-TEST(IntegrationGraph,  Theta3Scalar) {
+TEST(IntegrationGraph, Theta3Scalar_GraphSccGraphLouvainPipeline) {
     Interpreter interp;
     expect_ok(interp, "th = theta3(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th"), ms::theta3(0.2, 0.1), 1e-8);

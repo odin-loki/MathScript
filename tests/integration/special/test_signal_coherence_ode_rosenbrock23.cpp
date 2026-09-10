@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationSpecial,  CoherenceRosenbrockTail30) {
     EXPECT_GT(interp.state().matrices.at("tr").rows(), 0u);
 }
 
-TEST(IntegrationSpecial,  JacobiCdScalar) {
+TEST(IntegrationSpecial, JacobiCdScalar_SignalCoherenceOdeRosenbrock23) {
     Interpreter interp;
     expect_ok(interp, "cd = jacobi_cd(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cd"), ms::jacobi_cd(0.5, 0.5), 1e-8);

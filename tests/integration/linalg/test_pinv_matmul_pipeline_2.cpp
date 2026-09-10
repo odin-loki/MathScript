@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -66,7 +68,7 @@ TEST(IntegrationLinalg,  PinvNullOrthKronTail18) {
     }
 }
 
-TEST(IntegrationLinalg,  CplxJoukowskiInvScalar) {
+TEST(IntegrationLinalg, CplxJoukowskiInvScalar_PinvMatmulPipeline2) {
     Interpreter interp;
     expect_ok(interp, "ji = cplx_joukowski_inv(1, 0)");
     EXPECT_TRUE(std::isfinite(interp.state().scalars.at("ji")));

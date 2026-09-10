@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -24,7 +26,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationFrameworks,  CellaiBoltzmannCypha) {
+TEST(IntegrationFrameworks, CellaiBoltzmannCypha_CellaiBoltzmannWeightsCellmemory) {
     Interpreter interp;
     expect_contains(interp, "help", "cellai_boltzmann_weights");
     expect_contains(interp, "help", "cellai_cell_to_cypha_features");
@@ -38,7 +40,7 @@ TEST(IntegrationFrameworks,  CellaiBoltzmannCypha) {
     ASSERT_GT(interp.state().matrices.count("cf"), 0u);
 }
 
-TEST(IntegrationFrameworks,  BesselZeroYnuScalar) {
+TEST(IntegrationFrameworks, BesselZeroYnuScalar_CellaiBoltzmannWeightsCellmemory) {
     Interpreter interp;
     expect_ok(interp, "yz = bessel_zero_ynu(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("yz"), ms::bessel_zero_ynu(0, 1), 1e-8);

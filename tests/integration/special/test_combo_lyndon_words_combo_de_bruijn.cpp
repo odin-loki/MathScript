@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -35,7 +37,7 @@ TEST(IntegrationSpecial,  LyndonDeBruijnTail27) {
     EXPECT_EQ(interp.state().matrices.at("db").rows(), 4u);
 }
 
-TEST(IntegrationSpecial,  BesselZeroYnuScalar) {
+TEST(IntegrationSpecial, BesselZeroYnuScalar_ComboLyndonWordsComboDeBruijn) {
     Interpreter interp;
     expect_ok(interp, "bz = bessel_zero_ynu(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bz"), ms::bessel_zero_ynu(0, 1), 1e-8);

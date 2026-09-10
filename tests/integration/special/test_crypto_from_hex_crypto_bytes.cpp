@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationSpecial,  CryptoHexBwtDecode) {
     EXPECT_EQ(interp.state().matrices.at("dec").rows(), 4u);
 }
 
-TEST(IntegrationSpecial,  StruveLScalar) {
+TEST(IntegrationSpecial, StruveLScalar_CryptoFromHexCryptoBytes) {
     Interpreter interp;
     expect_ok(interp, "sl = struve_l(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("sl"), ms::struve_l(0, 1.0), 1e-8);

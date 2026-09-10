@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  PolyGcdMonicTail27) {
     ASSERT_GT(interp.state().matrices.count("m"), 0u);
 }
 
-TEST(IntegrationSpecial,  StruveHScalar) {
+TEST(IntegrationSpecial, StruveHScalar_PolyGcdPolyMonicPipeline) {
     Interpreter interp;
     expect_ok(interp, "sh = struve_h(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("sh"), ms::struve_h(0, 1), 1e-8);

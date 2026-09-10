@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  Hull3dLinregTail16) {
     EXPECT_NEAR(interp.state().matrices.at("lr")(0, 0), 2.0, 1e-9);
 }
 
-TEST(IntegrationSpecial,  JacobiSnScalar) {
+TEST(IntegrationSpecial, JacobiSnScalar_GeoConvexHull3dStatsLinear) {
     Interpreter interp;
     expect_ok(interp, "js = jacobi_sn(0, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("js"), ms::jacobi_sn(0, 0.5), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  CtrbSosfilt) {
     EXPECT_EQ(interp.state().matrices.at("y").rows(), 5u);
 }
 
-TEST(IntegrationSpecial,  ChebyshevTScalar) {
+TEST(IntegrationSpecial, ChebyshevTScalar_ControlCtrbSignalSosfiltPipeline) {
     Interpreter interp;
     expect_ok(interp, "ct = chebyshev_t(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("ct"), ms::chebyshev_t(2, 0.5), 1e-8);

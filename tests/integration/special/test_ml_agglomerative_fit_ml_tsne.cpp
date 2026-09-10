@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -60,7 +62,7 @@ TEST(IntegrationSpecial,  MlAggloTsneGolombTail11) {
     EXPECT_NEAR(interp.state().matrices.at("GR")(4, 0), 10.0, 1e-9);
 }
 
-TEST(IntegrationSpecial,  BesselJScalar) {
+TEST(IntegrationSpecial, BesselJScalar_MlAgglomerativeFitMlTsne) {
     Interpreter interp;
 
     expect_ok(interp, "j = bessel_j(1, 1.0)");

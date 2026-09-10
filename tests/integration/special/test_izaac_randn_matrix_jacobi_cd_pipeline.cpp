@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -34,7 +36,7 @@ TEST(IntegrationSpecial,  IzaacRandnMatrix) {
     EXPECT_EQ(interp.state().matrices.at("rn").cols(), 3u);
 }
 
-TEST(IntegrationSpecial,  JacobiCdScalar) {
+TEST(IntegrationSpecial, JacobiCdScalar_IzaacRandnMatrixJacobiCdPipeline) {
     Interpreter interp;
     expect_ok(interp, "jc = jacobi_cd(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jc"), ms::jacobi_cd(0.5, 0.5), 1e-8);

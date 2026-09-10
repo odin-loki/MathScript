@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  NumthyCornacchia) {
     EXPECT_NEAR(xy(0, 1), 1.0, 1e-9);
 }
 
-TEST(IntegrationSpecial,  JacobiCnScalar) {
+TEST(IntegrationSpecial, JacobiCnScalar_NumthyCornacchiaJacobiCnPipeline) {
     Interpreter interp;
     expect_ok(interp, "jcn = jacobi_cn(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jcn"), ms::jacobi_cn(0.5, 0.5), 1e-8);

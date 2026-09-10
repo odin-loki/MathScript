@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  LaxWendroffReactionDiffTail14) {
     ASSERT_GT(interp.state().matrices.count("rd"), 0u);
 }
 
-TEST(IntegrationSpecial,  BesselZeroYnuScalar) {
+TEST(IntegrationSpecial, BesselZeroYnuScalar_PdeAdvection1dLaxWendroff) {
     Interpreter interp;
     expect_ok(interp, "z = bessel_zero_ynu(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("z"), ms::bessel_zero_ynu(0, 1), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -41,7 +43,7 @@ TEST(IntegrationControl,  KalmanPredictUpdate) {
     EXPECT_NEAR(interp.state().matrices.at("xu")(0, 0), 2.0 * 1.05 / 1.55, 1e-8);
 }
 
-TEST(IntegrationControl,  BesselKScalar) {
+TEST(IntegrationControl, BesselKScalar_ControlKalmanPredictControl) {
     Interpreter interp;
     expect_ok(interp, "bk = bessel_k(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bk"), ms::bessel_k(0, 1), 1e-8);

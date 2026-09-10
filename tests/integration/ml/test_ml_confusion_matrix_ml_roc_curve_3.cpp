@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -74,7 +76,7 @@ TEST(IntegrationMl,  MlMetricsGboostIsoAggloTsneGolombTail18) {
     EXPECT_EQ(interp.state().matrices.at("GR").rows(), 5u);
 }
 
-TEST(IntegrationMl,  NumthyGcdScalar) {
+TEST(IntegrationMl, NumthyGcdScalar_MlConfusionMatrixMlRocCurve3) {
     Interpreter interp;
     expect_ok(interp, "g = numthy_gcd(12, 18)");
     EXPECT_NEAR(interp.state().scalars.at("g"), 6.0, 1e-8);

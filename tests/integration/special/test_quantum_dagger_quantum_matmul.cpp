@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationSpecial,  MatmulDmIzaacTail16) {
     EXPECT_EQ(interp.state().matrices.at("rm").rows(), 3u);
 }
 
-TEST(IntegrationSpecial,  JacobiNsScalar) {
+TEST(IntegrationSpecial, JacobiNsScalar_QuantumDaggerQuantumMatmul) {
     Interpreter interp;
     expect_ok(interp, "jns = jacobi_ns(0.2, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("jns"), ms::jacobi_ns(0.2, 0.3), 1e-8);

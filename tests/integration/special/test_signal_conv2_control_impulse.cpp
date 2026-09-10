@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -44,7 +46,7 @@ TEST(IntegrationSpecial,  SignalConv2ImpulseResponse) {
     EXPECT_EQ(interp.state().matrices.at("imp").cols(), 2u);
 }
 
-TEST(IntegrationSpecial,  BesselYScalar) {
+TEST(IntegrationSpecial, BesselYScalar_SignalConv2ControlImpulse) {
     Interpreter interp;
     expect_ok(interp, "by = bessel_y(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("by"), ms::bessel_y(0, 1), 1e-8);

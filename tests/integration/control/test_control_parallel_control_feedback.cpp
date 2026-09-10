@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationControl,  ParallelFeedback) {
     EXPECT_GT(interp.state().matrices.at("F").rows(), 0u);
 }
 
-TEST(IntegrationControl,  BesselKScalar) {
+TEST(IntegrationControl, BesselKScalar_ControlParallelControlFeedback) {
     Interpreter interp;
     expect_ok(interp, "bk = bessel_k(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bk"), ms::bessel_k(0, 1), 1e-8);

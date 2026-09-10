@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  IzaacVrfProve) {
     ASSERT_GT(interp.state().matrices.count("proof"), 0u);
 }
 
-TEST(IntegrationSpecial,  JacobiDcScalar) {
+TEST(IntegrationSpecial, JacobiDcScalar_IzaacVrfKeygenIzaacVrfProve) {
     Interpreter interp;
     expect_ok(interp, "jd = jacobi_dc(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jd"), ms::jacobi_dc(0.5, 0.5), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -46,7 +48,7 @@ TEST(IntegrationSpecial,  GraphImagePoly) {
     EXPECT_EQ(interp.state().matrices.at("dp").rows(), 2u);
 }
 
-TEST(IntegrationSpecial,  SpecialScalar) {
+TEST(IntegrationSpecial, SpecialScalar_GraphPagerankGraphSccPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "hh = hermite_h(2, 0.5)");

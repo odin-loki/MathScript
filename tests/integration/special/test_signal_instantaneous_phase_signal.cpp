@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  PhaseUnwrapTail15) {
     EXPECT_EQ(interp.state().matrices.at("u").rows(), 5u);
 }
 
-TEST(IntegrationSpecial,  JacobiDnScalar) {
+TEST(IntegrationSpecial, JacobiDnScalar_SignalInstantaneousPhaseSignal) {
     Interpreter interp;
     expect_ok(interp, "dn = jacobi_dn(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("dn"), ms::jacobi_dn(0.5, 0.5), 1e-8);

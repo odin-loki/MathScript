@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -43,7 +45,7 @@ TEST(IntegrationSpecial,  HadamardHeat) {
     EXPECT_EQ(interp.state().matrices.at("hcn").rows(), 5u);
 }
 
-TEST(IntegrationSpecial,  BesselHScalar) {
+TEST(IntegrationSpecial, BesselHScalar_QuantumHadamardPdeHeat1dPipeline) {
     Interpreter interp;
     expect_ok(interp, "bh = bessel_h(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bh"), ms::bessel_h(0, 1), 1e-8);

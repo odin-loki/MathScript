@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -48,7 +50,7 @@ TEST(IntegrationSpecial,  QuantumMpcGbmBacktestTail14) {
     ASSERT_EQ(interp.state().matrices.at("bt").cols(), 4u);
 }
 
-TEST(IntegrationSpecial,  BesselYScalar) {
+TEST(IntegrationSpecial, BesselYScalar_QuantumSchmidtDecomposition2) {
     Interpreter interp;
     expect_ok(interp, "y = bessel_y(1, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("y"), ms::bessel_y(1, 1.0), 1e-8);

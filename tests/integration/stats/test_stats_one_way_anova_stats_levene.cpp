@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationStats,  AnovaVarianceTail15) {
     ASSERT_GT(interp.state().matrices.count("fk"), 0u);
 }
 
-TEST(IntegrationStats,  ProbRayleighPdfScalar) {
+TEST(IntegrationStats, ProbRayleighPdfScalar_StatsOneWayAnovaStatsLevene) {
     Interpreter interp;
     expect_ok(interp, "rp = prob_rayleigh_pdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("rp"), ms::rayleigh_pdf(1, 1), 1e-8);

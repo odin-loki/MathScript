@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationSpecial,  ImhistGray2rgbTail16) {
     EXPECT_EQ(interp.state().matrices.at("RGB2").cols(), 3u);
 }
 
-TEST(IntegrationSpecial,  JacobiSdScalar) {
+TEST(IntegrationSpecial, JacobiSdScalar_ImhistGray2rgbPipeline) {
     Interpreter interp;
     expect_ok(interp, "jsd = jacobi_sd(0.2, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("jsd"), ms::jacobi_sd(0.2, 0.3), 1e-8);

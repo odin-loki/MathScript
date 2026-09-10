@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationGraph,  EigenvectorKatzTail31) {
     EXPECT_EQ(interp.state().matrices.at("k").rows(), 3u);
 }
 
-TEST(IntegrationGraph,  AngerJScalar) {
+TEST(IntegrationGraph, AngerJScalar_GraphEigenvectorCentrality) {
     Interpreter interp;
     expect_ok(interp, "aj = anger_j(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("aj"), ms::anger_j(0, 1), 1e-8);

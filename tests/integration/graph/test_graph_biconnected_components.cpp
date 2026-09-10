@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationGraph,  BiconnectedEulerianTail31) {
     EXPECT_EQ(interp.state().matrices.at("ep").rows(), 4u);
 }
 
-TEST(IntegrationGraph,  NumthyGcdScalar) {
+TEST(IntegrationGraph, NumthyGcdScalar_GraphBiconnectedComponents) {
     Interpreter interp;
     expect_ok(interp, "g = numthy_gcd(48, 18)");
     EXPECT_NEAR(interp.state().scalars.at("g"), 6.0, 1e-8);

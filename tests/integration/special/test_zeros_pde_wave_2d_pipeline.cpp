@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -35,7 +37,7 @@ TEST(IntegrationSpecial,  Wave2d) {
     EXPECT_EQ(interp.state().matrices.at("w2").cols(), 7u);
 }
 
-TEST(IntegrationSpecial,  JacobiDsScalar) {
+TEST(IntegrationSpecial, JacobiDsScalar_ZerosPdeWave2dPipeline) {
     Interpreter interp;
     expect_ok(interp, "jds = jacobi_ds(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jds"), ms::jacobi_ds(0.5, 0.5), 1e-8);

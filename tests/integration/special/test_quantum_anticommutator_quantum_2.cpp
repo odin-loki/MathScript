@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationSpecial,  QuantumAntiTensorTail14) {
     EXPECT_EQ(interp.state().matrices.at("tp").rows(), 4u);
 }
 
-TEST(IntegrationSpecial,  LegendreQScalar) {
+TEST(IntegrationSpecial, LegendreQScalar_QuantumAnticommutatorQuantum2) {
     Interpreter interp;
     expect_ok(interp, "lq = legendre_q(1, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lq"), ms::legendre_q(1, 0.5), 1e-8);

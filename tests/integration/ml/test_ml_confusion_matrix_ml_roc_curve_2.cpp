@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -56,7 +58,7 @@ TEST(IntegrationMl,  MlMetricsTail11) {
     EXPECT_GE(interp.state().matrices.at("pr").rows(), 2u);
 }
 
-TEST(IntegrationMl,  HermiteHScalar) {
+TEST(IntegrationMl, HermiteHScalar_MlConfusionMatrixMlRocCurve2) {
     Interpreter interp;
 
     expect_ok(interp, "h = hermite_h(2, 0.5)");

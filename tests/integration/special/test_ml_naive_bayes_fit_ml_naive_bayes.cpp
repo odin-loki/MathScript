@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  NaiveBayesFitPredict) {
     EXPECT_NEAR(interp.state().matrices.at("nb_p")(0, 0), 0.0, 1e-6);
 }
 
-TEST(IntegrationSpecial,  ChebyshevUScalar) {
+TEST(IntegrationSpecial, ChebyshevUScalar_MlNaiveBayesFitMlNaiveBayes) {
     Interpreter interp;
     expect_ok(interp, "cu = chebyshev_u(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cu"), ms::chebyshev_u(2, 0.5), 1e-8);

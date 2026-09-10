@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  RestrictedSquarefreeTail27) {
     ASSERT_GT(interp.state().matrices.count("sf"), 0u);
 }
 
-TEST(IntegrationSpecial,  StruveLScalar) {
+TEST(IntegrationSpecial, StruveLScalar_ComboRestrictedPartitionsPoly) {
     Interpreter interp;
     expect_ok(interp, "sl = struve_l(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("sl"), ms::struve_l(0, 1), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationSpecial,  MertonBlDefaultOmegaTail28) {
     ASSERT_GT(interp.state().matrices.count("post"), 0u);
 }
 
-TEST(IntegrationSpecial,  BesselYScalar) {
+TEST(IntegrationSpecial, BesselYScalar_FinanceMertonImpliedAsset) {
     Interpreter interp;
     expect_ok(interp, "by = bessel_y(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("by"), ms::bessel_y(0, 1.0), 1e-8);
