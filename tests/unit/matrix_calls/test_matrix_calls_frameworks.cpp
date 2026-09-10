@@ -201,3 +201,31 @@ TEST(MatrixCallUndefinedOperand_frameworks, izaac_fuzz_mutate) {
 TEST(MatrixCallUndefinedOperand_frameworks, izaac_vrf_prove) {
     expect_undefined_operand_propagates("izaac_vrf_prove", 2);
 }
+
+TEST(MatrixCallBadOperandAt_frameworks, cellai_cell_to_cypha_features_arg1) {
+    expect_bad_operand_at("cellai_cell_to_cypha_features", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, cellai_hebbian_update_arg1) {
+    expect_bad_operand_at("cellai_hebbian_update", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, cellai_hebbian_update_arg2) {
+    expect_bad_operand_at("cellai_hebbian_update", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, gria_divergence_trajectory_arg1) {
+    expect_bad_operand_at("gria_divergence_trajectory", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, izaac_decrypt_arg1) {
+    expect_bad_operand_at("izaac_decrypt", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, izaac_encrypt_arg1) {
+    expect_bad_operand_at("izaac_encrypt", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_frameworks, izaac_vrf_prove_arg1) {
+    expect_bad_operand_at("izaac_vrf_prove", 2, 1);
+}

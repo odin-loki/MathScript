@@ -274,3 +274,7 @@ TEST(MatrixCallUndefinedOperand_geo, geo_upper_hull) {
 TEST(MatrixCallUndefinedOperand_geo, geo_voronoi) {
     expect_undefined_operand_propagates("geo_voronoi", 1);
 }
+
+TEST(MatrixCallBadOperandAt_geo, geo_bspline_eval_arg1) {
+    expect_bad_operand_at("geo_bspline_eval", 4, 1);
+}

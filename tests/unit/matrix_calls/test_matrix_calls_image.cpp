@@ -323,3 +323,11 @@ TEST(MatrixCallUndefinedOperand_image, threshold_otsu) {
 TEST(MatrixCallUndefinedOperand_image, watershed) {
     expect_undefined_operand_propagates("watershed", 2);
 }
+
+TEST(MatrixCallBadOperandAt_image, radon_arg1) {
+    expect_bad_operand_at("radon", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_image, watershed_arg1) {
+    expect_bad_operand_at("watershed", 2, 1);
+}

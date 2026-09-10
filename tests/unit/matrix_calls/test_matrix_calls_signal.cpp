@@ -255,3 +255,35 @@ TEST(MatrixCallUndefinedOperand_signal, signal_xcorr) {
 TEST(MatrixCallUndefinedOperand_signal, signal_xcov) {
     expect_undefined_operand_propagates("signal_xcov", 3);
 }
+
+TEST(MatrixCallBadOperandAt_signal, signal_coherence_arg1) {
+    expect_bad_operand_at("signal_coherence", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_conv2_arg1) {
+    expect_bad_operand_at("signal_conv2", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_deconv_arg1) {
+    expect_bad_operand_at("signal_deconv", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_lms_arg1) {
+    expect_bad_operand_at("signal_lms", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_lms_weights_arg1) {
+    expect_bad_operand_at("signal_lms_weights", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_sosfilt_arg1) {
+    expect_bad_operand_at("signal_sosfilt", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_xcorr_arg1) {
+    expect_bad_operand_at("signal_xcorr", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_signal, signal_xcov_arg1) {
+    expect_bad_operand_at("signal_xcov", 3, 1);
+}

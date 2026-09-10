@@ -413,3 +413,227 @@ TEST(MatrixCallUndefinedOperand_control, control_step_response) {
 TEST(MatrixCallUndefinedOperand_control, control_tf2ss) {
     expect_undefined_operand_propagates("control_tf2ss", 2);
 }
+
+TEST(MatrixCallBadOperandAt_control, control_bode_arg1) {
+    expect_bad_operand_at("control_bode", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_arg1) {
+    expect_bad_operand_at("control_c2d", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_arg2) {
+    expect_bad_operand_at("control_c2d", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_arg3) {
+    expect_bad_operand_at("control_c2d", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_b_arg1) {
+    expect_bad_operand_at("control_c2d_b", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_b_arg2) {
+    expect_bad_operand_at("control_c2d_b", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_b_arg3) {
+    expect_bad_operand_at("control_c2d_b", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_euler_arg1) {
+    expect_bad_operand_at("control_c2d_euler", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_euler_arg2) {
+    expect_bad_operand_at("control_c2d_euler", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_euler_arg3) {
+    expect_bad_operand_at("control_c2d_euler", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_tf_arg1) {
+    expect_bad_operand_at("control_c2d_tf", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_tf_tustin_arg1) {
+    expect_bad_operand_at("control_c2d_tf_tustin", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_tustin_arg1) {
+    expect_bad_operand_at("control_c2d_tustin", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_tustin_arg2) {
+    expect_bad_operand_at("control_c2d_tustin", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_c2d_tustin_arg3) {
+    expect_bad_operand_at("control_c2d_tustin", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_ctrb_arg1) {
+    expect_bad_operand_at("control_ctrb", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_ctrb_gram_arg1) {
+    expect_bad_operand_at("control_ctrb_gram", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_arg1) {
+    expect_bad_operand_at("control_d2c", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_arg2) {
+    expect_bad_operand_at("control_d2c", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_arg3) {
+    expect_bad_operand_at("control_d2c", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_euler_arg1) {
+    expect_bad_operand_at("control_d2c_euler", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_euler_arg2) {
+    expect_bad_operand_at("control_d2c_euler", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_euler_arg3) {
+    expect_bad_operand_at("control_d2c_euler", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_tf_arg1) {
+    expect_bad_operand_at("control_d2c_tf", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_tf_tustin_arg1) {
+    expect_bad_operand_at("control_d2c_tf_tustin", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_tustin_arg1) {
+    expect_bad_operand_at("control_d2c_tustin", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_tustin_arg2) {
+    expect_bad_operand_at("control_d2c_tustin", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_d2c_tustin_arg3) {
+    expect_bad_operand_at("control_d2c_tustin", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_feedback_arg1) {
+    expect_bad_operand_at("control_feedback", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_feedback_arg2) {
+    expect_bad_operand_at("control_feedback", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_feedback_arg3) {
+    expect_bad_operand_at("control_feedback", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_impulse_response_arg1) {
+    expect_bad_operand_at("control_impulse_response", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_arg1) {
+    expect_bad_operand_at("control_kalman_predict", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_arg2) {
+    expect_bad_operand_at("control_kalman_predict", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_arg3) {
+    expect_bad_operand_at("control_kalman_predict", 4, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_cov_arg1) {
+    expect_bad_operand_at("control_kalman_predict_cov", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_cov_arg2) {
+    expect_bad_operand_at("control_kalman_predict_cov", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_predict_cov_arg3) {
+    expect_bad_operand_at("control_kalman_predict_cov", 4, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_arg1) {
+    expect_bad_operand_at("control_kalman_update", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_arg2) {
+    expect_bad_operand_at("control_kalman_update", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_arg3) {
+    expect_bad_operand_at("control_kalman_update", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_arg4) {
+    expect_bad_operand_at("control_kalman_update", 5, 4);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_cov_arg1) {
+    expect_bad_operand_at("control_kalman_update_cov", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_cov_arg2) {
+    expect_bad_operand_at("control_kalman_update_cov", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_cov_arg3) {
+    expect_bad_operand_at("control_kalman_update_cov", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_kalman_update_cov_arg4) {
+    expect_bad_operand_at("control_kalman_update_cov", 5, 4);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_obsv_arg1) {
+    expect_bad_operand_at("control_obsv", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_obsv_gram_arg1) {
+    expect_bad_operand_at("control_obsv_gram", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_parallel_arg1) {
+    expect_bad_operand_at("control_parallel", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_parallel_arg2) {
+    expect_bad_operand_at("control_parallel", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_parallel_arg3) {
+    expect_bad_operand_at("control_parallel", 4, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_series_arg1) {
+    expect_bad_operand_at("control_series", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_series_arg2) {
+    expect_bad_operand_at("control_series", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_series_arg3) {
+    expect_bad_operand_at("control_series", 4, 3);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_step_response_arg1) {
+    expect_bad_operand_at("control_step_response", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_control, control_tf2ss_arg1) {
+    expect_bad_operand_at("control_tf2ss", 2, 1);
+}

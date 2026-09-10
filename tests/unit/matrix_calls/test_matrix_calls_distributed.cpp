@@ -173,3 +173,47 @@ TEST(MatrixCallUndefinedOperand_distributed, dist_solve) {
 TEST(MatrixCallUndefinedOperand_distributed, dist_tfqmr) {
     expect_undefined_operand_propagates("dist_tfqmr", 2);
 }
+
+TEST(MatrixCallBadOperandAt_distributed, dist_bicgstab_arg1) {
+    expect_bad_operand_at("dist_bicgstab", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_cg_arg1) {
+    expect_bad_operand_at("dist_cg", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_gmres_arg1) {
+    expect_bad_operand_at("dist_gmres", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_jacobi_arg1) {
+    expect_bad_operand_at("dist_jacobi", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_lsmr_arg1) {
+    expect_bad_operand_at("dist_lsmr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_lsqr_arg1) {
+    expect_bad_operand_at("dist_lsqr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_matmul_arg1) {
+    expect_bad_operand_at("dist_matmul", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_minres_arg1) {
+    expect_bad_operand_at("dist_minres", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_qmr_arg1) {
+    expect_bad_operand_at("dist_qmr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_solve_arg1) {
+    expect_bad_operand_at("dist_solve", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_distributed, dist_tfqmr_arg1) {
+    expect_bad_operand_at("dist_tfqmr", 2, 1);
+}

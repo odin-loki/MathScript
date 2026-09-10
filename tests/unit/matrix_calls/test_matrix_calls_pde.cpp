@@ -214,3 +214,19 @@ TEST(MatrixCallUndefinedOperand_pde, pde_wave_1d) {
 TEST(MatrixCallUndefinedOperand_pde, pde_wave_2d) {
     expect_undefined_operand_propagates("pde_wave_2d", 7);
 }
+
+TEST(MatrixCallBadOperandAt_pde, pde_helmholtz_2d_arg4) {
+    expect_bad_operand_at("pde_helmholtz_2d", 5, 4);
+}
+
+TEST(MatrixCallBadOperandAt_pde, pde_laplace_2d_arg2) {
+    expect_bad_operand_at("pde_laplace_2d", 3, 2);
+}
+
+TEST(MatrixCallBadOperandAt_pde, pde_wave_1d_arg1) {
+    expect_bad_operand_at("pde_wave_1d", 6, 1);
+}
+
+TEST(MatrixCallBadOperandAt_pde, pde_wave_2d_arg1) {
+    expect_bad_operand_at("pde_wave_2d", 7, 1);
+}

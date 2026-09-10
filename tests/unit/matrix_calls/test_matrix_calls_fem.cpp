@@ -283,3 +283,23 @@ TEST(MatrixCallUndefinedOperand_fem, fem_stiffness_2d) {
 TEST(MatrixCallUndefinedOperand_fem, fem_stiffness_3d) {
     expect_undefined_operand_propagates("fem_stiffness_3d", 1);
 }
+
+TEST(MatrixCallBadOperandAt_fem, fem_apply_dirichlet_arg1) {
+    expect_bad_operand_at("fem_apply_dirichlet", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_fem, fem_apply_dirichlet_arg2) {
+    expect_bad_operand_at("fem_apply_dirichlet", 4, 2);
+}
+
+TEST(MatrixCallBadOperandAt_fem, fem_apply_dirichlet_arg3) {
+    expect_bad_operand_at("fem_apply_dirichlet", 4, 3);
+}
+
+TEST(MatrixCallBadOperandAt_fem, fem_solve_arg1) {
+    expect_bad_operand_at("fem_solve", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_fem, fem_solve_3d_arg1) {
+    expect_bad_operand_at("fem_solve_3d", 2, 1);
+}

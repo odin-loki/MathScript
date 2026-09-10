@@ -124,3 +124,23 @@ TEST(MatrixCallUndefinedOperand_core, sparse_spmv) {
 TEST(MatrixCallUndefinedOperand_core, sparse_to_dense) {
     expect_undefined_operand_propagates("sparse_to_dense", 1);
 }
+
+TEST(MatrixCallBadOperandAt_core, sparse_add_arg1) {
+    expect_bad_operand_at("sparse_add", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_core, sparse_from_coo_arg2) {
+    expect_bad_operand_at("sparse_from_coo", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_core, sparse_from_coo_arg3) {
+    expect_bad_operand_at("sparse_from_coo", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_core, sparse_from_coo_arg4) {
+    expect_bad_operand_at("sparse_from_coo", 5, 4);
+}
+
+TEST(MatrixCallBadOperandAt_core, sparse_spmv_arg1) {
+    expect_bad_operand_at("sparse_spmv", 2, 1);
+}

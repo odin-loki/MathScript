@@ -308,3 +308,15 @@ TEST(MatrixCallUndefinedOperand_compress, wavelet_compress_vec) {
 TEST(MatrixCallUndefinedOperand_compress, wavelet_decompress_vec) {
     expect_undefined_operand_propagates("wavelet_decompress_vec", 1);
 }
+
+TEST(MatrixCallBadOperandAt_compress, ans_decode_vec_arg1) {
+    expect_bad_operand_at("ans_decode_vec", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_compress, arithmetic_decode_vec_arg1) {
+    expect_bad_operand_at("arithmetic_decode_vec", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_compress, huffman_decode_vec_arg1) {
+    expect_bad_operand_at("huffman_decode_vec", 2, 1);
+}

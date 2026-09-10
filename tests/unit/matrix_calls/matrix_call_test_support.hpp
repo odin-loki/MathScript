@@ -41,6 +41,27 @@ inline std::vector<std::string> undefined_args(std::size_t count) {
     return args;
 }
 
+/// Dispatch with a real matrix literal everywhere except one argument.
+///
+/// A probe that makes every argument undefined only ever reaches the first
+/// `resolve_operand`; the second and later propagations sit behind it, untested. A
+/// literal is used rather than a session variable so the probe depends on nothing
+/// but the parser.
+inline Result<Matrix<double>> dispatch_with_bad_arg(const std::string& callee,
+                                                    std::size_t arity,
+                                                    std::size_t bad_index) {
+    Interpreter interp;
+    MatrixCallAssign assign;
+    assign.target = "__ms_dispatch_target";
+    assign.callee = callee;
+    assign.args.reserve(arity);
+    for (std::size_t i = 0; i < arity; ++i) {
+        assign.args.push_back(i == bad_index ? "__ms_no_such_operand"
+                                             : "[1, 2; 3, 4]");
+    }
+    return dispatch_matrix_call(interp, assign);
+}
+
 inline Result<Matrix<double>> dispatch(const std::string& callee, std::size_t arity) {
     Interpreter interp;
     MatrixCallAssign assign;
@@ -120,6 +141,22 @@ inline void expect_undefined_operand_propagates(const char* callee, std::size_t 
     EXPECT_FALSE(is_unsupported(r))
         << callee << " rejected " << arity << " argument(s), which the manifest records "
         << "as an accepted arity";
+}
+
+/// An undefined operand at any position fails cleanly.
+///
+/// The contract is the same as for position 0, but it has to hold for every
+/// argument the handler resolves: a caller who mistypes the third name should get
+/// an error naming the problem, not a crash and not a result computed from the two
+/// arguments that did resolve.
+inline void expect_bad_operand_at(const char* callee, std::size_t arity,
+                                  std::size_t bad_index) {
+    const auto r = dispatch_with_bad_arg(callee, arity, bad_index);
+    ASSERT_FALSE(r.has_value())
+        << callee << " returned a matrix with argument " << bad_index << " undefined";
+    EXPECT_FALSE(is_unsupported(r))
+        << callee << " rejected " << arity << " argument(s), which the manifest "
+        << "records as an accepted arity";
 }
 
 } // namespace ms::interp::testing

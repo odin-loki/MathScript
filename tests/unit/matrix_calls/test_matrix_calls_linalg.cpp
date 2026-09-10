@@ -614,3 +614,59 @@ TEST(MatrixCallUndefinedOperand_linalg, tril) {
 TEST(MatrixCallUndefinedOperand_linalg, triu) {
     expect_undefined_operand_propagates("triu", 1);
 }
+
+TEST(MatrixCallBadOperandAt_linalg, bicgstab_arg1) {
+    expect_bad_operand_at("bicgstab", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, cg_arg1) {
+    expect_bad_operand_at("cg", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, gmres_arg1) {
+    expect_bad_operand_at("gmres", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, jacobi_arg1) {
+    expect_bad_operand_at("jacobi", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, kron_arg1) {
+    expect_bad_operand_at("kron", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, lsmr_arg1) {
+    expect_bad_operand_at("lsmr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, lsqr_arg1) {
+    expect_bad_operand_at("lsqr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, matmul_arg1) {
+    expect_bad_operand_at("matmul", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, minres_arg1) {
+    expect_bad_operand_at("minres", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, qmr_arg1) {
+    expect_bad_operand_at("qmr", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, solve_arg1) {
+    expect_bad_operand_at("solve", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, solve_sylvester_arg1) {
+    expect_bad_operand_at("solve_sylvester", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, solve_sylvester_arg2) {
+    expect_bad_operand_at("solve_sylvester", 3, 2);
+}
+
+TEST(MatrixCallBadOperandAt_linalg, tfqmr_arg1) {
+    expect_bad_operand_at("tfqmr", 2, 1);
+}

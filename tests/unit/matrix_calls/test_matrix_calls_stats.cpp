@@ -263,3 +263,27 @@ TEST(MatrixCallUndefinedOperand_stats, stats_shapiro_wilk) {
 TEST(MatrixCallUndefinedOperand_stats, stats_wilcoxon_signed_rank) {
     expect_undefined_operand_propagates("stats_wilcoxon_signed_rank", 2);
 }
+
+TEST(MatrixCallBadOperandAt_stats, stats_kde_arg1) {
+    expect_bad_operand_at("stats_kde", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_stats, stats_ks_2sample_arg1) {
+    expect_bad_operand_at("stats_ks_2sample", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_stats, stats_linear_regression_arg1) {
+    expect_bad_operand_at("stats_linear_regression", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_stats, stats_mann_whitney_u_arg1) {
+    expect_bad_operand_at("stats_mann_whitney_u", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_stats, stats_multiple_regression_arg1) {
+    expect_bad_operand_at("stats_multiple_regression", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_stats, stats_wilcoxon_signed_rank_arg1) {
+    expect_bad_operand_at("stats_wilcoxon_signed_rank", 2, 1);
+}

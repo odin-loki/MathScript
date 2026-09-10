@@ -133,6 +133,25 @@ def render_domain(domain: str, handlers: list[dict]) -> tuple[str, int]:
         lines.append("")
         count += 1
 
+    # One probe per resolved argument position beyond the first. Position 0 is
+    # already covered by the undefined-operand test above; positions after it are
+    # only reachable when the earlier arguments resolve, so those get a real matrix
+    # literal and this one does not.
+    for h in handlers:
+        positions = [p for p in h.get("resolve_positions", []) if p > 0]
+        if not positions:
+            continue
+        arity = max((a for a in h["arities"] if a > max(positions)), default=None)
+        if arity is None:
+            continue
+        sym = ident(h["callee"])
+        for pos in positions:
+            lines.append(f'TEST(MatrixCallBadOperandAt_{suite}, {sym}_arg{pos}) {{')
+            lines.append(f'    expect_bad_operand_at("{h["callee"]}", {arity}, {pos});')
+            lines.append("}")
+            lines.append("")
+            count += 1
+
     return "\n".join(lines).rstrip("\n") + "\n", count
 
 

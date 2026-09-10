@@ -237,6 +237,12 @@ def parse_handler(path: pathlib.Path) -> dict:
         "arities": arities,
         "open_ended": open_ended,
         "resolves_first": "resolve_operand(assign.args[0])" in body.replace(" ", ""),
+        # Every argument position the handler resolves as a matrix operand. Each one
+        # is followed by its own `if (!x) return std::unexpected(x.error())`, and a
+        # probe that makes only args[0] fail never reaches the later ones.
+        "resolve_positions": sorted(
+            {int(i) for i in re.findall(
+                r"resolve_operand\(assign\.args\[(\d+)\]\)", body.replace(" ", ""))}),
         "helpers": sorted(h for h in HELPERS if h in body),
         "domain_errors": [{"fn": f, "message": msg} for f, msg in errors],
     }

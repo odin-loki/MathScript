@@ -158,3 +158,11 @@ TEST(MatrixCallUndefinedOperand_topo, topo_vietoris_rips) {
 TEST(MatrixCallUndefinedOperand_topo, topo_witness_complex) {
     expect_undefined_operand_propagates("topo_witness_complex", 3);
 }
+
+TEST(MatrixCallBadOperandAt_topo, topo_betti_curve_arg1) {
+    expect_bad_operand_at("topo_betti_curve", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_topo, topo_witness_complex_arg1) {
+    expect_bad_operand_at("topo_witness_complex", 4, 1);
+}

@@ -38,3 +38,11 @@ TEST(MatrixCallUndefinedOperand_tensorops, tensorops_einsum) {
 TEST(MatrixCallUndefinedOperand_tensorops, tensorops_matmul) {
     expect_undefined_operand_propagates("tensorops_matmul", 2);
 }
+
+TEST(MatrixCallBadOperandAt_tensorops, tensorops_einsum_arg1) {
+    expect_bad_operand_at("tensorops_einsum", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_tensorops, tensorops_matmul_arg1) {
+    expect_bad_operand_at("tensorops_matmul", 2, 1);
+}

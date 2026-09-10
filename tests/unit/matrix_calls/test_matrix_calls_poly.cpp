@@ -308,3 +308,51 @@ TEST(MatrixCallUndefinedOperand_poly, poly_squarefree) {
 TEST(MatrixCallUndefinedOperand_poly, poly_sylvester) {
     expect_undefined_operand_propagates("poly_sylvester", 2);
 }
+
+TEST(MatrixCallBadOperandAt_poly, poly_div_quot_arg1) {
+    expect_bad_operand_at("poly_div_quot", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_eval_at_arg1) {
+    expect_bad_operand_at("poly_eval_at", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_fit_arg1) {
+    expect_bad_operand_at("poly_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_gcd_arg1) {
+    expect_bad_operand_at("poly_gcd", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_interp_hermite_arg1) {
+    expect_bad_operand_at("poly_interp_hermite", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_interp_hermite_arg2) {
+    expect_bad_operand_at("poly_interp_hermite", 3, 2);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_interp_newton_arg1) {
+    expect_bad_operand_at("poly_interp_newton", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_lagrange_arg1) {
+    expect_bad_operand_at("poly_lagrange", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_lcm_arg1) {
+    expect_bad_operand_at("poly_lcm", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_mod_arg1) {
+    expect_bad_operand_at("poly_mod", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_partial_fractions_arg1) {
+    expect_bad_operand_at("poly_partial_fractions", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_poly, poly_sylvester_arg1) {
+    expect_bad_operand_at("poly_sylvester", 2, 1);
+}

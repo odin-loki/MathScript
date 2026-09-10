@@ -220,3 +220,27 @@ TEST(MatrixCallUndefinedOperand_cfd, cfd_upwind_step_2d) {
 TEST(MatrixCallUndefinedOperand_cfd, cfd_upwind_step_3d) {
     expect_undefined_operand_propagates("cfd_upwind_step_3d", 6);
 }
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_run_advection_arg1) {
+    expect_bad_operand_at("cfd_run_advection", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_run_advection_2d_arg1) {
+    expect_bad_operand_at("cfd_run_advection_2d", 6, 1);
+}
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_run_advection_3d_arg1) {
+    expect_bad_operand_at("cfd_run_advection_3d", 7, 1);
+}
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_upwind_step_1d_arg1) {
+    expect_bad_operand_at("cfd_upwind_step_1d", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_upwind_step_2d_arg1) {
+    expect_bad_operand_at("cfd_upwind_step_2d", 8, 1);
+}
+
+TEST(MatrixCallBadOperandAt_cfd, cfd_upwind_step_3d_arg1) {
+    expect_bad_operand_at("cfd_upwind_step_3d", 9, 1);
+}

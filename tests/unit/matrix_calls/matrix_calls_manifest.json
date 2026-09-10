@@ -19,6 +19,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -45,6 +48,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -71,6 +78,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -97,6 +107,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -123,6 +137,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -151,6 +168,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -179,6 +199,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -205,6 +228,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -231,6 +258,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -257,6 +287,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -288,6 +321,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -323,6 +359,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -350,6 +389,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -376,6 +418,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -402,6 +447,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -428,6 +476,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -460,6 +511,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -488,6 +540,9 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [
+        1
+      ],
       "helpers": [
         "resolve_operand",
         "session_objects"
@@ -523,6 +578,11 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -550,6 +610,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "session_objects"
       ],
@@ -584,6 +645,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg",
         "session_objects"
@@ -619,6 +681,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -649,6 +712,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -679,6 +743,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -713,6 +778,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -740,6 +806,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -770,6 +837,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -800,6 +868,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -826,6 +895,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -853,6 +926,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -880,6 +957,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -908,6 +989,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -936,6 +1020,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -964,6 +1051,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -992,6 +1082,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -1022,6 +1116,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -1050,6 +1148,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -1077,6 +1179,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1103,6 +1209,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1129,6 +1238,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1168,6 +1278,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1207,6 +1318,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1238,6 +1350,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1269,6 +1382,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1308,6 +1422,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1339,6 +1454,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1378,6 +1494,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1404,6 +1523,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1430,6 +1552,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1469,6 +1592,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -1500,6 +1624,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -1526,6 +1651,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -1552,6 +1678,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1578,6 +1707,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1604,6 +1736,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -1633,6 +1769,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1663,6 +1805,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1695,6 +1843,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1723,6 +1877,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1757,6 +1915,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1789,6 +1951,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1817,6 +1985,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1843,6 +2015,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -1869,6 +2045,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1905,6 +2087,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1933,6 +2121,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1967,6 +2159,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -1999,6 +2195,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -2028,6 +2230,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -2062,6 +2270,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -2093,6 +2305,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2119,6 +2337,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2145,6 +2369,13 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2171,6 +2402,13 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2197,6 +2435,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2223,6 +2465,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2249,6 +2495,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2275,6 +2527,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2301,6 +2559,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2329,6 +2590,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -2360,6 +2625,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2386,6 +2655,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2412,6 +2684,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2438,6 +2713,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -2462,6 +2738,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2496,6 +2775,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2522,6 +2804,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2548,6 +2833,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2578,6 +2866,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -2608,6 +2897,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -2635,6 +2925,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2661,6 +2955,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2687,6 +2985,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2713,6 +3015,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2739,6 +3045,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2765,6 +3075,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2791,6 +3105,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2817,6 +3135,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2843,6 +3165,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2869,6 +3195,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2895,6 +3225,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2921,6 +3255,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2947,6 +3284,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -2977,6 +3317,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -3003,6 +3344,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3029,6 +3376,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3055,6 +3403,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3081,6 +3430,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -3108,6 +3460,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -3135,6 +3490,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -3162,6 +3520,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -3191,6 +3550,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -3220,6 +3580,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -3249,6 +3610,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -3278,6 +3640,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -3305,6 +3668,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3335,6 +3699,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3365,6 +3730,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -3399,6 +3765,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3425,6 +3795,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3451,6 +3825,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3479,6 +3856,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3507,6 +3887,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3533,6 +3916,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3559,6 +3945,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3585,6 +3974,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3611,6 +4003,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3637,6 +4032,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -3664,6 +4062,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3690,6 +4091,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3716,6 +4120,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3743,6 +4150,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3773,6 +4181,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -3799,6 +4210,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -3830,6 +4245,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -3861,6 +4282,12 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2,
+        3
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -3893,6 +4320,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -3924,6 +4355,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -3955,6 +4390,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -3981,6 +4417,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4007,6 +4446,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4044,6 +4486,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -4075,6 +4520,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -4103,6 +4551,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4130,6 +4581,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -4165,6 +4620,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -4193,6 +4651,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4219,6 +4680,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4245,6 +4709,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4271,6 +4738,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -4304,6 +4772,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4333,6 +4804,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4362,6 +4836,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -4391,6 +4868,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -4418,6 +4898,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4444,6 +4927,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4470,6 +4956,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4496,6 +4985,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4522,6 +5014,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4548,6 +5043,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4574,6 +5073,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4609,6 +5111,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4640,6 +5145,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4666,6 +5174,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4692,6 +5203,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -4728,6 +5242,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4754,6 +5271,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4780,6 +5300,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4806,6 +5329,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4832,6 +5358,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4858,6 +5387,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4884,6 +5416,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -4915,6 +5450,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4941,6 +5479,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4967,6 +5508,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -4993,6 +5537,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5019,6 +5566,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5045,6 +5595,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5071,6 +5624,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5097,6 +5653,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5123,6 +5682,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5149,6 +5711,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5175,6 +5740,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5201,6 +5769,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5228,6 +5799,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -5255,6 +5829,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5281,6 +5858,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -5317,6 +5897,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5343,6 +5926,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5369,6 +5955,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5395,6 +5984,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5421,6 +6013,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5447,6 +6042,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5473,6 +6071,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5499,6 +6100,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5525,6 +6129,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5551,6 +6158,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5577,6 +6187,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -5608,6 +6221,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -5643,6 +6260,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -5675,6 +6293,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -5706,6 +6327,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5732,6 +6356,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5759,6 +6386,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -5792,6 +6422,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -5827,6 +6460,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5853,6 +6489,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5879,6 +6519,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5905,6 +6548,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5931,6 +6577,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5957,6 +6606,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -5984,6 +6636,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6019,6 +6674,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6051,6 +6709,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6078,6 +6739,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6118,6 +6782,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6150,6 +6817,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6177,6 +6847,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6203,6 +6877,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6234,6 +6911,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6269,6 +6949,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6297,6 +6980,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6337,6 +7023,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6365,6 +7054,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6404,6 +7096,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6435,6 +7130,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6465,6 +7163,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -6492,6 +7193,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6518,6 +7222,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6544,6 +7251,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6578,6 +7289,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6604,6 +7319,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6631,6 +7350,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -6662,6 +7384,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -6689,6 +7412,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -6716,6 +7440,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -6740,6 +7465,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6766,6 +7495,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6792,6 +7525,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6818,6 +7555,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6844,6 +7584,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6870,6 +7613,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6896,6 +7642,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -6923,6 +7672,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -6949,6 +7701,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -6979,6 +7732,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7005,6 +7761,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7031,6 +7791,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7057,6 +7821,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7083,6 +7851,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7109,6 +7880,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -7141,6 +7915,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7167,6 +7944,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7193,6 +7973,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7220,6 +8003,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7247,6 +8033,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7274,6 +8063,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7301,6 +8093,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7327,6 +8123,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -7362,6 +8161,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7390,6 +8193,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7425,6 +8232,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7453,6 +8264,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7485,6 +8299,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7512,6 +8330,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7544,6 +8365,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7575,6 +8400,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7601,6 +8430,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7628,6 +8461,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7655,6 +8492,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7686,6 +8526,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7712,6 +8556,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7741,6 +8589,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7780,6 +8632,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7809,6 +8665,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7844,6 +8703,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7870,6 +8733,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7901,6 +8767,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7927,6 +8797,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -7958,6 +8832,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -7984,6 +8862,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8011,6 +8893,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8038,6 +8924,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8069,6 +8959,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8095,6 +8989,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8121,6 +9019,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8147,6 +9049,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8173,6 +9079,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8199,6 +9109,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8225,6 +9139,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8251,6 +9168,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8277,6 +9197,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8303,6 +9227,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8329,6 +9257,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8355,6 +9287,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8386,6 +9321,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8417,6 +9355,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8443,6 +9385,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8469,6 +9415,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8495,6 +9445,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8523,6 +9477,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8558,6 +9516,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8584,6 +9546,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -8615,6 +9581,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8641,6 +9611,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8669,6 +9643,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8704,6 +9681,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8730,6 +9710,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8758,6 +9742,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8785,6 +9773,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8814,6 +9806,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -8845,6 +9840,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg",
         "parse_uint64_arg"
@@ -8876,6 +9872,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8910,6 +9909,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8936,6 +9938,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -8962,6 +9967,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -8988,6 +9994,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -9014,6 +10023,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9049,6 +10059,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9084,6 +10095,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9119,6 +10131,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9154,6 +10167,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9189,6 +10203,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -9215,6 +10230,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9250,6 +10266,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -9288,6 +10305,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9315,6 +10333,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9342,6 +10361,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9366,6 +10386,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9390,6 +10411,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9414,6 +10436,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9438,6 +10461,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9462,6 +10486,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9486,6 +10511,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [],
       "domain_errors": [
         {
@@ -9514,6 +10540,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -9540,6 +10567,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -9566,6 +10596,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9597,6 +10630,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9628,6 +10664,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9659,6 +10698,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9690,6 +10732,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9721,6 +10766,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9752,6 +10800,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9784,6 +10835,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        4
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9811,6 +10866,9 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [
+        2
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9842,6 +10900,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9869,6 +10930,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9900,6 +10964,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9931,6 +10998,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9962,6 +11033,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -9993,6 +11068,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10019,6 +11097,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -10052,6 +11133,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10078,6 +11162,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10104,6 +11192,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10130,6 +11222,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10156,6 +11251,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10182,6 +11280,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -10218,6 +11320,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10244,6 +11350,11 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10270,6 +11381,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10296,6 +11411,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10322,6 +11441,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10348,6 +11471,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10374,6 +11501,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10400,6 +11530,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10426,6 +11560,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10452,6 +11589,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10478,6 +11618,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10504,6 +11647,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10530,6 +11676,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10556,6 +11706,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10583,6 +11736,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -10614,6 +11770,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10640,6 +11799,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10666,6 +11829,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10692,6 +11859,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -10718,6 +11886,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10744,6 +11916,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10770,6 +11945,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10796,6 +11974,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10822,6 +12003,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -10848,6 +12030,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10875,6 +12060,9 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -10910,6 +12098,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10936,6 +12127,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -10962,6 +12154,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -10988,6 +12183,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11014,6 +12212,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11040,6 +12242,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11066,6 +12272,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11092,6 +12302,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11123,6 +12336,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11154,6 +12370,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11185,6 +12404,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -11220,6 +12443,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -11255,6 +12482,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11282,6 +12513,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11314,6 +12549,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -11342,6 +12578,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],
@@ -11368,6 +12605,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -11404,6 +12644,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -11434,6 +12675,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11460,6 +12704,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11486,6 +12733,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11520,6 +12770,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11546,6 +12799,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11572,6 +12828,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11599,6 +12859,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11626,6 +12890,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11652,6 +12919,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11678,6 +12948,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11704,6 +12977,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11730,6 +13006,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11757,6 +13036,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -11792,6 +13074,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11823,6 +13108,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -11854,6 +13143,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11880,6 +13173,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11906,6 +13203,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -11935,6 +13235,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -11964,6 +13265,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_scalar_arg"
       ],
@@ -11990,6 +13292,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12016,6 +13321,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12044,6 +13352,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12073,6 +13385,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12100,6 +13416,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12127,6 +13446,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12154,6 +13476,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12180,6 +13506,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12208,6 +13537,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12237,6 +13570,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12264,6 +13601,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_positive_size_arg",
         "parse_scalar_arg"
@@ -12291,6 +13629,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12318,6 +13659,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -12349,6 +13693,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12375,6 +13722,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12401,6 +13751,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12427,6 +13780,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12453,6 +13810,11 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1,
+        2
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12479,6 +13841,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12505,6 +13871,11 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [
+        2,
+        3,
+        4
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -12536,6 +13907,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12562,6 +13937,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12588,6 +13966,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "eval_scalar_expr",
         "parse_number"
@@ -12623,6 +14002,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12649,6 +14031,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -12684,6 +14069,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12710,6 +14098,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12736,6 +14127,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12762,6 +14156,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12788,6 +14185,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12815,6 +14215,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -12846,6 +14250,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12872,6 +14280,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12898,6 +14309,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12924,6 +14339,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -12959,6 +14377,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -12985,6 +14407,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13011,6 +14437,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13037,6 +14466,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -13072,6 +14504,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13098,6 +14533,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13124,6 +14563,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13150,6 +14593,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13176,6 +14623,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13202,6 +14653,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -13233,6 +14687,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13260,6 +14717,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13291,6 +14751,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "eval_scalar_expr",
         "parse_number",
@@ -13324,6 +14788,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13355,6 +14822,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13382,6 +14852,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13418,6 +14891,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13453,6 +14929,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13479,6 +14958,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13506,6 +14988,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13538,6 +15023,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13569,6 +15058,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13596,6 +15088,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -13632,6 +15127,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_number",
         "resolve_operand"
@@ -13667,6 +15165,10 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0,
+        1
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13698,6 +15200,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "parse_scalar_arg",
         "resolve_operand"
@@ -13725,6 +15230,9 @@
       ],
       "open_ended": false,
       "resolves_first": true,
+      "resolve_positions": [
+        0
+      ],
       "helpers": [
         "resolve_operand"
       ],
@@ -13755,6 +15263,7 @@
       ],
       "open_ended": false,
       "resolves_first": false,
+      "resolve_positions": [],
       "helpers": [
         "parse_number"
       ],

@@ -150,3 +150,47 @@ TEST(MatrixCallUndefinedOperand_finance, run_backtest) {
 TEST(MatrixCallUndefinedOperand_finance, run_backtest_equity) {
     expect_undefined_operand_propagates("run_backtest_equity", 3);
 }
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_implied_returns_arg1) {
+    expect_bad_operand_at("finance_bl_implied_returns", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_arg1) {
+    expect_bad_operand_at("finance_bl_posterior_returns", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_arg2) {
+    expect_bad_operand_at("finance_bl_posterior_returns", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_arg3) {
+    expect_bad_operand_at("finance_bl_posterior_returns", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_default_omega_arg1) {
+    expect_bad_operand_at("finance_bl_posterior_returns_default_omega", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_default_omega_arg2) {
+    expect_bad_operand_at("finance_bl_posterior_returns_default_omega", 5, 2);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_bl_posterior_returns_default_omega_arg3) {
+    expect_bad_operand_at("finance_bl_posterior_returns_default_omega", 5, 3);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_efficient_frontier_arg1) {
+    expect_bad_operand_at("finance_efficient_frontier", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, finance_max_sharpe_arg1) {
+    expect_bad_operand_at("finance_max_sharpe", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, run_backtest_arg1) {
+    expect_bad_operand_at("run_backtest", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_finance, run_backtest_equity_arg1) {
+    expect_bad_operand_at("run_backtest_equity", 3, 1);
+}

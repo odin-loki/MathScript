@@ -773,3 +773,159 @@ TEST(MatrixCallUndefinedOperand_ml, ml_svm_predict) {
 TEST(MatrixCallUndefinedOperand_ml, ml_tsne_fit) {
     expect_undefined_operand_propagates("ml_tsne_fit", 1);
 }
+
+TEST(MatrixCallBadOperandAt_ml, ml_adaboost_fit_arg1) {
+    expect_bad_operand_at("ml_adaboost_fit", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_adaboost_predict_arg1) {
+    expect_bad_operand_at("ml_adaboost_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_confusion_matrix_arg1) {
+    expect_bad_operand_at("ml_confusion_matrix", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_decision_tree_fit_arg1) {
+    expect_bad_operand_at("ml_decision_tree_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_decision_tree_predict_arg1) {
+    expect_bad_operand_at("ml_decision_tree_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_elastic_net_fit_arg1) {
+    expect_bad_operand_at("ml_elastic_net_fit", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_elastic_net_predict_arg1) {
+    expect_bad_operand_at("ml_elastic_net_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_gmm_predict_arg1) {
+    expect_bad_operand_at("ml_gmm_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_gmm_predict_proba_arg1) {
+    expect_bad_operand_at("ml_gmm_predict_proba", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_gradient_boosting_fit_arg1) {
+    expect_bad_operand_at("ml_gradient_boosting_fit", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_gradient_boosting_predict_arg1) {
+    expect_bad_operand_at("ml_gradient_boosting_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_isolation_forest_score_arg1) {
+    expect_bad_operand_at("ml_isolation_forest_score", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_kmeans_predict_arg1) {
+    expect_bad_operand_at("ml_kmeans_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_knn_fit_arg1) {
+    expect_bad_operand_at("ml_knn_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_knn_predict_arg1) {
+    expect_bad_operand_at("ml_knn_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_lasso_fit_arg1) {
+    expect_bad_operand_at("ml_lasso_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_lasso_predict_arg1) {
+    expect_bad_operand_at("ml_lasso_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_lda_fit_arg1) {
+    expect_bad_operand_at("ml_lda_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_lda_predict_arg1) {
+    expect_bad_operand_at("ml_lda_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_lda_transform_arg1) {
+    expect_bad_operand_at("ml_lda_transform", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_linear_fit_arg1) {
+    expect_bad_operand_at("ml_linear_fit", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_linear_predict_arg1) {
+    expect_bad_operand_at("ml_linear_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_logistic_fit_arg1) {
+    expect_bad_operand_at("ml_logistic_fit", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_logistic_predict_arg1) {
+    expect_bad_operand_at("ml_logistic_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_minmax_scaler_transform_arg1) {
+    expect_bad_operand_at("ml_minmax_scaler_transform", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_naive_bayes_fit_arg1) {
+    expect_bad_operand_at("ml_naive_bayes_fit", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_naive_bayes_predict_arg1) {
+    expect_bad_operand_at("ml_naive_bayes_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_pca_transform_arg1) {
+    expect_bad_operand_at("ml_pca_transform", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_precision_recall_curve_arg1) {
+    expect_bad_operand_at("ml_precision_recall_curve", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_qda_fit_arg1) {
+    expect_bad_operand_at("ml_qda_fit", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_qda_predict_arg1) {
+    expect_bad_operand_at("ml_qda_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_random_forest_fit_arg1) {
+    expect_bad_operand_at("ml_random_forest_fit", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_random_forest_predict_arg1) {
+    expect_bad_operand_at("ml_random_forest_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_ridge_fit_arg1) {
+    expect_bad_operand_at("ml_ridge_fit", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_ridge_predict_arg1) {
+    expect_bad_operand_at("ml_ridge_predict", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_roc_curve_arg1) {
+    expect_bad_operand_at("ml_roc_curve", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_standard_scaler_transform_arg1) {
+    expect_bad_operand_at("ml_standard_scaler_transform", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_svm_fit_arg1) {
+    expect_bad_operand_at("ml_svm_fit", 4, 1);
+}
+
+TEST(MatrixCallBadOperandAt_ml, ml_svm_predict_arg1) {
+    expect_bad_operand_at("ml_svm_predict", 2, 1);
+}

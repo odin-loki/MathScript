@@ -322,3 +322,39 @@ TEST(MatrixCallUndefinedOperand_quantum, quantum_schrodinger_final) {
 TEST(MatrixCallUndefinedOperand_quantum, quantum_time_evolve_psi) {
     expect_undefined_operand_propagates("quantum_time_evolve_psi", 3);
 }
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_anticommutator_arg1) {
+    expect_bad_operand_at("quantum_anticommutator", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_commutator_arg1) {
+    expect_bad_operand_at("quantum_commutator", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_grover_search_arg1) {
+    expect_bad_operand_at("quantum_grover_search", 3, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_ket_tensor_product_arg1) {
+    expect_bad_operand_at("quantum_ket_tensor_product", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_matmul_dm_arg1) {
+    expect_bad_operand_at("quantum_matmul_dm", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_op_apply_arg1) {
+    expect_bad_operand_at("quantum_op_apply", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_schrodinger_arg1) {
+    expect_bad_operand_at("quantum_schrodinger", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_schrodinger_final_arg1) {
+    expect_bad_operand_at("quantum_schrodinger_final", 5, 1);
+}
+
+TEST(MatrixCallBadOperandAt_quantum, quantum_time_evolve_psi_arg1) {
+    expect_bad_operand_at("quantum_time_evolve_psi", 3, 1);
+}

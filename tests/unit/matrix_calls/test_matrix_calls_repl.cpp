@@ -559,3 +559,15 @@ TEST(MatrixCallUndefinedOperand_repl, mtf_decode_vec) {
 TEST(MatrixCallUndefinedOperand_repl, mtf_encode_vec) {
     expect_undefined_operand_propagates("mtf_encode_vec", 1);
 }
+
+TEST(MatrixCallBadOperandAt_repl, imfilter_arg1) {
+    expect_bad_operand_at("imfilter", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_repl, iradon_arg1) {
+    expect_bad_operand_at("iradon", 2, 1);
+}
+
+TEST(MatrixCallBadOperandAt_repl, lsq_arg1) {
+    expect_bad_operand_at("lsq", 2, 1);
+}
