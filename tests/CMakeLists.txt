@@ -67,6 +67,31 @@ if(MSVC)
     target_compile_options(test_repl_commands PRIVATE /bigobj)
 endif()
 
+# Generated dispatch tests for every matrix-call handler.
+#
+# The source list is generated too (scripts/gen_matrix_call_tests.py), so adding
+# a domain directory under src/interp/matrix_calls wires its tests up without
+# anyone remembering to edit this file. One executable rather than 484: these
+# link the whole library and the link is what costs, especially instrumented.
+include(${CMAKE_CURRENT_SOURCE_DIR}/unit/matrix_calls/generated_sources.cmake)
+add_executable(test_matrix_calls ${MS_MATRIX_CALL_TEST_SOURCES})
+target_link_libraries(test_matrix_calls PRIVATE mathscript GTest::gtest_main)
+target_include_directories(test_matrix_calls PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_BINARY_DIR}/include
+    # matrix_call.hpp declares dispatch_matrix_call and is private to src/interp;
+    # these tests exercise the dispatcher itself, not the REPL surface over it.
+    ${CMAKE_SOURCE_DIR}/src/interp
+    ${CMAKE_CURRENT_SOURCE_DIR}/unit/matrix_calls
+)
+if(MS_ENABLE_COVERAGE AND NOT MSVC)
+    target_compile_options(test_matrix_calls PRIVATE -fexceptions)
+endif()
+if(MSVC)
+    target_compile_options(test_matrix_calls PRIVATE /bigobj)
+endif()
+add_test(NAME test_matrix_calls COMMAND test_matrix_calls)
+
 add_executable(test_mathscriptc_cli unit/interp/test_mathscriptc_cli.cpp)
 target_link_libraries(test_mathscriptc_cli PRIVATE GTest::gtest_main)
 target_compile_definitions(test_mathscriptc_cli PRIVATE "MATHSCRIPTC_PATH=\"$<TARGET_FILE:mathscriptc>\"")
@@ -100,6 +125,13 @@ set(_MS_UNIT_SKIP
 foreach(_src ${_MS_UNIT_SOURCES})
     get_filename_component(_name ${_src} NAME)
     if(_name MATCHES "^test_repl_commands")
+        continue()
+    endif()
+    # The generated dispatch suites are linked into one test_matrix_calls
+    # executable above. Left to this glob they would each also become their own
+    # binary, so the same 1,377 tests would run twice and pay 29 extra links of
+    # the whole library -- the cost this grouping exists to avoid.
+    if(_src MATCHES "^unit/matrix_calls/")
         continue()
     endif()
     list(FIND _MS_UNIT_SKIP ${_src} _idx)
