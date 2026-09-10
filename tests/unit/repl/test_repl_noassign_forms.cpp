@@ -153,18 +153,28 @@ TEST(ReplNoAssign, SymbolicOneAndTwoArgumentForms) {
     expect_ok(interp, "sym_series(\"exp(x)\", \"x\", 0, 2)");
 }
 
+// Six of these decline, and that is the correct answer rather than a gap.
+//
+// The transform of a constant is a Dirac delta or a divergent integral in each of
+// those cases -- F{1} = 2*pi*delta(w), Z^-1{1} = delta[n] -- and SymExpr has no
+// node for a distribution, so there is nothing for the function to return.
+//
+// They were asserted with expect_ok until the unsupported sentinel became an
+// error. That assertion passed for the wrong reason: the sentinel is a successful
+// return, so expect_ok could not tell a computed transform from a declined one,
+// and every one of these was green while computing nothing.
 TEST(ReplNoAssign, SymbolicIntegralTransforms) {
     Interpreter interp;
     expect_ok(interp, "sym_laplace(\"1\", \"t\", \"s\")");
     expect_ok(interp, "sym_ilaplace(\"1/s\", \"s\", \"t\")");
     expect_ok(interp, "sym_mellin(\"1\", \"t\", \"s\")");
-    expect_ok(interp, "sym_imellin(\"1\", \"s\", \"t\")");
-    expect_ok(interp, "sym_hankel(\"1\", \"r\", \"k\")");
-    expect_ok(interp, "sym_ihankel(\"1\", \"k\", \"r\")");
-    expect_ok(interp, "sym_fourier(\"1\", \"t\", \"w\")");
-    expect_ok(interp, "sym_ifourier(\"1\", \"w\", \"t\")");
+    expect_error_contains(interp, "sym_imellin(\"1\", \"s\", \"t\")", "no closed form");
+    expect_error_contains(interp, "sym_hankel(\"1\", \"r\", \"k\")", "no closed form");
+    expect_error_contains(interp, "sym_ihankel(\"1\", \"k\", \"r\")", "no closed form");
+    expect_error_contains(interp, "sym_fourier(\"1\", \"t\", \"w\")", "no closed form");
+    expect_error_contains(interp, "sym_ifourier(\"1\", \"w\", \"t\")", "no closed form");
     expect_ok(interp, "sym_ztransform(\"1\", \"n\", \"z\")");
-    expect_ok(interp, "sym_iztransform(\"1\", \"z\", \"n\")");
+    expect_error_contains(interp, "sym_iztransform(\"1\", \"z\", \"n\")", "no closed form");
     expect_ok(interp, "sym_dsolve(\"1\", \"x\", \"y\")");
 }
 

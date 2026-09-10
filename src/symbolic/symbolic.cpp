@@ -40,6 +40,25 @@ bool is_const_zero(const SymExpr& expr) {
     return expr.op == SymOp::Const && expr.value == 0.0;
 }
 
+// Structural comparison used by sym_is_unsupported. Recursive rather than a hash
+// so it stays exact: two expressions are equal only if every node matches.
+bool sym_equal_impl(const SymExpr& a, const SymExpr& b) {
+    if (a.op != b.op || a.name != b.name) {
+        return false;
+    }
+    if (a.op == SymOp::Const && a.value != b.value) {
+        return false;
+    }
+    if ((a.left == nullptr) != (b.left == nullptr) ||
+        (a.right == nullptr) != (b.right == nullptr)) {
+        return false;
+    }
+    if (a.left && !sym_equal_impl(*a.left, *b.left)) {
+        return false;
+    }
+    return !a.right || sym_equal_impl(*a.right, *b.right);
+}
+
 SymExpr sym_integrate_unsupported(const SymExpr& expr, const std::string& var) {
     return sym_deriv(clone_expr(expr), var);
 }
@@ -47,11 +66,28 @@ SymExpr sym_integrate_unsupported(const SymExpr& expr, const std::string& var) {
 constexpr int kMaxLaplacePower = 8;
 
 bool try_get_const_value(const SymExpr& expr, double& out) {
-    if (expr.op != SymOp::Const) {
-        return false;
+    if (expr.op == SymOp::Const) {
+        out = expr.value;
+        return true;
     }
-    out = expr.value;
-    return true;
+    // The parser builds a negative literal as Neg(Const(3)), never Const(-3):
+    //
+    //     exp(-3*t)  ->  Exp(Mul(Neg(Const(3)), Var(t)))
+    //     exp( 2*t)  ->  Exp(Mul(    Const(2),  Var(t)))
+    //
+    // Every transform table below matches constants through this function or an
+    // `op == SymOp::Const` test, so before this case existed no table entry could
+    // match a negative coefficient at all. L{exp(-3t)} = 1/(s+3) -- the decaying
+    // exponential, which is most of the practical use of a Laplace transform --
+    // returned the unsupported sentinel, while L{exp(3t)} worked.
+    if (expr.op == SymOp::Neg && expr.left) {
+        double inner = 0.0;
+        if (try_get_const_value(*expr.left, inner)) {
+            out = -inner;
+            return true;
+        }
+    }
+    return false;
 }
 
 double factorial_int(int n) {
@@ -76,14 +112,19 @@ bool match_scaled_var(const SymExpr& expr, const std::string& var, double& scale
         return true;
     }
     if (expr.op == SymOp::Mul && expr.left && expr.right) {
-        if (expr.left->op == SymOp::Const && is_bare_var(*expr.right, var)) {
-            scale = expr.left->value;
+        // try_get_const_value rather than an op test, so a negated literal counts.
+        if (is_bare_var(*expr.right, var) && try_get_const_value(*expr.left, scale)) {
             return true;
         }
-        if (expr.right->op == SymOp::Const && is_bare_var(*expr.left, var)) {
-            scale = expr.right->value;
+        if (is_bare_var(*expr.left, var) && try_get_const_value(*expr.right, scale)) {
             return true;
         }
+    }
+    // A bare negated variable: exp(-t) is the a = -1 case, and parses as
+    // Neg(Var(t)) with no Mul node at all.
+    if (expr.op == SymOp::Neg && expr.left && is_bare_var(*expr.left, var)) {
+        scale = -1.0;
+        return true;
     }
     return false;
 }
@@ -917,6 +958,15 @@ SymExpr sym_collect(const SymExpr& expr, const std::string& var) {
 //   Sin(var) / Cos(var)              -> -Cos(var) / Sin(var)  (bare integration variable only)
 // Unsupported forms (chain rule, general products, Pow with n == -1, etc.)
 // return sym_deriv(expr, var) as an explicit unsupported sentinel.
+bool sym_equal(const SymExpr& a, const SymExpr& b) {
+    return sym_equal_impl(a, b);
+}
+
+bool sym_is_unsupported(const SymExpr& result, const SymExpr& input, const std::string& var) {
+    return result.op == SymOp::Deriv && result.name == var && result.left != nullptr &&
+           sym_equal_impl(*result.left, input);
+}
+
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var) {
     switch (expr.op) {
     case SymOp::Const:
@@ -1226,10 +1276,25 @@ SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::strin
         double numerator = 0.0;
         if (try_get_const_value(*expr.left, numerator)) {
             double a = 0.0;
+            // c/s -> c. The n = 0 entry of the same family as c/s^n below, and the
+            // a = 0 case of c/(s - a); it matched neither, because a bare `s` is a
+            // Var node rather than a Sub or a Pow. L{1} = 1/s is the first line of
+            // any table, and the forward direction has always produced it.
+            if (is_bare_var(*expr.right, s)) {
+                return sym_const(numerator);
+            }
             if (match_sub_var_minus_const(*expr.right, s, a)) {
                 return sym_mul(
                     sym_const(numerator),
                     sym_exp(sym_mul(sym_const(a), sym_var(t))));
+            }
+            // c/(s + a) -> c*exp(-a*t). The same table entry with the sign the other
+            // way round; only the Sub spelling was matched, so sym_laplace's own
+            // output for a negative rate could not be read back.
+            if (match_add_var_plus_const(*expr.right, s, a)) {
+                return sym_mul(
+                    sym_const(numerator),
+                    sym_exp(sym_mul(sym_const(-a), sym_var(t))));
             }
             if (is_var_pow(*expr.right, s, 2.0) && numerator == 1.0) {
                 return sym_var(t);
@@ -1239,14 +1304,20 @@ SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::strin
                 const double power = expr.right->right->value;
                 if (power >= 2.0 && power == std::floor(power)) {
                     const int n = static_cast<int>(power) - 1;
-                    if (n >= 0 && n <= kMaxLaplacePower && numerator == factorial_int(n)) {
-                        if (n == 0) {
-                            return sym_const(1.0);
+                    // L{t^n} = n!/s^(n+1), so c/s^(n+1) is (c/n!) t^n for any c. The
+                    // old condition demanded numerator == n! exactly, which accepted
+                    // 2/s^3 and declined 1/s^3 -- the same table entry, differently
+                    // scaled. The scale is carried instead of being required to be 1.
+                    if (n >= 0 && n <= kMaxLaplacePower) {
+                        const double scale = numerator / factorial_int(n);
+                        SymExpr base = n == 0   ? sym_const(1.0)
+                                       : n == 1 ? sym_var(t)
+                                                : sym_pow(sym_var(t),
+                                                          sym_const(static_cast<double>(n)));
+                        if (scale == 1.0) {
+                            return base;
                         }
-                        if (n == 1) {
-                            return sym_var(t);
-                        }
-                        return sym_pow(sym_var(t), sym_const(static_cast<double>(n)));
+                        return sym_mul(sym_const(scale), std::move(base));
                     }
                 }
             }

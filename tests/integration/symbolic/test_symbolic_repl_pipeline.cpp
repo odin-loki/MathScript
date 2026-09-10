@@ -55,10 +55,18 @@ TEST(SymbolicReplPipeline, SymbolicBindingsPipeline) {
     EXPECT_NE(integ->find("x"), std::string::npos);
     expect_error(interp, "sym_integrate(\"x^2\")");
 
-    // sym_integrate unsupported form returns deriv sentinel string
-    const auto unsupported = run(interp, "sym_integrate(\"sin(2*x)\", \"x\")");
-    ASSERT_TRUE(unsupported.has_value());
-    EXPECT_NE(unsupported->find("d/d"), std::string::npos);
+    // An expression sym_integrate cannot handle is now reported rather than
+    // answered. It used to return the unsupported sentinel -- sym_deriv(expr, var)
+    // -- which printed as "d/dx(sin(2*x))", and this test pinned that string.
+    //
+    // The sentinel is not inert: sym_eval evaluates a Deriv node by differentiating
+    // it, so integrate-then-evaluate returned the derivative's value where the
+    // integral was asked for, with nothing reporting a failure anywhere.
+    //
+    // sin(2*x) does have an elementary integral, -cos(2*x)/2. That sym_integrate
+    // declines it is a gap in its table, not a property of the input; the point of
+    // this assertion is only that declining is now visible.
+    expect_error(interp, "sym_integrate(\"sin(2*x)\", \"x\")");
 
     // sym_eval: numeric evaluation
     const auto eval = run(interp, "sym_eval(\"x^2+1\", \"x=3\")");

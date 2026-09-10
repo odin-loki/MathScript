@@ -15181,6 +15181,14 @@ Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, cons
             DomainError{"sym_integrate", "expected sym_integrate(\"expr\", \"var\")"});
     }
     const auto result = sym_integrate(*expr, var_text);
+    // sym_integrate signals "no closed form" by returning sym_deriv(expr, var).
+    // Printing that gives the user "d/dx(...)" where they asked for an integral,
+    // and feeding it to sym_eval yields the derivative's value with no error
+    // anywhere. Report it instead.
+    if (sym_is_unsupported(result, *expr, var_text)) {
+        return std::unexpected(DomainError{
+            "sym_integrate", "no closed form found for this expression"});
+    }
     return sym_to_string(result) + "\n";
 }
 
@@ -15231,7 +15239,14 @@ Result<std::string> eval_sym_transform_strings(const std::string& expr_arg, cons
         return std::unexpected(
             DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var1\", \"var2\")"});
     }
-    const auto result = sym_simplify(transform(*expr, var_a, var_b));
+    // Check the raw result: the sentinel is sym_deriv(expr, var_a), and running it
+    // through sym_simplify first would compare against a rewritten expression.
+    auto raw = transform(*expr, var_a, var_b);
+    if (sym_is_unsupported(raw, *expr, var_a)) {
+        return std::unexpected(DomainError{
+            fn, "no closed form found for this expression"});
+    }
+    const auto result = sym_simplify(std::move(raw));
     return sym_to_string(result) + "\n";
 }
 

@@ -20748,31 +20748,31 @@ TEST(ReplCommandsTest, sym_mellin_noassign) {
 
 TEST(ReplCommandsTest, sym_imellin_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_imellin(\"1\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_imellin(\"1\", \"s\", \"t\")", "no closed form");
     expect_error_contains(interp, "sym_imellin(\"1\", s, \"t\")", "expected sym_imellin");
 }
 
 TEST(ReplCommandsTest, sym_hankel_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_hankel(\"1\", \"r\", \"k\")");
+    expect_error_contains(interp, "sym_hankel(\"1\", \"r\", \"k\")", "no closed form");
     expect_error_contains(interp, "sym_hankel(\"1\", r, \"k\")", "expected sym_hankel");
 }
 
 TEST(ReplCommandsTest, sym_ihankel_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_ihankel(\"1\", \"k\", \"r\")");
+    expect_error_contains(interp, "sym_ihankel(\"1\", \"k\", \"r\")", "no closed form");
     expect_error_contains(interp, "sym_ihankel(\"1\", k, \"r\")", "expected sym_ihankel");
 }
 
 TEST(ReplCommandsTest, sym_fourier_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_fourier(\"1\", \"t\", \"w\")");
+    expect_error_contains(interp, "sym_fourier(\"1\", \"t\", \"w\")", "no closed form");
     expect_error_contains(interp, "sym_fourier(\"1\", t, \"w\")", "expected sym_fourier");
 }
 
 TEST(ReplCommandsTest, sym_ifourier_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_ifourier(\"1\", \"w\", \"t\")");
+    expect_error_contains(interp, "sym_ifourier(\"1\", \"w\", \"t\")", "no closed form");
     expect_error_contains(interp, "sym_ifourier(\"1\", w, \"t\")", "expected sym_ifourier");
 }
 
@@ -20784,7 +20784,7 @@ TEST(ReplCommandsTest, sym_ztransform_noassign) {
 
 TEST(ReplCommandsTest, sym_iztransform_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_iztransform(\"1\", \"z\", \"n\")");
+    expect_error_contains(interp, "sym_iztransform(\"1\", \"z\", \"n\")", "no closed form");
     expect_error_contains(interp, "sym_iztransform(\"1\", z, \"n\")", "expected sym_iztransform");
 }
 

@@ -57,8 +57,33 @@ SymExpr sym_simplify(SymExpr expr);
 SymExpr sym_expand(SymExpr expr);
 SymExpr sym_collect(const SymExpr& expr, const std::string& var);
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var);
+
+/// Structural equality: same operator, value, name and children throughout.
+/// Not mathematical equality -- `x + 0` and `x` are different expressions here.
+bool sym_equal(const SymExpr& a, const SymExpr& b);
+
+/// True when `result` is the unsupported-sentinel for `input` and `var`.
+///
+/// The functions below signal "no closed form" by returning sym_deriv(input, var).
+/// That sentinel is not inert: sym_eval evaluates a Deriv node by differentiating
+/// it, so a caller who integrates and then evaluates gets the derivative's value
+/// where the integral was asked for, with nothing anywhere reporting a failure.
+/// sym_integrate(1/x, "x") followed by sym_eval at x=2 returns -0.25; the integral
+/// is log(2) = 0.693.
+///
+/// Callers that cannot tolerate that must check before using a result:
+///
+///     const auto r = sym_integrate(f, "x");
+///     if (sym_is_unsupported(r, f, "x")) { ... no closed form ... }
+///
+/// The check is exact rather than heuristic: these functions never return a bare
+/// Deriv node of their own input for any other reason.
+bool sym_is_unsupported(const SymExpr& result, const SymExpr& input, const std::string& var);
+
 // Forward/inverse transforms. Unsupported forms return sym_deriv(expr, var)
-// as an explicit sentinel (same convention as sym_integrate).
+// as an explicit sentinel (same convention as sym_integrate); see
+// sym_is_unsupported above for why that sentinel needs checking rather than
+// passing on.
 SymExpr sym_laplace(const SymExpr& expr, const std::string& t, const std::string& s);
 SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::string& t);
 SymExpr sym_mellin(const SymExpr& expr, const std::string& t, const std::string& s);
