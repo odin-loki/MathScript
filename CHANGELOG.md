@@ -30,6 +30,64 @@ stub has been closed; see that file for the before/after table.
 - ML model packing: three out-of-bounds accesses in the REPL's model serialisers, all of them reachable from an ordinary `ml_*_fit` call. The NaiveBayes packer sized the matrix `max(n_features, 1)` columns wide and then wrote the header at column 1, so a single-feature model corrupted the heap; the KNN packer sized it `n_features + 1` wide and wrote the header at column 2; and the LDA packer sized its per-class loop by `classes.size()`, which `LDA::fit` fills before it gives up on a single-class problem, so it indexed the empty `discrim_const`. The LDA path now reports "expected at least two distinct class labels in y" instead of returning a model that was never fitted, and the QDA packer got the same consistency check.
 - ML ensemble sizes are bounded. `n_trees`, `n_estimators` and `max_depth` arrived from the command line unchecked, so `ml_random_forest_fit(X, y, 3000000000)` and `ml_gradient_boosting_fit(X, y, 3000000000)` grew trees until the process was killed, and `ml_isolation_forest_fit(X, 1e18)` asked for an allocation that aborts rather than reports under `-fno-exceptions`. The caps are 10000 members, depth 512, and a forest sample of 1000000, each reported as a `DomainError`.
 
+### Symbolic correctness
+
+An audit drove the REPL over the standard integral, Laplace, Fourier, Mellin, Hankel
+and Z-transform tables. Most rows declined, and four inputs came back with a wrong
+answer and no error. The wrong answers are the serious half:
+
+- `sym_parse` bound unary minus tighter than `^`, so `-t^2` parsed as `(-t)^2`. It
+  evaluated to `+9` at `t = 3` where every convention gives `-9`, `-2^2` gave `4`, and
+  `-t^0.5` gave `NaN` because it was taking a real root of a negative number.
+  Exponentiation now binds tighter, and the exponent is still parsed as a unary, so
+  `2^-3` and right-associative `2^3^2` are unchanged.
+- `sym_ztransform("3*2^n")` returned `z/(z - 6)` instead of `3z/(z - 2)`: the matcher
+  folded a leading coefficient into the base of the geometric sequence, moving the
+  pole. Every scaled geometric sequence was affected.
+- `sym_solve_linear` discarded any term it could not read as linear rather than
+  refusing. `x + sin(y) - 1` solved to `x = 1` instead of `x = 1 - sin(y)`, `x - exp(a)`
+  to `x = -0`, and `x^2 + x - 1` was answered as though the quadratic term were absent.
+  Terms free of the unknowns are now carried as constants, and a term that is genuinely
+  non-linear refuses the system.
+- The unsupported sentinel leaked through the linearity rules. They recurse into each
+  operand and reassemble whatever comes back, so one unsupported term inside a
+  supported sum produced a tree that was part transform and part `d/dt(...)`, which the
+  root-only check reported as a success. Failure now propagates outward at every
+  linearity site, and `sym_is_unsupported` scans the whole tree rather than the root.
+
+The table gaps are closed by stating the general rule instead of adding rows:
+
+- Antiderivatives take any first-degree argument `u = a*x + b`, which is the linear case
+  of the substitution rule, and cover `Sqrt`, `Log`, `Tan` and `Exp` node types the
+  switch had no case for at all. `1/x`, `exp(x)`, `sqrt(x)`, `x/2`, `x^(-2)`, `sin(2x)`,
+  `1/(2x+1)` and `log(x)` all integrate now; a small integer power of a non-linear base
+  is expanded and integrated term by term.
+- `sym_laplace` gained the first shifting theorem, `L{exp(a t) g(t)} = G(s - a)`, and
+  frequency differentiation, `L{t^n g(t)} = (-1)^n G^(n)(s)`. Between them those two
+  statements supply every s-shifted and every `t^n`-weighted row -- `t*exp(2t)`,
+  `exp(-t)sin(3t)`, `t*sin(2t)`, `t^2*exp(-t)` -- with no per-row matcher.
+- `sym_ilaplace` is keyed on three denominator families, `(s-a)^n`, `(s-a)^2 + b^2` and
+  `s^2 - a^2`, with the numerator taken as an arbitrary `p*s + q`. `a = 0` recovers the
+  unshifted rows, so the shifting theorem costs no extra matcher, and the hyperbolic row
+  arrives for the first time. The previous table required each numerator to equal the
+  constant its canonical row carries, so `2/(s^2+4)` inverted and `1/(s^2+4)` did not.
+- The Fourier pair had no linearity at all -- `exp(-2t^2)` transformed and
+  `3*exp(-2t^2)` did not. It has Add, Sub, Neg and constant Mul/Div now, matches a
+  Gaussian however its coefficient is spelled, gained the forward Lorentzian row, and
+  reads its own printed output back (the inverse demanded agreement to 1e-9 from a
+  spectrum printed to six decimals).
+- The Z-transform gained the same linearity, the `n^k` family via `(-z d/dz)^k`, the
+  sampled sine and cosine rows, `exp(a n)` as a geometric sequence, the `z + a` pole
+  spelling, and `z/(z-a)^2` on the inverse side.
+- `try_get_const_value` folds constant arithmetic, so a coefficient written as `2*3` or
+  `1/2` counts as the constant it is.
+
+`tests/unit/symbolic/test_symbolic_tables.cpp` checks each entry against the definition
+it comes from rather than against the implementation: antiderivatives are differentiated
+and compared with the integrand, Laplace entries are checked against a numerical
+`integral f(t) e^{-st} dt`, inverse entries are forward-transformed numerically, and
+Fourier entries are integrated over the whole line.
+
 ### Engineering plan
 
 The whole-repository audit is in [`docs/ENGINEERING_PLAN.md`](docs/ENGINEERING_PLAN.md),

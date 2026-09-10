@@ -106,9 +106,11 @@ TEST(SymbolicDsolveGeneralTest, legacy_sentinels_are_frozen) {
         sym_sin(y_var()),
         sym_tan(y_var()),
         sym_mul(y_var(), sym_sin(y_var())),
-        sym_sin(sym_mul(sym_const(2.0), x_var())),
-        sym_mul(sym_sin(sym_mul(sym_const(2.0), x_var())), y_var()),
-        sym_tan(x_var()),
+        // sin(2*x) and tan(x) integrate now, so the legacy table solves both. What
+        // it still cannot do is integration by parts.
+        sym_mul(x_var(), sym_sin(x_var())),
+        sym_mul(sym_mul(x_var(), sym_sin(x_var())), y_var()),
+        sym_mul(x_var(), sym_exp(x_var())),
         sym_pow(y_var(), sym_const(1.0)),
         sym_mul(y_var(), y_var()),
         sym_add(sym_pow(y_var(), sym_const(2.0)), y_var()),
@@ -284,11 +286,14 @@ TEST(SymbolicDsolveGeneralTest, unsupported_rhs_returns_sentinel) {
 // --- Group C: the rest of the pipeline ---------------------------------------
 
 TEST(SymbolicDsolveGeneralTest, quadrature_beyond_the_legacy_integrator) {
-    const SymExpr rhs = sym_sin(sym_mul(sym_const(2.0), x_var()));
+    // x*sin(x) integrates by parts to sin(x) - x*cos(x), which the general
+    // quadrature finds and the legacy separable table does not.
+    const SymExpr rhs = sym_mul(x_var(), sym_sin(x_var()));
     EXPECT_TRUE(is_deriv_sentinel(rhs, sym_dsolve(rhs, "x", "y"), "x"));
     const SymExpr solution = sym_dsolve_ode(rhs, "x", "y");
     expect_solves_ode(rhs, solution, "x", "y");
-    EXPECT_NEAR(sym_eval(solution, {{"x", 0.0}, {"C", 1.0}}), 0.5, 1e-12);
+    // sin(0) - 0*cos(0) + C = C.
+    EXPECT_NEAR(sym_eval(solution, {{"x", 0.0}, {"C", 1.0}}), 1.0, 1e-12);
 }
 
 TEST(SymbolicDsolveGeneralTest, linear_exponential_forcing) {

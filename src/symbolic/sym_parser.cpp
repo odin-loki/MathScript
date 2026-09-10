@@ -142,7 +142,7 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_mul() {
-        auto left = parse_pow();
+        auto left = parse_unary();
         if (!left) {
             return std::unexpected(left.error());
         }
@@ -156,7 +156,7 @@ private:
             if (budget_exhausted()) {
                 return std::unexpected(make_error("expression has too many terms"));
             }
-            auto right = parse_pow();
+            auto right = parse_unary();
             if (!right) {
                 return std::unexpected(right.error());
             }
@@ -169,29 +169,13 @@ private:
         return sym_expr_ok(std::move(*left));
     }
 
-    std::expected<SymExpr, SymParseError> parse_pow() {
-        if (budget_exhausted()) {
-            return std::unexpected(make_error("expression has too many terms"));
-        }
-        auto left = parse_unary();
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        skip_ws();
-        if (peek() == '^') {
-            ++pos_;
-            if (budget_exhausted()) {
-                return std::unexpected(make_error("expression has too many terms"));
-            }
-            auto right = parse_pow();
-            if (!right) {
-                return std::unexpected(right.error());
-            }
-            left = sym_expr_ok(sym_pow(std::move(*left), std::move(*right)));
-        }
-        return sym_expr_ok(std::move(*left));
-    }
-
+    // Unary sign binds LOOSER than exponentiation: -x^2 is -(x^2), as it is in every
+    // maths text and every CAS. Parsing it the other way round -- which is what this
+    // grammar did when the unary level sat below the power level -- is not a missing
+    // feature but a wrong answer with no error attached: -t^2 evaluated to +9 at
+    // t = 3, -2^2 to 4, and -t^0.5 to NaN, because (-t)^0.5 is a real root of a
+    // negative number. The exponent itself is still parsed as a unary, so 2^-3 keeps
+    // working and ^ stays right-associative.
     std::expected<SymExpr, SymParseError> parse_unary() {
         DepthGuard guard(*this);
         if (guard.too_deep()) {
@@ -210,7 +194,30 @@ private:
             }
             return sym_expr_ok(sym_neg(std::move(*operand)));
         }
-        return parse_primary();
+        return parse_pow();
+    }
+
+    std::expected<SymExpr, SymParseError> parse_pow() {
+        if (budget_exhausted()) {
+            return std::unexpected(make_error("expression has too many terms"));
+        }
+        auto left = parse_primary();
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        skip_ws();
+        if (peek() == '^') {
+            ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
+            auto right = parse_unary();
+            if (!right) {
+                return std::unexpected(right.error());
+            }
+            left = sym_expr_ok(sym_pow(std::move(*left), std::move(*right)));
+        }
+        return sym_expr_ok(std::move(*left));
     }
 
     std::expected<std::string, SymParseError> parse_identifier() {

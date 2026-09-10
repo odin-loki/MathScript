@@ -42,17 +42,21 @@ TEST(SymbolicUnsupported, DetectsTheSentinelAndNothingElse) {
     // An input the table does not cover.
     auto hard = sym_log(sym_log(sym_var("x")));
     const auto declined = sym_integrate(hard, "x");
-    EXPECT_TRUE(sym_is_unsupported(declined, hard, "x"));
+    EXPECT_TRUE(sym_is_unsupported(declined, "x"));
 
     // A supported input: the result is a real integral, not the sentinel.
     auto easy = sym_pow(sym_var("x"), sym_const(2.0));
     const auto solved = sym_integrate(easy, "x");
-    EXPECT_FALSE(sym_is_unsupported(solved, easy, "x"));
+    EXPECT_FALSE(sym_is_unsupported(solved, "x"));
 
     // The right shape but the wrong variable is not this input's sentinel.
-    EXPECT_FALSE(sym_is_unsupported(declined, hard, "y"));
+    EXPECT_FALSE(sym_is_unsupported(declined, "y"));
     // Nor is a derivative of something else.
-    EXPECT_FALSE(sym_is_unsupported(sym_deriv(sym_var("z"), "x"), hard, "x"));
+    // A Deriv node whose operand is not the input is still a sentinel. It can only
+    // have come from one -- SymOp::Deriv is built in one translation unit and only as
+    // this marker -- and requiring it to match the input is exactly what let a
+    // sentinel produced by one operand of a sum pass as an answer.
+    EXPECT_TRUE(sym_is_unsupported(sym_deriv(sym_var("z"), "x"), "x"));
 }
 
 TEST(SymbolicUnsupported, TheSentinelEvaluatesToTheDerivativeIfNotChecked) {
@@ -60,15 +64,19 @@ TEST(SymbolicUnsupported, TheSentinelEvaluatesToTheDerivativeIfNotChecked) {
     // sentinel does not produce a NaN or a zero that a caller might notice -- it
     // produces the derivative's value, which is a plausible number of the right
     // magnitude and the wrong quantity entirely.
-    auto f = sym_div(sym_const(1.0), sym_var("x"));
+    // 1/x integrates now, so the hazard needs an integrand that genuinely has no
+    // elementary antiderivative. exp(x^2) is the canonical one.
+    auto f = sym_exp(sym_pow(sym_var("x"), sym_const(2.0)));
     const auto declined = sym_integrate(f, "x");
-    ASSERT_TRUE(sym_is_unsupported(declined, f, "x"));
+    ASSERT_TRUE(sym_is_unsupported(declined, "x"));
 
     const std::map<std::string, double> at{{"x", 2.0}};
     const double evaluated = sym_eval(declined, at);
-    EXPECT_NEAR(evaluated, -0.25, 1e-12) << "the sentinel evaluates as d/dx(1/x)";
-    EXPECT_GT(std::abs(evaluated - std::log(2.0)), 0.9)
-        << "and log(2) = 0.693 is what the caller asked for";
+    // d/dx exp(x^2) = 2x*exp(x^2), which at x = 2 is 4*e^4.
+    EXPECT_NEAR(evaluated, 4.0 * std::exp(4.0), 1e-9)
+        << "the sentinel evaluates as d/dx(exp(x^2))";
+    EXPECT_TRUE(std::isfinite(evaluated))
+        << "and it is a plausible finite number, not a NaN a caller would notice";
 }
 
 TEST(SymbolicUnsupported, LaplaceHandlesNegativeRates) {
@@ -78,7 +86,7 @@ TEST(SymbolicUnsupported, LaplaceHandlesNegativeRates) {
     // exponential, which is most of the practical use of a Laplace transform.
     auto decay = sym_exp(sym_mul(sym_neg(sym_const(3.0)), sym_var("t")));
     const auto L = sym_laplace(decay, "t", "s");
-    ASSERT_FALSE(sym_is_unsupported(L, decay, "t"))
+    ASSERT_FALSE(sym_is_unsupported(L, "t"))
         << "L{exp(-3t)} declined: " << sym_to_string(L);
 
     // 1/(s - (-3)) evaluated at s = 1 is 1/4.
@@ -99,9 +107,9 @@ TEST(SymbolicUnsupported, InverseLaplaceReadsBackTheForwardTable) {
 
     for (const auto& c : cases) {
         const auto L = sym_laplace(c.f, "t", "s");
-        ASSERT_FALSE(sym_is_unsupported(L, c.f, "t")) << "forward declined " << c.label;
+        ASSERT_FALSE(sym_is_unsupported(L, "t")) << "forward declined " << c.label;
         const auto back = sym_ilaplace(L, "s", "t");
-        ASSERT_FALSE(sym_is_unsupported(back, L, "s"))
+        ASSERT_FALSE(sym_is_unsupported(back, "s"))
             << "inverse could not read back its own forward output for " << c.label
             << ": L = " << sym_to_string(L);
         // Compare numerically rather than structurally: the round trip is allowed to
@@ -117,7 +125,7 @@ TEST(SymbolicUnsupported, InverseLaplaceScalesThePowerRule) {
     // scaled, because the numerator had to equal n! exactly.
     auto expr = sym_div(sym_const(1.0), sym_pow(sym_var("s"), sym_const(3.0)));
     const auto back = sym_ilaplace(expr, "s", "t");
-    ASSERT_FALSE(sym_is_unsupported(back, expr, "s"));
+    ASSERT_FALSE(sym_is_unsupported(back, "s"));
     const std::map<std::string, double> at{{"t", 2.0}};
     // L^-1{1/s^3} = t^2/2, which is 2 at t = 2.
     EXPECT_NEAR(sym_eval(back, at), 2.0, 1e-12);

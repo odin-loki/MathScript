@@ -507,7 +507,9 @@ TEST(SymbolicTransformsTest, ztransform_const_on_right_of_geometric) {
 }
 
 TEST(SymbolicTransformsTest, ztransform_and_iztransform_unsupported) {
-    const SymExpr seq = sym_sin(sym_var("n"));
+    // sin(n) is the sampled-sinusoid row now, so reaching the sentinel needs
+    // something the table really has no entry for.
+    const SymExpr seq = sym_log(sym_var("n"));
     EXPECT_TRUE(is_deriv_sentinel(seq, sym_ztransform(seq, "n", "z"), "n"));
 
     const SymExpr zdom = sym_log(sym_var("z"));
@@ -837,9 +839,12 @@ TEST(SymbolicTransformsTest, ihankel_add_and_nonzero_sentinel) {
 }
 
 TEST(SymbolicTransformsTest, transform_unmatched_mul_and_nonzero_sentinels) {
+    // t*sin(t) is the frequency-differentiation row now. A product of two factors
+    // that both depend on t, with neither a power of t nor an exponential, is what
+    // still has no rule.
     EXPECT_TRUE(is_deriv_sentinel(
-        sym_mul(sym_var("t"), sym_sin(sym_var("t"))),
-        sym_laplace(sym_mul(sym_var("t"), sym_sin(sym_var("t"))), "t", "s"),
+        sym_mul(sym_sin(sym_var("t")), sym_cos(sym_var("t"))),
+        sym_laplace(sym_mul(sym_sin(sym_var("t")), sym_cos(sym_var("t"))), "t", "s"),
         "t"));
     EXPECT_TRUE(is_deriv_sentinel(sym_var("y"), sym_mellin(sym_var("y"), "t", "s"), "t"));
     EXPECT_TRUE(is_deriv_sentinel(

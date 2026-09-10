@@ -147,13 +147,16 @@ TEST(SymbolicDsolveTest, separable_power_cubic) {
 }
 
 TEST(SymbolicDsolveTest, independent_unsupported_integrate_is_sentinel) {
-    const SymExpr rhs = sym_sin(sym_mul(sym_const(2.0), sym_var("x")));
+    // sin(2*x) integrates now, so the legacy separable table solves it. x*sin(x)
+    // needs integration by parts, which the legacy integrator still does not do.
+    const SymExpr rhs = sym_mul(sym_var("x"), sym_sin(sym_var("x")));
     const SymExpr result = sym_dsolve(rhs, "x", "y");
     EXPECT_TRUE(is_deriv_sentinel(rhs, result, "x"));
 }
 
 TEST(SymbolicDsolveTest, multiplier_unsupported_integrate_is_sentinel) {
-    const SymExpr rhs = sym_mul(sym_sin(sym_mul(sym_const(2.0), sym_var("x"))), sym_var("y"));
+    const SymExpr rhs =
+        sym_mul(sym_mul(sym_var("x"), sym_sin(sym_var("x"))), sym_var("y"));
     const SymExpr result = sym_dsolve(rhs, "x", "y");
     EXPECT_TRUE(is_deriv_sentinel(rhs, result, "x"));
 }

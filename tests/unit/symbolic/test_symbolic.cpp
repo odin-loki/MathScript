@@ -343,10 +343,13 @@ TEST(SymbolicCasTest, collect_empty_var_returns_simplified) {
     EXPECT_NEAR(sym_eval(collected, {}), 7.0, 1e-12);
 }
 
-TEST(SymbolicCasTest, integrate_div_form_is_sentinel) {
-    const auto unsupported = sym_integrate(sym_div(sym_var("x"), sym_const(2.0)), "x");
-    EXPECT_EQ(unsupported.op, SymOp::Deriv);
-    EXPECT_EQ(unsupported.name, "x");
+TEST(SymbolicCasTest, integrate_div_by_const_is_linearity) {
+    // x/2 is the same linearity as 0.5*x, which always integrated. This used to
+    // return the sentinel, so the commoner of the two spellings was the one that
+    // failed.
+    const auto quotient = sym_integrate(sym_div(sym_var("x"), sym_const(2.0)), "x");
+    EXPECT_FALSE(sym_is_unsupported(quotient, "x"));
+    EXPECT_NEAR(sym_eval(quotient, {{"x", 3.0}}), 9.0 / 4.0, 1e-12);
 }
 
 TEST(SymbolicCasTest, laplace_exp_t_times_const_and_cos_bare) {
@@ -363,11 +366,13 @@ TEST(SymbolicCasTest, ilaplace_const_a2_cosine_and_numer_mismatch) {
         "s", "t");
     EXPECT_NEAR(sym_eval(cosine, {{"t", 0.25}}), std::cos(3.0 * 0.25), 1e-12);
 
-    const auto mismatch = sym_ilaplace(
+    // 2/(s^2+9) is the sine row at a numerator other than the canonical a = 3, which
+    // used to be refused outright rather than carried as a scale factor.
+    const auto scaled = sym_ilaplace(
         sym_div(sym_const(2.0), sym_add(sym_pow(sym_var("s"), sym_const(2.0)), sym_const(9.0))),
         "s", "t");
-    EXPECT_EQ(mismatch.op, SymOp::Deriv);
-    EXPECT_EQ(mismatch.name, "s");
+    EXPECT_FALSE(sym_is_unsupported(scaled, "s"));
+    EXPECT_NEAR(sym_eval(scaled, {{"t", 0.25}}), (2.0 / 3.0) * std::sin(3.0 * 0.25), 1e-12);
 }
 
 TEST(SymbolicCasTest, mellin_t_squared_exp_neg_at_and_bad_reciprocal) {
@@ -494,9 +499,11 @@ TEST(SymbolicCasTest, integrate_const_other_var_pow_and_reciprocal_miss) {
     const auto pow3 = sym_integrate(sym_pow(sym_var("x"), sym_const(3.0)), "x");
     EXPECT_NEAR(sym_eval(pow3, {{"x", 2.0}}), 4.0, 1e-12);
 
+    // n = -1 is the exception the power rule exists to carve out, and the answer is
+    // log(x) -- not a refusal.
     const auto recip = sym_integrate(sym_pow(sym_var("x"), sym_const(-1.0)), "x");
-    EXPECT_EQ(recip.op, SymOp::Deriv);
-    EXPECT_EQ(recip.name, "x");
+    EXPECT_FALSE(sym_is_unsupported(recip, "x"));
+    EXPECT_NEAR(sym_eval(recip, {{"x", 2.0}}), std::log(2.0), 1e-12);
 }
 
 TEST(SymbolicCasTest, dsolve_independent_rhs_and_imellin_c_over_s) {
@@ -601,7 +608,9 @@ TEST(SymbolicCasTest, dsolve_power_affine_zero_and_unsupported) {
     EXPECT_EQ(miss.op, SymOp::Deriv);
     EXPECT_EQ(miss.name, "x");
 
-    const auto unint = sym_dsolve(sym_tan(sym_var("x")), "x", "y");
+    // tan(x) integrates now (to -log(cos x)), so dsolve can separate it. Something
+    // genuinely outside the integral table is needed to reach the sentinel.
+    const auto unint = sym_dsolve(sym_exp(sym_pow(sym_var("x"), sym_const(2.0))), "x", "y");
     EXPECT_EQ(unint.op, SymOp::Deriv);
     EXPECT_EQ(unint.name, "x");
 }
@@ -782,12 +791,14 @@ TEST(SymbolicCasTest, ifourier_pow_a2_gauss_right_and_z_pairs) {
         "w", "t");
     EXPECT_NEAR(sym_eval(time, {{"t", 0.0}}), 1.0, 1e-9);
 
-    const auto miss = sym_ifourier(
+    // The unit Lorentzian is the same row as 2/(1+w^2) at half the amplitude; the
+    // numerator no longer has to equal 2a exactly.
+    const auto unit_lorentzian = sym_ifourier(
         sym_div(sym_const(1.0),
                 sym_add(sym_const(1.0), sym_pow(sym_var("w"), sym_const(2.0)))),
         "w", "t");
-    EXPECT_EQ(miss.op, SymOp::Deriv);
-    EXPECT_EQ(miss.name, "w");
+    EXPECT_FALSE(sym_is_unsupported(unit_lorentzian, "w"));
+    EXPECT_NEAR(sym_eval(unit_lorentzian, {{"t", 0.5}}), 0.5 * std::exp(-0.5), 1e-9);
 
     const auto geom = sym_ztransform(sym_pow(sym_const(0.5), sym_var("n")), "n", "z");
     EXPECT_NEAR(sym_eval(geom, {{"z", 2.0}}), 2.0 / 1.5, 1e-12);
@@ -796,17 +807,20 @@ TEST(SymbolicCasTest, ifourier_pow_a2_gauss_right_and_z_pairs) {
         sym_mul(sym_const(3.0), sym_pow(sym_const(0.25), sym_var("n"))), "n", "z");
     EXPECT_NEAR(sym_eval(scaled, {{"z", 1.0}}), 3.0 / 0.75, 1e-12);
 
+    // Z{4 * 0.5^n} = 4z/(z - 0.5). The matcher used to fold the 4 into the base and
+    // return z/(z - 2) -- a different pole, silently, for every scaled geometric
+    // sequence. This assertion used to pin that fold.
     const auto right_c = sym_ztransform(
         sym_mul(sym_pow(sym_const(0.5), sym_var("n")), sym_const(4.0)), "n", "z");
-    // Matcher folds 4*0.5 into base a=2, so Z = z/(z-2).
-    EXPECT_NEAR(sym_eval(right_c, {{"z", 3.0}}), 3.0, 1e-12);
+    EXPECT_NEAR(sym_eval(right_c, {{"z", 3.0}}), 4.0 * 3.0 / (3.0 - 0.5), 1e-12);
 
     const auto ones = sym_ztransform(sym_const(1.0), "n", "z");
     EXPECT_NEAR(sym_eval(ones, {{"z", 2.0}}), 2.0, 1e-12);
 
-    const auto z_miss = sym_ztransform(sym_var("n"), "n", "z");
-    EXPECT_EQ(z_miss.op, SymOp::Deriv);
-    EXPECT_EQ(z_miss.name, "n");
+    // Z{n} = z/(z-1)^2, the unit ramp -- the second row of every table.
+    const auto ramp = sym_ztransform(sym_var("n"), "n", "z");
+    EXPECT_FALSE(sym_is_unsupported(ramp, "n"));
+    EXPECT_NEAR(sym_eval(ramp, {{"z", 3.0}}), 3.0 / 4.0, 1e-12);
 
     const auto inv = sym_iztransform(
         sym_div(sym_var("z"), sym_sub(sym_var("z"), sym_const(0.5))), "z", "n");
@@ -845,9 +859,10 @@ TEST(SymbolicCasTest, integrate_linearity_and_matcher_misses) {
     const auto right_c = sym_integrate(sym_mul(sym_var("x"), sym_const(4.0)), "x");
     EXPECT_NEAR(sym_eval(right_c, {{"x", 2.0}}), 8.0, 1e-12);
 
-    const auto chain = sym_integrate(sym_sin(sym_mul(sym_const(2.0), sym_var("x"))), "x");
-    EXPECT_EQ(chain.op, SymOp::Deriv);
-    EXPECT_EQ(chain.name, "x");
+    // A linear argument is the first chain-rule row of the table: -cos(2x)/2.
+    const auto linear_arg = sym_integrate(sym_sin(sym_mul(sym_const(2.0), sym_var("x"))), "x");
+    EXPECT_FALSE(sym_is_unsupported(linear_arg, "x"));
+    EXPECT_NEAR(sym_eval(linear_arg, {{"x", 0.7}}), -std::cos(1.4) / 2.0, 1e-12);
 
     const auto mellin_miss = sym_mellin(
         sym_div(sym_const(1.0), sym_add(sym_const(2.0), sym_var("t"))), "t", "s");

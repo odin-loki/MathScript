@@ -62,7 +62,7 @@ SymExpr sym_integrate(const SymExpr& expr, const std::string& var);
 /// Not mathematical equality -- `x + 0` and `x` are different expressions here.
 bool sym_equal(const SymExpr& a, const SymExpr& b);
 
-/// True when `result` is the unsupported-sentinel for `input` and `var`.
+/// True when `result` carries the unsupported-sentinel for `var`.
 ///
 /// The functions below signal "no closed form" by returning sym_deriv(input, var).
 /// That sentinel is not inert: sym_eval evaluates a Deriv node by differentiating
@@ -74,11 +74,26 @@ bool sym_equal(const SymExpr& a, const SymExpr& b);
 /// Callers that cannot tolerate that must check before using a result:
 ///
 ///     const auto r = sym_integrate(f, "x");
-///     if (sym_is_unsupported(r, f, "x")) { ... no closed form ... }
+///     if (sym_is_unsupported(r, "x")) { ... no closed form ... }
 ///
-/// The check is exact rather than heuristic: these functions never return a bare
-/// Deriv node of their own input for any other reason.
-bool sym_is_unsupported(const SymExpr& result, const SymExpr& input, const std::string& var);
+/// The scan is recursive, and it has to be. The linearity rules recurse into each
+/// operand and reassemble whatever comes back, so one unsupported term inside an
+/// otherwise-supported expression yields a tree where the sentinel is a *subterm*
+/// rather than the root. Comparing only the root against the input -- which is what
+/// this predicate used to do -- reports such a result as a success and hands back a
+/// mixture of a transform and a derivative:
+///
+///     sym_laplace("t + t*exp(2*t)")  ->  (1/s^2) + d/dt(t*exp(2*t))
+///
+/// The transforms below also propagate failure outward at every linearity site, so
+/// in practice the sentinel arrives at the root anyway; this predicate is the
+/// backstop that does not depend on every one of those sites being right.
+///
+/// The scan is exact rather than heuristic: SymOp::Deriv is constructed in exactly
+/// one translation unit, only ever as this sentinel, and no parser or public
+/// constructor can produce one -- so a Deriv node bearing `var` in a transform
+/// result cannot be anything else.
+bool sym_is_unsupported(const SymExpr& result, const std::string& var);
 
 // Forward/inverse transforms. Unsupported forms return sym_deriv(expr, var)
 // as an explicit sentinel (same convention as sym_integrate); see

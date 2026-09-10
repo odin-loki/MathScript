@@ -3,6 +3,7 @@
 #include "ms/symbolic/symbolic.hpp"
 
 #include <cmath>
+#include <functional>
 #include <optional>
 #include <algorithm>
 #include <vector>
@@ -35,6 +36,7 @@ bool is_bare_var(const SymExpr& expr, const std::string& var) {
 }
 
 bool contains_var_name(const SymExpr& expr, const std::string& name);
+bool try_eval_const(const SymExpr& expr, double& out);
 
 bool is_const_zero(const SymExpr& expr) {
     return expr.op == SymOp::Const && expr.value == 0.0;
@@ -63,6 +65,49 @@ SymExpr sym_integrate_unsupported(const SymExpr& expr, const std::string& var) {
     return sym_deriv(clone_expr(expr), var);
 }
 
+// True when `expr` carries the "no closed form" sentinel for `var` anywhere in its
+// tree, not merely at the root. SymOp::Deriv is constructed in this translation
+// unit only, and only as that sentinel -- no parser and no public constructor can
+// produce one -- so the scan is exact rather than a heuristic.
+bool contains_unsupported_sentinel(const SymExpr& expr, const std::string& var) {
+    if (expr.op == SymOp::Deriv && expr.name == var) {
+        return true;
+    }
+    if (expr.left && contains_unsupported_sentinel(*expr.left, var)) {
+        return true;
+    }
+    return expr.right && contains_unsupported_sentinel(*expr.right, var);
+}
+
+// True when `var` appears anywhere in `expr`. Used to check that the other factor of
+// a product really is a constant with respect to the transform variable.
+bool expression_uses_var(const SymExpr& expr, const std::string& var) {
+    if (expr.op == SymOp::Var && expr.name == var) {
+        return true;
+    }
+    if (expr.left && expression_uses_var(*expr.left, var)) {
+        return true;
+    }
+    return expr.right && expression_uses_var(*expr.right, var);
+}
+
+// Guard for the linearity rules. Each of them recurses into the operands and
+// reassembles whatever comes back, so a single operand that declines yields a tree
+// that is part answer and part sentinel:
+//
+//     sym_laplace("t + t*exp(2*t)")  ->  (1/s^2) + d/dt(t*exp(2*t))
+//
+// which the root-only unsupported check reads as a success. Wrapping the assembled
+// result here turns any operand's refusal into a refusal of the whole expression,
+// so the sentinel arrives at the caller as one unambiguous marker naming what was
+// actually asked for.
+SymExpr decline_if_unsupported(SymExpr built, const SymExpr& whole, const std::string& var) {
+    if (contains_unsupported_sentinel(built, var)) {
+        return sym_deriv(clone_expr(whole), var);
+    }
+    return built;
+}
+
 constexpr int kMaxLaplacePower = 8;
 
 bool try_get_const_value(const SymExpr& expr, double& out) {
@@ -86,6 +131,46 @@ bool try_get_const_value(const SymExpr& expr, double& out) {
             out = -inner;
             return true;
         }
+    }
+    // Constant arithmetic. The parser folds nothing, so 2*3 arrives as a Mul of two
+    // Const nodes and 1/2 as a Div of two; every caller here is asking about the
+    // value of a subexpression, not its shape, so a fully constant subtree is a
+    // constant however it was written. Folding cannot misfire on a subtree that
+    // mentions a variable, because such a subtree never reaches the arithmetic below.
+    double lhs = 0.0;
+    double rhs = 0.0;
+    if (expr.left && expr.right && try_get_const_value(*expr.left, lhs) &&
+        try_get_const_value(*expr.right, rhs)) {
+        double folded = 0.0;
+        switch (expr.op) {
+        case SymOp::Add:
+            folded = lhs + rhs;
+            break;
+        case SymOp::Sub:
+            folded = lhs - rhs;
+            break;
+        case SymOp::Mul:
+            folded = lhs * rhs;
+            break;
+        case SymOp::Div:
+            if (rhs == 0.0) {
+                return false;
+            }
+            folded = lhs / rhs;
+            break;
+        case SymOp::Pow:
+            folded = std::pow(lhs, rhs);
+            break;
+        default:
+            return false;
+        }
+        // A fold that is not finite -- a real root of a negative number, an overflow
+        // -- is not a constant a table entry can use.
+        if (!std::isfinite(folded)) {
+            return false;
+        }
+        out = folded;
+        return true;
     }
     return false;
 }
@@ -129,8 +214,187 @@ bool match_scaled_var(const SymExpr& expr, const std::string& var, double& scale
     return false;
 }
 
+// a*var + b, in every spelling the parser produces, with a != 0 required by the
+// callers rather than here. This is the argument shape that every linear-substitution
+// table entry needs -- integral f(a*x+b) dx = F(a*x+b)/a -- and the one the table
+// used to reject: only a *bare* variable argument was matched, so sin(x) integrated
+// and sin(2*x) did not, though the second is the first chain-rule row of the table.
+bool match_affine_in_var(const SymExpr& expr, const std::string& var, double& a, double& b) {
+    if (match_scaled_var(expr, var, a)) {
+        b = 0.0;
+        return true;
+    }
+    if (expr.op == SymOp::Add && expr.left && expr.right) {
+        if (match_scaled_var(*expr.left, var, a) && try_get_const_value(*expr.right, b)) {
+            return true;
+        }
+        return match_scaled_var(*expr.right, var, a) && try_get_const_value(*expr.left, b);
+    }
+    if (expr.op == SymOp::Sub && expr.left && expr.right) {
+        if (match_scaled_var(*expr.left, var, a) && try_get_const_value(*expr.right, b)) {
+            b = -b;
+            return true;
+        }
+        double lead = 0.0;
+        if (try_get_const_value(*expr.left, lead) && match_scaled_var(*expr.right, var, a)) {
+            a = -a;
+            b = lead;
+            return true;
+        }
+        return false;
+    }
+    return false;
+}
+
+// Divide an antiderivative by the inner linear coefficient, leaving a == 1 alone so
+// that the bare-argument entries keep printing exactly as they always have
+// (-cos(x), not (-cos(x)) / 1.000000).
+SymExpr scale_antiderivative(SymExpr anti, double a) {
+    if (a == 1.0) {
+        return anti;
+    }
+    return sym_div(std::move(anti), sym_const(a));
+}
+
 SymExpr build_s2_plus_a2(const std::string& s, double a) {
     return sym_add(sym_pow(sym_var(s), sym_const(2.0)), sym_pow(sym_const(a), sym_const(2.0)));
+}
+
+// s - a, spelled as s + |a| when a is negative so that the first shifting theorem
+// prints 1/(s + 3) rather than 1/(s - -3.000000).
+SymExpr build_s_minus_a(const std::string& s, double a) {
+    if (a < 0.0) {
+        return sym_add(sym_var(s), sym_const(-a));
+    }
+    return sym_sub(sym_var(s), sym_const(a));
+}
+
+// exp(a*var), the factor the first shifting theorem keys on.
+bool match_exp_scaled_var(const SymExpr& expr, const std::string& var, double& a) {
+    return expr.op == SymOp::Exp && expr.left && match_scaled_var(*expr.left, var, a);
+}
+
+// s - a with unit coefficient, which is what the first shifting theorem leaves in a
+// denominator. A bare s is the a = 0 case, so every rule keyed on this matcher covers
+// the unshifted row of the table and its shifted companion at the same time.
+bool match_shifted_var(const SymExpr& expr, const std::string& s, double& a) {
+    if (is_bare_var(expr, s)) {
+        a = 0.0;
+        return true;
+    }
+    double coeff = 0.0;
+    double constant = 0.0;
+    if (match_affine_in_var(expr, s, coeff, constant) && coeff == 1.0) {
+        a = -constant;
+        return true;
+    }
+    return false;
+}
+
+bool is_square(const SymExpr& expr) {
+    return expr.op == SymOp::Pow && expr.left && expr.right && expr.right->op == SymOp::Const &&
+           expr.right->value == 2.0;
+}
+
+// A positive constant written either as b^2 or as the number b^2 itself.
+bool match_positive_square(const SymExpr& expr, double& b) {
+    double value = 0.0;
+    if (is_square(expr) && try_get_const_value(*expr.left, value) && value > 0.0) {
+        b = value;
+        return true;
+    }
+    if (try_get_const_value(expr, value) && value > 0.0) {
+        b = std::sqrt(value);
+        return true;
+    }
+    return false;
+}
+
+// (s - a)^2 + b^2, b > 0.
+bool match_shifted_quadratic(const SymExpr& expr, const std::string& s, double& a, double& b) {
+    if (expr.op != SymOp::Add || !expr.left || !expr.right) {
+        return false;
+    }
+    if (is_square(*expr.left) && match_shifted_var(*expr.left->left, s, a) &&
+        match_positive_square(*expr.right, b)) {
+        return true;
+    }
+    return is_square(*expr.right) && match_shifted_var(*expr.right->left, s, a) &&
+           match_positive_square(*expr.left, b);
+}
+
+// (s - a)^n for a small n >= 1, with a bare s or s - a as the n = 1 case.
+bool match_shifted_power(const SymExpr& expr, const std::string& s, double& a, int& n) {
+    double power = 0.0;
+    if (expr.op == SymOp::Pow && expr.left && expr.right &&
+        try_get_const_value(*expr.right, power) && match_shifted_var(*expr.left, s, a)) {
+        int as_int = 0;
+        if (is_small_nonneg_int(power, as_int) && as_int >= 1) {
+            n = as_int;
+            return true;
+        }
+        return false;
+    }
+    if (match_shifted_var(expr, s, a)) {
+        n = 1;
+        return true;
+    }
+    return false;
+}
+
+// s^2 - a^2, a > 0 -- the hyperbolic row, printed on the same table page as the
+// sine row and previously absent.
+bool match_difference_of_squares(const SymExpr& expr, const std::string& s, double& a) {
+    double shift = 0.0;
+    return expr.op == SymOp::Sub && expr.left && expr.right && is_square(*expr.left) &&
+           match_shifted_var(*expr.left->left, s, shift) && shift == 0.0 &&
+           match_positive_square(*expr.right, a);
+}
+
+// c * f(t), dropping a unit factor.
+SymExpr attach_scale(double c, SymExpr f) {
+    if (c == 1.0) {
+        return f;
+    }
+    return sym_mul(sym_const(c), std::move(f));
+}
+
+// f(t) * exp(a*t), dropping the exponential when a == 0 and dropping f when it is
+// the constant 1, so the unshifted rows keep printing as they always have.
+SymExpr attach_exp(SymExpr f, double a, const std::string& t) {
+    if (a == 0.0) {
+        return f;
+    }
+    SymExpr factor = sym_exp(sym_mul(sym_const(a), sym_var(t)));
+    if (f.op == SymOp::Const && f.value == 1.0) {
+        return factor;
+    }
+    return sym_mul(std::move(f), std::move(factor));
+}
+
+// c * t^n, collapsing to c alone when n == 0.
+SymExpr build_monomial(double c, int n, const std::string& t) {
+    if (n == 0) {
+        return sym_const(c);
+    }
+    SymExpr power =
+        n == 1 ? sym_var(t) : sym_pow(sym_var(t), sym_const(static_cast<double>(n)));
+    return attach_scale(c, std::move(power));
+}
+
+// var or var^n for a small positive integer n -- the factor the frequency
+// differentiation rule L{t^n g(t)} = (-1)^n G^(n)(s) keys on.
+bool match_var_power_small_int(const SymExpr& expr, const std::string& var, int& n) {
+    if (is_bare_var(expr, var)) {
+        n = 1;
+        return true;
+    }
+    double power = 0.0;
+    if (expr.op == SymOp::Pow && expr.left && expr.right && is_bare_var(*expr.left, var) &&
+        try_get_const_value(*expr.right, power) && is_small_nonneg_int(power, n)) {
+        return n >= 1;
+    }
+    return false;
 }
 
 bool is_var_pow(const SymExpr& expr, const std::string& var, double power) {
@@ -948,25 +1212,29 @@ SymExpr sym_collect(const SymExpr& expr, const std::string& var) {
     return sym_simplify(std::move(e));
 }
 
-// Supported forms:
-//   Const c                          -> c * var
-//   Var v (v == var)                 -> var^2 / 2
-//   Var v (v != var)                 -> v * var  (treat as constant w.r.t. var)
-//   Add / Sub / Neg                  -> integrate each child (linearity)
-//   Mul with one Const factor        -> const * integrate(other)
-//   Pow(var, Const n), n != -1       -> var^(n+1) / (n+1)
-//   Sin(var) / Cos(var)              -> -Cos(var) / Sin(var)  (bare integration variable only)
-// Unsupported forms (chain rule, general products, Pow with n == -1, etc.)
-// return sym_deriv(expr, var) as an explicit unsupported sentinel.
 bool sym_equal(const SymExpr& a, const SymExpr& b) {
     return sym_equal_impl(a, b);
 }
 
-bool sym_is_unsupported(const SymExpr& result, const SymExpr& input, const std::string& var) {
-    return result.op == SymOp::Deriv && result.name == var && result.left != nullptr &&
-           sym_equal_impl(*result.left, input);
+bool sym_is_unsupported(const SymExpr& result, const std::string& var) {
+    return contains_unsupported_sentinel(result, var);
 }
 
+// Supported antiderivatives:
+//   Const c                          -> c * var
+//   Add / Sub / Neg                  -> integrate each child (linearity)
+//   Mul / Div by a Const             -> constant pulled out (linearity)
+//   Pow(u, Const n), n != -1         -> u^(n+1) / ((n+1) * a)
+//   Pow(u, Const -1), Const c / u    -> log(u) / a
+//   Sin / Cos / Tan / Exp / Sqrt / Log of u
+// where u = a*var + b is any first-degree argument and a is its coefficient: every
+// entry is the bare-argument row of the table divided by a, which is the linear
+// case of the substitution rule. Small integer powers of a non-linear base are
+// expanded first and integrated term by term.
+//
+// Unsupported forms (genuine chain rule, products of two var-dependent factors,
+// ...) return sym_deriv(expr, var) as an explicit sentinel; so does any expression
+// with an unsupported subterm, via decline_if_unsupported.
 SymExpr sym_integrate(const SymExpr& expr, const std::string& var) {
     switch (expr.op) {
     case SymOp::Const:
@@ -977,42 +1245,157 @@ SymExpr sym_integrate(const SymExpr& expr, const std::string& var) {
         }
         return sym_mul(clone_expr(expr), sym_var(var));
     case SymOp::Add:
-        return sym_add(
-            sym_integrate(*expr.left, var),
-            sym_integrate(*expr.right, var));
+        return decline_if_unsupported(
+            sym_add(sym_integrate(*expr.left, var), sym_integrate(*expr.right, var)), expr, var);
     case SymOp::Sub:
-        return sym_sub(
-            sym_integrate(*expr.left, var),
-            sym_integrate(*expr.right, var));
+        return decline_if_unsupported(
+            sym_sub(sym_integrate(*expr.left, var), sym_integrate(*expr.right, var)), expr, var);
     case SymOp::Neg:
-        return sym_neg(sym_integrate(*expr.left, var));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_integrate(*expr.right, var));
+        return decline_if_unsupported(sym_neg(sym_integrate(*expr.left, var)), expr, var);
+    case SymOp::Mul: {
+        // try_get_const_value rather than an op test, so that a negative literal --
+        // which the parser builds as Neg(Const), never Const(-c) -- is still a
+        // constant factor. -3*x^2 used to fall through to the sentinel.
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_integrate(*expr.right, var)), expr, var);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_integrate(*expr.left, var));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_integrate(*expr.left, var)), expr, var);
         }
         return sym_integrate_unsupported(expr, var);
-    case SymOp::Pow:
-        if (is_bare_var(*expr.left, var) && expr.right->op == SymOp::Const) {
-            const double n = expr.right->value;
+    }
+    case SymOp::Div: {
+        if (!expr.left || !expr.right) {
+            return sym_integrate_unsupported(expr, var);
+        }
+        // f/c is the same linearity as c*f, and was the commoner spelling of the two
+        // to decline: 0.5*x integrated and x/2 did not.
+        double denom = 0.0;
+        if (try_get_const_value(*expr.right, denom) && denom != 0.0) {
+            return decline_if_unsupported(
+                sym_div(sym_integrate(*expr.left, var), sym_const(denom)), expr, var);
+        }
+        double numerator = 0.0;
+        if (try_get_const_value(*expr.left, numerator)) {
+            // c/(a*var + b) -> (c/a) * log(a*var + b). The reciprocal of a linear
+            // form: the n = -1 carve-out of the power rule, and the base case of
+            // every partial-fraction decomposition.
+            double a = 0.0;
+            double b = 0.0;
+            if (match_affine_in_var(*expr.right, var, a, b) && a != 0.0) {
+                return sym_mul(sym_const(numerator / a), sym_log(clone_expr(*expr.right)));
+            }
+            // c/var^n -> c * var^(1-n) / (1-n), with n == 1 the log case above.
+            double n = 0.0;
+            if (expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
+                is_bare_var(*expr.right->left, var) && try_get_const_value(*expr.right->right, n)) {
+                if (n == 1.0) {
+                    return sym_mul(sym_const(numerator), sym_log(sym_var(var)));
+                }
+                return sym_div(
+                    sym_mul(sym_const(numerator), sym_pow(sym_var(var), sym_const(1.0 - n))),
+                    sym_const(1.0 - n));
+            }
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Pow: {
+        // try_get_const_value on the exponent, not an op test: x^(-2) parses as
+        // Pow(Var, Neg(Const 2)), so the plain power rule at a negative exponent --
+        // which the rule below has always computed correctly -- never ran.
+        double n = 0.0;
+        const bool const_exponent = expr.right && try_get_const_value(*expr.right, n);
+        if (const_exponent && is_bare_var(*expr.left, var)) {
             if (n == -1.0) {
-                return sym_integrate_unsupported(expr, var);
+                return sym_log(sym_var(var));
             }
             return sym_div(sym_pow(sym_var(var), sym_const(n + 1.0)), sym_const(n + 1.0));
         }
-        return sym_integrate_unsupported(expr, var);
-    case SymOp::Sin:
-        if (is_bare_var(*expr.left, var)) {
-            return sym_neg(sym_cos(sym_var(var)));
+        double a = 0.0;
+        double b = 0.0;
+        if (const_exponent && expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            if (n == -1.0) {
+                return scale_antiderivative(sym_log(clone_expr(*expr.left)), a);
+            }
+            return sym_div(
+                sym_pow(clone_expr(*expr.left), sym_const(n + 1.0)), sym_const(a * (n + 1.0)));
+        }
+        // A small integer power of something else: expand and integrate termwise.
+        // (t+1)^2 is a polynomial the table covers completely once multiplied out.
+        int small = 0;
+        if (const_exponent && is_small_nonneg_int(n, small) && small >= 2) {
+            SymExpr expanded = sym_expand(clone_expr(expr));
+            // Recurse only when expansion actually removed the Pow, so this cannot
+            // bounce between two spellings of the same expression.
+            if (expanded.op != SymOp::Pow) {
+                return decline_if_unsupported(sym_integrate(expanded, var), expr, var);
+            }
         }
         return sym_integrate_unsupported(expr, var);
-    case SymOp::Cos:
-        if (is_bare_var(*expr.left, var)) {
-            return sym_sin(sym_var(var));
+    }
+    case SymOp::Sin: {
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            return scale_antiderivative(sym_neg(sym_cos(clone_expr(*expr.left))), a);
         }
         return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Cos: {
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            return scale_antiderivative(sym_sin(clone_expr(*expr.left)), a);
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Tan: {
+        // integral tan(u) du = -log(cos(u)).
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            return scale_antiderivative(sym_neg(sym_log(sym_cos(clone_expr(*expr.left)))), a);
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Exp: {
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            return scale_antiderivative(sym_exp(clone_expr(*expr.left)), a);
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Sqrt: {
+        // The power rule at n = 1/2. The engine already integrated the Pow spelling
+        // x^0.5 correctly; only this node type was missing from the switch.
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            return scale_antiderivative(
+                sym_div(sym_pow(clone_expr(*expr.left), sym_const(1.5)), sym_const(1.5)), a);
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
+    case SymOp::Log: {
+        // integral log(u) du = u*log(u) - u.
+        double a = 0.0;
+        double b = 0.0;
+        if (expr.left && match_affine_in_var(*expr.left, var, a, b) && a != 0.0) {
+            // Built in two statements: as one expression the order in which the
+            // arguments to sym_sub are constructed is unspecified, so std::move(u)
+            // could empty u before clone_expr(u) ran -- which it did, giving the
+            // antiderivative "( * log()) - x".
+            SymExpr u = clone_expr(*expr.left);
+            SymExpr product = sym_mul(clone_expr(u), sym_log(clone_expr(u)));
+            SymExpr anti = sym_sub(std::move(product), std::move(u));
+            return scale_antiderivative(std::move(anti), a);
+        }
+        return sym_integrate_unsupported(expr, var);
+    }
     default:
         return sym_integrate_unsupported(expr, var);
     }
@@ -1183,37 +1566,96 @@ SymExpr sym_laplace(const SymExpr& expr, const std::string& t, const std::string
         }
         return sym_laplace_unsupported(expr, t);
     case SymOp::Add:
-        return sym_add(
-            sym_laplace(*expr.left, t, s),
-            sym_laplace(*expr.right, t, s));
+        return decline_if_unsupported(
+            sym_add(sym_laplace(*expr.left, t, s), sym_laplace(*expr.right, t, s)), expr, t);
     case SymOp::Sub:
-        return sym_sub(
-            sym_laplace(*expr.left, t, s),
-            sym_laplace(*expr.right, t, s));
+        return decline_if_unsupported(
+            sym_sub(sym_laplace(*expr.left, t, s), sym_laplace(*expr.right, t, s)), expr, t);
     case SymOp::Neg:
-        return sym_neg(sym_laplace(*expr.left, t, s));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_laplace(*expr.right, t, s));
+        return decline_if_unsupported(sym_neg(sym_laplace(*expr.left, t, s)), expr, t);
+    case SymOp::Mul: {
+        // try_get_const_value rather than an op test: a negative literal is
+        // Neg(Const), so -5*exp(2*t) used to miss linearity entirely while
+        // 5*exp(2*t) transformed.
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_laplace(*expr.right, t, s)), expr, t);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_laplace(*expr.left, t, s));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_laplace(*expr.left, t, s)), expr, t);
         }
-        return sym_laplace_unsupported(expr, t);
-    case SymOp::Pow:
-        if (is_bare_var(*expr.left, t) && expr.right->op == SymOp::Const) {
-            int n = 0;
-            if (is_small_nonneg_int(expr.right->value, n)) {
-                return sym_div(
-                    sym_const(factorial_int(n)),
-                    sym_pow(sym_var(s), sym_const(static_cast<double>(n + 1))));
+        // First shifting theorem: L{exp(a*t) g(t)} = G(s - a). Stated once here, it
+        // supplies every s-shifted row of the table at once -- t*exp(a*t),
+        // t^n*exp(a*t), exp(a*t)*sin(b*t), exp(a*t)*cos(b*t) -- instead of one
+        // hand-written matcher each.
+        double a = 0.0;
+        const SymExpr* shifted = nullptr;
+        if (match_exp_scaled_var(*expr.left, t, a)) {
+            shifted = expr.right.get();
+        } else if (match_exp_scaled_var(*expr.right, t, a)) {
+            shifted = expr.left.get();
+        }
+        if (shifted != nullptr) {
+            SymExpr g = sym_laplace(*shifted, t, s);
+            if (!contains_unsupported_sentinel(g, t)) {
+                return sym_simplify(sym_substitute(g, s, build_s_minus_a(s, a)));
+            }
+        }
+        // Frequency differentiation: L{t^n g(t)} = (-1)^n d^n/ds^n G(s). The other
+        // general rule, and the source of the t*sin(a*t) and t*cos(a*t) rows.
+        int n = 0;
+        const SymExpr* differentiated = nullptr;
+        if (match_var_power_small_int(*expr.left, t, n)) {
+            differentiated = expr.right.get();
+        } else if (match_var_power_small_int(*expr.right, t, n)) {
+            differentiated = expr.left.get();
+        }
+        if (differentiated != nullptr) {
+            SymExpr g = sym_laplace(*differentiated, t, s);
+            if (!contains_unsupported_sentinel(g, t)) {
+                for (int i = 0; i < n; ++i) {
+                    g = sym_simplify(sym_neg(sym_diff(std::move(g), s)));
+                }
+                return g;
             }
         }
         return sym_laplace_unsupported(expr, t);
+    }
+    case SymOp::Div: {
+        // f/c is the same linearity as c*f. sym_laplace had no Div case at all, so
+        // t/2 declined while 0.5*t transformed.
+        double denom = 0.0;
+        if (expr.right && try_get_const_value(*expr.right, denom) && denom != 0.0) {
+            return decline_if_unsupported(
+                sym_div(sym_laplace(*expr.left, t, s), sym_const(denom)), expr, t);
+        }
+        return sym_laplace_unsupported(expr, t);
+    }
+    case SymOp::Pow: {
+        double power = 0.0;
+        const bool const_exponent = expr.right && try_get_const_value(*expr.right, power);
+        int n = 0;
+        if (const_exponent && is_bare_var(*expr.left, t) && is_small_nonneg_int(power, n)) {
+            return sym_div(
+                sym_const(factorial_int(n)),
+                sym_pow(sym_var(s), sym_const(static_cast<double>(n + 1))));
+        }
+        // A small integer power of something else -- (t+1)^2 and friends -- is a
+        // polynomial the table covers completely once multiplied out.
+        if (const_exponent && is_small_nonneg_int(power, n) && n >= 2) {
+            SymExpr expanded = sym_expand(clone_expr(expr));
+            if (expanded.op != SymOp::Pow) {
+                return decline_if_unsupported(sym_laplace(expanded, t, s), expr, t);
+            }
+        }
+        return sym_laplace_unsupported(expr, t);
+    }
     case SymOp::Exp: {
         double a = 0.0;
         if (match_scaled_var(*expr.left, t, a)) {
-            return sym_div(sym_const(1.0), sym_sub(sym_var(s), sym_const(a)));
+            return sym_div(sym_const(1.0), build_s_minus_a(s, a));
         }
         return sym_laplace_unsupported(expr, t);
     }
@@ -1236,104 +1678,145 @@ SymExpr sym_laplace(const SymExpr& expr, const std::string& t, const std::string
     }
 }
 
-// Supported inverse Laplace rules (table-driven MVP):
-//   1 / (s - a)          -> exp(a*t)
-//   1 / s^2              -> t
-//   s / (s^2 + a^2)      -> cos(a*t)
-//   a / (s^2 + a^2)      -> sin(a*t)
-//   n! / s^(n + 1)       -> t^n   (paired with forward t^n rule)
-// Linearity: Add, Sub, Neg, Mul with Const factor.
-// Unsupported forms return sym_deriv(expr, s) as an explicit sentinel.
+// Supported inverse Laplace rules. Every entry is keyed on the shape of the
+// denominator, with the numerator taken as an arbitrary first-degree p*s + q:
+//
+//   (p*s + q) / (s - a)^n          -> exp(a*t) * [p*t^(n-2)/(n-2)! + (q+p*a)*t^(n-1)/(n-1)!]
+//   (p*s + q) / ((s - a)^2 + b^2)  -> exp(a*t) * [p*cos(b*t) + ((q+p*a)/b)*sin(b*t)]
+//   (p*s + q) / (s^2 - a^2)        -> (p/2 + q/(2a))*exp(a*t) + (p/2 - q/(2a))*exp(-a*t)
+//
+// a = 0 recovers the unshifted rows (1/s^n, sine, cosine), so the shifting theorem
+// costs no separate matcher. The numerator being general is what the previous table
+// lacked: it required each numerator to be *exactly* the constant the canonical row
+// carries, so 2/(s^2+4) inverted and 1/(s^2+4) -- the same row, differently scaled --
+// did not.
+//
+// Linearity: Add, Sub, Neg, Mul by a Const, and a Const factor in the denominator.
+// Unsupported forms return sym_deriv(expr, s) as an explicit sentinel; so does any
+// expression with an unsupported subterm, via decline_if_unsupported.
 SymExpr sym_ilaplace(const SymExpr& expr, const std::string& s, const std::string& t) {
     switch (expr.op) {
     case SymOp::Const:
         if (expr.value == 0.0) {
             return sym_const(0.0);
         }
+        // A non-zero constant is c*delta(t), a distribution rather than a function.
         return sym_ilaplace_unsupported(expr, s);
     case SymOp::Add:
-        return sym_add(
-            sym_ilaplace(*expr.left, s, t),
-            sym_ilaplace(*expr.right, s, t));
+        return decline_if_unsupported(
+            sym_add(sym_ilaplace(*expr.left, s, t), sym_ilaplace(*expr.right, s, t)), expr, s);
     case SymOp::Sub:
-        return sym_sub(
-            sym_ilaplace(*expr.left, s, t),
-            sym_ilaplace(*expr.right, s, t));
+        return decline_if_unsupported(
+            sym_sub(sym_ilaplace(*expr.left, s, t), sym_ilaplace(*expr.right, s, t)), expr, s);
     case SymOp::Neg:
-        return sym_neg(sym_ilaplace(*expr.left, s, t));
-    case SymOp::Mul:
-        if (expr.left->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.left), sym_ilaplace(*expr.right, s, t));
+        return decline_if_unsupported(sym_neg(sym_ilaplace(*expr.left, s, t)), expr, s);
+    case SymOp::Mul: {
+        double c = 0.0;
+        if (try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_ilaplace(*expr.right, s, t)), expr, s);
         }
-        if (expr.right->op == SymOp::Const) {
-            return sym_mul(clone_expr(*expr.right), sym_ilaplace(*expr.left, s, t));
+        if (try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), sym_ilaplace(*expr.left, s, t)), expr, s);
         }
         return sym_ilaplace_unsupported(expr, s);
+    }
     case SymOp::Div: {
         if (!expr.left || !expr.right) {
             return sym_ilaplace_unsupported(expr, s);
         }
-        double numerator = 0.0;
-        if (try_get_const_value(*expr.left, numerator)) {
-            double a = 0.0;
-            // c/s -> c. The n = 0 entry of the same family as c/s^n below, and the
-            // a = 0 case of c/(s - a); it matched neither, because a bare `s` is a
-            // Var node rather than a Sub or a Pow. L{1} = 1/s is the first line of
-            // any table, and the forward direction has always produced it.
-            if (is_bare_var(*expr.right, s)) {
-                return sym_const(numerator);
+        // A constant factor in the denominator is the same linearity the numerator
+        // already enjoyed: 0.5/s inverted while 1/(2*s) declined.
+        if (expr.right->op == SymOp::Mul && expr.right->left && expr.right->right) {
+            double factor = 0.0;
+            const SymExpr* rest = nullptr;
+            if (try_get_const_value(*expr.right->left, factor)) {
+                rest = expr.right->right.get();
+            } else if (try_get_const_value(*expr.right->right, factor)) {
+                rest = expr.right->left.get();
             }
-            if (match_sub_var_minus_const(*expr.right, s, a)) {
-                return sym_mul(
-                    sym_const(numerator),
-                    sym_exp(sym_mul(sym_const(a), sym_var(t))));
-            }
-            // c/(s + a) -> c*exp(-a*t). The same table entry with the sign the other
-            // way round; only the Sub spelling was matched, so sym_laplace's own
-            // output for a negative rate could not be read back.
-            if (match_add_var_plus_const(*expr.right, s, a)) {
-                return sym_mul(
-                    sym_const(numerator),
-                    sym_exp(sym_mul(sym_const(-a), sym_var(t))));
-            }
-            if (is_var_pow(*expr.right, s, 2.0) && numerator == 1.0) {
-                return sym_var(t);
-            }
-            if (expr.right->op == SymOp::Pow && is_bare_var(*expr.right->left, s) &&
-                expr.right->right->op == SymOp::Const) {
-                const double power = expr.right->right->value;
-                if (power >= 2.0 && power == std::floor(power)) {
-                    const int n = static_cast<int>(power) - 1;
-                    // L{t^n} = n!/s^(n+1), so c/s^(n+1) is (c/n!) t^n for any c. The
-                    // old condition demanded numerator == n! exactly, which accepted
-                    // 2/s^3 and declined 1/s^3 -- the same table entry, differently
-                    // scaled. The scale is carried instead of being required to be 1.
-                    if (n >= 0 && n <= kMaxLaplacePower) {
-                        const double scale = numerator / factorial_int(n);
-                        SymExpr base = n == 0   ? sym_const(1.0)
-                                       : n == 1 ? sym_var(t)
-                                                : sym_pow(sym_var(t),
-                                                          sym_const(static_cast<double>(n)));
-                        if (scale == 1.0) {
-                            return base;
-                        }
-                        return sym_mul(sym_const(scale), std::move(base));
-                    }
+            if (rest != nullptr && factor != 0.0) {
+                SymExpr inner =
+                    sym_ilaplace(sym_div(clone_expr(*expr.left), clone_expr(*rest)), s, t);
+                if (!contains_unsupported_sentinel(inner, s)) {
+                    return sym_div(std::move(inner), sym_const(factor));
                 }
             }
-            double denom_a = 0.0;
-            if (match_s2_plus_a2(*expr.right, s, denom_a)) {
-                if (numerator == denom_a) {
-                    return sym_sin(sym_mul(sym_const(denom_a), sym_var(t)));
-                }
+        }
+
+        // Numerator as p*s + q; a pure constant is the p = 0 case.
+        double p = 0.0;
+        double q = 0.0;
+        if (!match_affine_in_var(*expr.left, s, p, q)) {
+            p = 0.0;
+            if (!try_get_const_value(*expr.left, q)) {
                 return sym_ilaplace_unsupported(expr, s);
             }
         }
-        if (is_bare_var(*expr.left, s)) {
-            double a = 0.0;
-            if (match_s2_plus_a2(*expr.right, s, a)) {
-                return sym_cos(sym_mul(sym_const(a), sym_var(t)));
+
+        double a = 0.0;
+        double b = 0.0;
+        int n = 0;
+        if (match_shifted_quadratic(*expr.right, s, a, b)) {
+            // p*s + q = p*(s - a) + (q + p*a): the first part is the cosine row, the
+            // second the sine row, both shifted by exp(a*t).
+            const double sine_scale = (q + p * a) / b;
+            if (p == 0.0 && sine_scale == 0.0) {
+                return sym_const(0.0);
             }
+            SymExpr result;
+            if (p != 0.0) {
+                result = attach_scale(p, sym_cos(sym_mul(sym_const(b), sym_var(t))));
+            }
+            if (sine_scale != 0.0) {
+                SymExpr sine =
+                    attach_scale(sine_scale, sym_sin(sym_mul(sym_const(b), sym_var(t))));
+                result = p != 0.0 ? sym_add(std::move(result), std::move(sine)) : std::move(sine);
+            }
+            return attach_exp(std::move(result), a, t);
+        }
+        if (match_shifted_power(*expr.right, s, a, n)) {
+            const double tail = q + p * a;
+            // n == 1 with a surviving s in the numerator is p*delta(t) plus a
+            // function; the delta is a distribution, so the whole thing is declined
+            // rather than silently dropped.
+            if (n == 1 && p != 0.0) {
+                return sym_ilaplace_unsupported(expr, s);
+            }
+            const bool has_leading = n >= 2 && p != 0.0;
+            if (!has_leading && tail == 0.0) {
+                return sym_const(0.0);
+            }
+            SymExpr result;
+            if (has_leading) {
+                result = build_monomial(p / factorial_int(n - 2), n - 2, t);
+            }
+            if (tail != 0.0) {
+                SymExpr term = build_monomial(tail / factorial_int(n - 1), n - 1, t);
+                result = has_leading ? sym_add(std::move(result), std::move(term))
+                                     : std::move(term);
+            }
+            return attach_exp(std::move(result), a, t);
+        }
+        if (match_difference_of_squares(*expr.right, s, a)) {
+            // p*cosh(a*t) + (q/a)*sinh(a*t), written with exponentials because SymOp
+            // carries no hyperbolic nodes.
+            const double rising = p / 2.0 + q / (2.0 * a);
+            const double falling = p / 2.0 - q / (2.0 * a);
+            if (rising == 0.0 && falling == 0.0) {
+                return sym_const(0.0);
+            }
+            SymExpr result;
+            if (rising != 0.0) {
+                result = attach_exp(sym_const(rising), a, t);
+            }
+            if (falling != 0.0) {
+                SymExpr term = attach_exp(sym_const(falling), -a, t);
+                result = rising != 0.0 ? sym_add(std::move(result), std::move(term))
+                                       : std::move(term);
+            }
+            return result;
         }
         return sym_ilaplace_unsupported(expr, s);
     }
@@ -1997,9 +2480,6 @@ std::optional<SymExpr> extract_linear_term(
             return std::nullopt;
         }
 
-        if (!have_var) {
-            return sym_simplify(std::move(coef));
-        }
         return sym_simplify(std::move(coef));
     }
     if (leaf.op == SymOp::Neg && leaf.left) {
@@ -2010,13 +2490,45 @@ std::optional<SymExpr> extract_linear_term(
         return sym_neg(std::move(*inner));
     }
 
-    if (!is_allowed_other_var(leaf, vars)) {
+    // f/g with g free of the unknowns is linear in the same variables as f, with
+    // every coefficient divided by g. Without this, x/2 was not recognised as a term
+    // at all -- and, because flatten_linear_sum used to discard what it could not
+    // parse, the system came back singular rather than wrong.
+    if (leaf.op == SymOp::Div && leaf.left && leaf.right) {
+        bool denominator_uses_unknown = false;
+        for (const auto& solve_var : vars) {
+            if (contains_var_name(*leaf.right, solve_var)) {
+                denominator_uses_unknown = true;
+                break;
+            }
+        }
+        if (!denominator_uses_unknown) {
+            auto inner = extract_linear_term(*leaf.left, vars, matched_var);
+            if (inner) {
+                return sym_simplify(sym_div(std::move(*inner), clone_expr(*leaf.right)));
+            }
+        }
         return std::nullopt;
     }
-    return std::nullopt;
+
+    // Anything left that does not mention an unknown is a constant of this system --
+    // sin(y) when solving for x, exp(a), a bare symbol. Returning nullopt for it,
+    // which is what this did, made flatten_linear_sum drop the term: "x + sin(y) - 1"
+    // solved to x = 1 instead of x = 1 - sin(y), and "x - exp(a)" to x = -0. Both were
+    // wrong answers with no error attached.
+    for (const auto& solve_var : vars) {
+        if (contains_var_name(leaf, solve_var)) {
+            return std::nullopt;
+        }
+    }
+    return clone_expr(leaf);
 }
 
-void flatten_linear_sum(
+// Returns false when some term of the sum is not linear in the unknowns. It used to
+// return void and simply skip such a term, so a quadratic or a product of two
+// unknowns silently became a linear system missing a piece, and the caller reported
+// a confident solution to an equation it had not been given.
+bool flatten_linear_sum(
     const SymExpr& expr,
     double sign,
     const std::vector<std::string>& vars,
@@ -2024,31 +2536,36 @@ void flatten_linear_sum(
     SymExpr& constant) {
     switch (expr.op) {
     case SymOp::Add:
-        if (expr.left) {
-            flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant);
+        if (expr.left && !flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant)) {
+            return false;
         }
-        if (expr.right) {
-            flatten_linear_sum(*expr.right, sign, vars, var_coeffs, constant);
-        }
-        return;
+        return !expr.right || flatten_linear_sum(*expr.right, sign, vars, var_coeffs, constant);
     case SymOp::Sub:
-        if (expr.left) {
-            flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant);
+        if (expr.left && !flatten_linear_sum(*expr.left, sign, vars, var_coeffs, constant)) {
+            return false;
         }
-        if (expr.right) {
-            flatten_linear_sum(*expr.right, -sign, vars, var_coeffs, constant);
-        }
-        return;
+        return !expr.right || flatten_linear_sum(*expr.right, -sign, vars, var_coeffs, constant);
     case SymOp::Neg:
-        if (expr.left) {
-            flatten_linear_sum(*expr.left, -sign, vars, var_coeffs, constant);
+        return !expr.left || flatten_linear_sum(*expr.left, -sign, vars, var_coeffs, constant);
+    case SymOp::Div: {
+        // A numeric denominator divides every coefficient of the numerator, so it can
+        // ride on `sign` and the sum inside it still splits: (x + 1)/2 and x/2 + y/3
+        // both work out here rather than having to be a single leaf term.
+        double denominator = 0.0;
+        if (expr.left && expr.right && try_eval_const(*expr.right, denominator) &&
+            denominator != 0.0) {
+            return flatten_linear_sum(*expr.left, sign / denominator, vars, var_coeffs, constant);
         }
-        return;
-    default: {
+        break;
+    }
+    default:
+        break;
+    }
+    {
         std::string matched_var;
         auto parsed = extract_linear_term(expr, vars, matched_var);
         if (!parsed) {
-            return;
+            return false;
         }
         SymExpr scaled = scale_expr(std::move(*parsed), sign);
         if (matched_var.empty()) {
@@ -2057,8 +2574,7 @@ void flatten_linear_sum(
             var_coeffs[matched_var] =
                 sym_simplify(sym_add(std::move(var_coeffs[matched_var]), std::move(scaled)));
         }
-        return;
-    }
+        return true;
     }
 }
 
@@ -2072,7 +2588,12 @@ std::optional<LinearRow> extract_linear_row(const SymExpr& equation, const std::
     for (const auto& v : vars) {
         row.var_coeffs[v] = sym_const(0.0);
     }
-    flatten_linear_sum(sym_simplify(clone_expr(equation)), 1.0, vars, row.var_coeffs, row.constant);
+    // Expand before flattening so that a bracketed coefficient -- 2*(x + 1) - 8, the
+    // ordinary way to write such an equation -- becomes a sum of terms this can read.
+    SymExpr normalised = sym_simplify(sym_expand(clone_expr(equation)));
+    if (!flatten_linear_sum(normalised, 1.0, vars, row.var_coeffs, row.constant)) {
+        return std::nullopt;
+    }
     return row;
 }
 
@@ -2257,6 +2778,60 @@ std::optional<double> extract_positive_scale_of_var(const SymExpr& expr, const s
             return -expr.right->left->value;
         }
     }
+    // var/c is the same scaling as (1/c)*var, and exp(-t/2) is an ordinary way to
+    // write a decay rate.
+    if (expr.op == SymOp::Div && expr.left && expr.right && is_named_var(*expr.left, var)) {
+        double denom = 0.0;
+        if (try_get_const_value(*expr.right, denom) && denom != 0.0) {
+            return 1.0 / denom;
+        }
+    }
+    return std::nullopt;
+}
+
+// The signed coefficient c in c * var^2, for every spelling the parser produces:
+// var^2 itself, a constant multiple either way round, a quotient by a constant, and
+// any of those negated. The Gaussian matchers keyed on one hard-coded shape --
+// Neg(Mul(Const, Pow(var, 2))) -- so exp(-(t^2)) (no Mul at all), exp(-2*t^2) (the
+// minus binds to the coefficient, leaving no Neg) and exp(-t^2/2) (a Div, not a Mul)
+// all missed the table, though each is an ordinary way to write a Gaussian.
+std::optional<double> match_quadratic_coefficient(const SymExpr& expr, const std::string& var) {
+    if (expr.op == SymOp::Pow && expr.left && expr.right && is_named_var(*expr.left, var) &&
+        expr.right->op == SymOp::Const && expr.right->value == 2.0) {
+        return 1.0;
+    }
+    if (expr.op == SymOp::Neg && expr.left) {
+        if (const auto inner = match_quadratic_coefficient(*expr.left, var)) {
+            return -*inner;
+        }
+        return std::nullopt;
+    }
+    if (expr.op == SymOp::Sub && expr.left && expr.right && is_const_zero(*expr.left)) {
+        if (const auto inner = match_quadratic_coefficient(*expr.right, var)) {
+            return -*inner;
+        }
+        return std::nullopt;
+    }
+    double factor = 0.0;
+    if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (try_get_const_value(*expr.left, factor)) {
+            if (const auto inner = match_quadratic_coefficient(*expr.right, var)) {
+                return factor * *inner;
+            }
+        }
+        if (try_get_const_value(*expr.right, factor)) {
+            if (const auto inner = match_quadratic_coefficient(*expr.left, var)) {
+                return factor * *inner;
+            }
+        }
+        return std::nullopt;
+    }
+    if (expr.op == SymOp::Div && expr.left && expr.right &&
+        try_get_const_value(*expr.right, factor) && factor != 0.0) {
+        if (const auto inner = match_quadratic_coefficient(*expr.left, var)) {
+            return *inner / factor;
+        }
+    }
     return std::nullopt;
 }
 
@@ -2283,152 +2858,122 @@ std::optional<double> match_exp_neg_quadratic(const SymExpr& expr, const std::st
     if (expr.op != SymOp::Exp || !expr.left) {
         return std::nullopt;
     }
-    const SymExpr& inner = *expr.left;
-    const SymExpr* negated = nullptr;
-    if (inner.op == SymOp::Neg && inner.left) {
-        negated = inner.left.get();
-    } else if (inner.op == SymOp::Sub && inner.left && inner.right && is_const_zero(*inner.left)) {
-        negated = inner.right.get();
-    } else {
+    const auto coefficient = match_quadratic_coefficient(*expr.left, t_var);
+    if (!coefficient || *coefficient >= 0.0) {
         return std::nullopt;
     }
-    if (!negated || negated->op != SymOp::Mul) {
-        return std::nullopt;
-    }
-    const SymExpr* coef_expr = nullptr;
-    const SymExpr* power_expr = nullptr;
-    if (negated->left && negated->left->op == SymOp::Const && negated->right) {
-        coef_expr = negated->left.get();
-        power_expr = negated->right.get();
-    } else if (negated->right && negated->right->op == SymOp::Const && negated->left) {
-        coef_expr = negated->right.get();
-        power_expr = negated->left.get();
-    } else {
-        return std::nullopt;
-    }
-    if (!coef_expr || !power_expr || coef_expr->value <= 0.0) {
-        return std::nullopt;
-    }
-    if (power_expr->op == SymOp::Pow && power_expr->left && is_named_var(*power_expr->left, t_var) &&
-        power_expr->right && power_expr->right->op == SymOp::Const && power_expr->right->value == 2.0) {
-        return coef_expr->value;
-    }
-    return std::nullopt;
+    return -*coefficient;
 }
 
-std::optional<double> match_rational_decay_form(const SymExpr& expr, const std::string& omega_var) {
+// c / (a^2 + var^2), a > 0. Returns a and sets `scale` to c / (2a), the multiple of
+// the canonical row this is. The old matcher demanded c == 2a exactly, so only the
+// pre-scaled spelling was accepted and 1/(1+w^2) -- the unit Lorentzian, the same row
+// at half the amplitude -- was refused.
+std::optional<double> match_rational_decay_form(
+    const SymExpr& expr, const std::string& omega_var, double& scale) {
     if (expr.op != SymOp::Div || !expr.left || !expr.right) {
         return std::nullopt;
     }
     double numerator = 0.0;
-    if (expr.left->op == SymOp::Const) {
-        numerator = expr.left->value;
-    } else if (
-        expr.left->op == SymOp::Mul && expr.left->left && expr.left->left->op == SymOp::Const &&
-        expr.left->right && expr.left->right->op == SymOp::Const) {
-        numerator = expr.left->left->value * expr.left->right->value;
-    } else {
+    if (!try_get_const_value(*expr.left, numerator)) {
         return std::nullopt;
     }
-    const SymExpr& den = *expr.right;
-    if (den.op != SymOp::Add || !den.left || !den.right) {
-        return std::nullopt;
-    }
-
-    auto match_omega_squared = [&](const SymExpr& term) {
-        return term.op == SymOp::Pow && term.left && is_named_var(*term.left, omega_var) &&
-               term.right && term.right->op == SymOp::Const && term.right->value == 2.0;
-    };
-
-    auto match_a_squared = [&](const SymExpr& term, double& a_out) {
-        if (term.op == SymOp::Pow && term.left && term.left->op == SymOp::Const && term.right &&
-            term.right->op == SymOp::Const && term.right->value == 2.0 && term.left->value > 0.0) {
-            a_out = term.left->value;
-            return true;
-        }
-        if (term.op == SymOp::Const && term.value > 0.0) {
-            a_out = std::sqrt(term.value);
-            return true;
-        }
-        return false;
-    };
-
+    double shift = 0.0;
     double a = 0.0;
-    if (match_a_squared(*den.left, a) && match_omega_squared(*den.right)) {
-        // matched
-    } else if (match_a_squared(*den.right, a) && match_omega_squared(*den.left)) {
-        // matched
-    } else {
+    if (!match_shifted_quadratic(*expr.right, omega_var, shift, a) || shift != 0.0 || a <= 0.0) {
         return std::nullopt;
     }
-    if (a <= 0.0 || std::abs(numerator - 2.0 * a) > 1e-9) {
-        return std::nullopt;
-    }
+    scale = numerator / (2.0 * a);
     return a;
 }
 
-std::optional<double> match_gaussian_spectrum_form(const SymExpr& expr, const std::string& omega_var) {
+// scale * exp(-var^2/(4a)) with scale == sqrt(pi/a): the transform of exp(-a*t^2).
+// `a` is read off the exponent, which is exact, rather than derived from the scale,
+// which is not: sym_to_string prints six decimals, so a spectrum copied back out of
+// the REPL carries a scale good to about 1e-6. The old matcher required agreement to
+// 1e-9 and so could not read the module's own printed output -- the Gaussian pair
+// failed to round-trip. The scale is still checked, to a tolerance matched to the
+// printer rather than to the arithmetic.
+std::optional<double> match_gaussian_spectrum_form(
+    const SymExpr& expr, const std::string& omega_var, double& scale_out) {
     if (expr.op != SymOp::Mul || !expr.left || !expr.right) {
         return std::nullopt;
     }
-    const SymExpr* scale_expr = nullptr;
+    double scale = 0.0;
     const SymExpr* gaussian = nullptr;
-    if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Exp) {
-        scale_expr = expr.left.get();
+    if (try_get_const_value(*expr.left, scale) && expr.right->op == SymOp::Exp) {
         gaussian = expr.right.get();
-    } else if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Exp) {
-        scale_expr = expr.right.get();
+    } else if (try_get_const_value(*expr.right, scale) && expr.left->op == SymOp::Exp) {
         gaussian = expr.left.get();
     } else {
         return std::nullopt;
     }
-    if (!scale_expr || !gaussian || !gaussian->left) {
+    if (scale <= 0.0 || !gaussian->left) {
         return std::nullopt;
     }
-    const double scale = scale_expr->value;
-    if (scale <= 0.0) {
+    const auto coefficient = match_quadratic_coefficient(*gaussian->left, omega_var);
+    if (!coefficient || *coefficient >= 0.0) {
         return std::nullopt;
     }
-    const double a = std::numbers::pi / (scale * scale);
-    const double expected_scale = std::sqrt(std::numbers::pi / a);
-    if (std::abs(scale - expected_scale) > 1e-9) {
+    // exponent coefficient == -1/(4a)
+    const double a = -1.0 / (4.0 * *coefficient);
+    if (a <= 0.0) {
         return std::nullopt;
     }
-    const SymExpr& inner = *gaussian->left;
-    const SymExpr* negated = nullptr;
-    if (inner.op == SymOp::Neg && inner.left) {
-        negated = inner.left.get();
-    } else if (inner.op == SymOp::Sub && inner.left && inner.right && is_const_zero(*inner.left)) {
-        negated = inner.right.get();
-    } else {
+    const double canonical = std::sqrt(std::numbers::pi / a);
+    if (std::abs(scale - canonical) > 1e-5 * canonical) {
         return std::nullopt;
     }
-    if (!negated || negated->op != SymOp::Div || !negated->left || !negated->right) {
-        return std::nullopt;
-    }
-    if (negated->left->op != SymOp::Pow || !negated->left->left || !is_named_var(*negated->left->left, omega_var) ||
-        !negated->left->right || negated->left->right->op != SymOp::Const ||
-        negated->left->right->value != 2.0) {
-        return std::nullopt;
-    }
-    if (negated->right->op != SymOp::Const || std::abs(negated->right->value - 4.0 * a) > 1e-9) {
-        return std::nullopt;
-    }
+    scale_out = scale / canonical;
     return a;
 }
 
+// The base a of a geometric sequence a^n.
+//
+// This used to also accept a constant multiple and return sym_mul(coefficient, base)
+// as the base -- which moved the pole. Z{3*2^n} came back as z/(z - 6) where the
+// answer is 3*z/(z - 2): a wrong result, silently, for every scaled geometric
+// sequence. A constant factor is linearity and belongs in transform_linearity, not
+// in the base.
 std::optional<SymExpr> match_geometric_sequence(const SymExpr& expr, const std::string& n_var) {
-    if (expr.op == SymOp::Pow && expr.left && expr.right && is_named_var(*expr.right, n_var)) {
+    if (expr.op == SymOp::Pow && expr.left && expr.right && is_named_var(*expr.right, n_var) &&
+        !expression_uses_var(*expr.left, n_var)) {
         return clone_expr(*expr.left);
     }
-    if (expr.op == SymOp::Mul && expr.left && expr.right) {
-        if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
-            is_named_var(*expr.right->right, n_var)) {
-            return sym_mul(clone_expr(*expr.left), clone_expr(*expr.right->left));
+    // exp(a*n) is the same row written the other way round, with base exp(a).
+    if (expr.op == SymOp::Exp && expr.left) {
+        const SymExpr& inner = *expr.left;
+        if (is_named_var(inner, n_var)) {
+            return sym_const(std::numbers::e);
         }
-        if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Pow && expr.left->left && expr.left->right &&
-            is_named_var(*expr.left->right, n_var)) {
-            return sym_mul(clone_expr(*expr.right), clone_expr(*expr.left->left));
+        if (inner.op == SymOp::Mul && inner.left && inner.right) {
+            if (is_named_var(*inner.right, n_var) && !expression_uses_var(*inner.left, n_var)) {
+                return sym_exp(clone_expr(*inner.left));
+            }
+            if (is_named_var(*inner.left, n_var) && !expression_uses_var(*inner.right, n_var)) {
+                return sym_exp(clone_expr(*inner.right));
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// w in cos(w*n) or sin(w*n), where w does not itself involve n.
+std::optional<SymExpr> match_sampled_frequency(
+    const SymExpr& expr, const std::string& n_var, SymOp wanted) {
+    if (expr.op != wanted || !expr.left) {
+        return std::nullopt;
+    }
+    const SymExpr& inner = *expr.left;
+    if (is_named_var(inner, n_var)) {
+        return sym_const(1.0);
+    }
+    if (inner.op == SymOp::Mul && inner.left && inner.right) {
+        if (is_named_var(*inner.right, n_var) && !expression_uses_var(*inner.left, n_var)) {
+            return clone_expr(*inner.left);
+        }
+        if (is_named_var(*inner.left, n_var) && !expression_uses_var(*inner.right, n_var)) {
+            return clone_expr(*inner.right);
         }
     }
     return std::nullopt;
@@ -2442,10 +2987,23 @@ std::optional<SymExpr> match_z_over_z_minus_a(const SymExpr& expr, const std::st
         return std::nullopt;
     }
     const SymExpr& den = *expr.right;
-    if (den.op != SymOp::Sub || !den.left || !den.right || !is_named_var(*den.left, z_var)) {
+    if (!den.left || !den.right || !is_named_var(*den.left, z_var)) {
         return std::nullopt;
     }
-    return clone_expr(*den.right);
+    if (den.op == SymOp::Sub) {
+        return clone_expr(*den.right);
+    }
+    // z/(z + a) is the pole at -a, which is where the alternating sequence (-1)^n
+    // lives -- one of the commonest single-pole cases there is, and previously
+    // unmatched because only the Sub spelling was accepted.
+    if (den.op == SymOp::Add) {
+        double a = 0.0;
+        if (try_get_const_value(*den.right, a)) {
+            return sym_const(-a);
+        }
+        return sym_neg(clone_expr(*den.right));
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -2454,6 +3012,52 @@ std::optional<SymExpr> match_z_over_z_minus_a(const SymExpr& expr, const std::st
 //   exp(-a|t|) ~ exp(-a*t)  <->  2a/(a^2 + omega^2)
 //   exp(-a*t^2)             <->  sqrt(pi/a)*exp(-omega^2/(4a))
 //   a^n                     <->  z/(z-a)
+namespace {
+
+// Linearity, shared by the Fourier pair and the Z-transform. All three were pure
+// table lookup with no recursion at all -- exp(-2*t^2) transformed and 3*exp(-2*t^2)
+// did not, though F[c*f] = c*F[f] is the defining property of a transform. Applied
+// after the table rows, so a row whose own top node is a Div or a Mul still matches
+// first.
+SymExpr transform_linearity(
+    const SymExpr& expr, const std::string& from_var,
+    const std::function<SymExpr(const SymExpr&)>& recurse) {
+    switch (expr.op) {
+    case SymOp::Add:
+        return decline_if_unsupported(
+            sym_add(recurse(*expr.left), recurse(*expr.right)), expr, from_var);
+    case SymOp::Sub:
+        return decline_if_unsupported(
+            sym_sub(recurse(*expr.left), recurse(*expr.right)), expr, from_var);
+    case SymOp::Neg:
+        return decline_if_unsupported(sym_neg(recurse(*expr.left)), expr, from_var);
+    case SymOp::Mul: {
+        double c = 0.0;
+        if (expr.left && try_get_const_value(*expr.left, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), recurse(*expr.right)), expr, from_var);
+        }
+        if (expr.right && try_get_const_value(*expr.right, c)) {
+            return decline_if_unsupported(
+                sym_mul(sym_const(c), recurse(*expr.left)), expr, from_var);
+        }
+        return sym_transform_unsupported(expr, from_var);
+    }
+    case SymOp::Div: {
+        double denom = 0.0;
+        if (expr.right && try_get_const_value(*expr.right, denom) && denom != 0.0) {
+            return decline_if_unsupported(
+                sym_div(recurse(*expr.left), sym_const(denom)), expr, from_var);
+        }
+        return sym_transform_unsupported(expr, from_var);
+    }
+    default:
+        return sym_transform_unsupported(expr, from_var);
+    }
+}
+
+} // namespace
+
 SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::string& omega_var) {
     if (const auto a = match_exp_neg_linear(expr, t_var)) {
         if (*a > 0.0) {
@@ -2468,51 +3072,135 @@ SymExpr sym_fourier(const SymExpr& expr, const std::string& t_var, const std::st
         SymExpr exponent = sym_neg(sym_div(std::move(omega2), sym_const(4.0 * *a)));
         return sym_simplify(sym_mul(std::move(scale), sym_exp(std::move(exponent))));
     }
-    return sym_transform_unsupported(expr, t_var);
+    // The Lorentzian, forward. F[2a/(a^2 + t^2)] = 2*pi*exp(-a|omega|) is the dual of
+    // the two-sided exponential above; only the inverse direction of this pair was
+    // implemented, so the module could transform one half of it and not the other.
+    // The library writes the two-sided decay without an absolute value, as the
+    // inverse direction already does.
+    double lorentzian_scale = 0.0;
+    if (const auto a = match_rational_decay_form(expr, t_var, lorentzian_scale)) {
+        SymExpr decay = sym_exp(sym_neg(sym_mul(sym_const(*a), sym_var(omega_var))));
+        return sym_simplify(
+            sym_mul(sym_const(lorentzian_scale * 2.0 * std::numbers::pi), std::move(decay)));
+    }
+    return transform_linearity(expr, t_var, [&](const SymExpr& child) {
+        return sym_fourier(child, t_var, omega_var);
+    });
 }
 
 SymExpr sym_ifourier(const SymExpr& expr, const std::string& omega_var, const std::string& t_var) {
-    if (const auto a = match_rational_decay_form(expr, omega_var)) {
-        return sym_simplify(sym_exp(sym_neg(sym_mul(sym_const(*a), sym_var(t_var)))));
+    double decay_scale = 0.0;
+    if (const auto a = match_rational_decay_form(expr, omega_var, decay_scale)) {
+        SymExpr decay = sym_exp(sym_neg(sym_mul(sym_const(*a), sym_var(t_var))));
+        return sym_simplify(attach_scale(decay_scale, std::move(decay)));
     }
-    if (const auto a = match_gaussian_spectrum_form(expr, omega_var)) {
-        return sym_simplify(sym_exp(sym_neg(sym_mul(sym_const(*a), sym_pow(sym_var(t_var), sym_const(2.0))))));
+    double gaussian_scale = 0.0;
+    if (const auto a = match_gaussian_spectrum_form(expr, omega_var, gaussian_scale)) {
+        SymExpr gaussian =
+            sym_exp(sym_neg(sym_mul(sym_const(*a), sym_pow(sym_var(t_var), sym_const(2.0)))));
+        return sym_simplify(attach_scale(gaussian_scale, std::move(gaussian)));
     }
-    return sym_transform_unsupported(expr, omega_var);
+    return transform_linearity(expr, omega_var, [&](const SymExpr& child) {
+        return sym_ifourier(child, omega_var, t_var);
+    });
 }
 
+// Supported Z-transform rules:
+//   c                     -> c * z/(z - 1)
+//   a^n, exp(a*n)         -> z/(z - a)
+//   n^k * f(n)            -> (-z d/dz)^k F(z)
+//   cos(w*n)              -> z*(z - cos w) / (z^2 - 2*z*cos w + 1)
+//   sin(w*n)              -> z*sin w       / (z^2 - 2*z*cos w + 1)
+// Linearity: Add, Sub, Neg, Mul/Div by a Const.
 SymExpr sym_ztransform(const SymExpr& expr, const std::string& n_var, const std::string& z_var) {
     if (auto base = match_geometric_sequence(expr, n_var)) {
         return sym_simplify(sym_div(sym_var(z_var), sym_sub(sym_var(z_var), std::move(*base))));
     }
     if (expr.op == SymOp::Const) {
-        return sym_simplify(sym_mul(clone_expr(expr), sym_div(sym_var(z_var), sym_sub(sym_var(z_var), sym_const(1.0)))));
+        return sym_simplify(sym_mul(
+            clone_expr(expr), sym_div(sym_var(z_var), sym_sub(sym_var(z_var), sym_const(1.0)))));
     }
-    return sym_transform_unsupported(expr, n_var);
+    // The sampled sinusoids, which share the denominator z^2 - 2*z*cos(w) + 1.
+    for (const SymOp wanted : {SymOp::Cos, SymOp::Sin}) {
+        auto w = match_sampled_frequency(expr, n_var, wanted);
+        if (!w) {
+            continue;
+        }
+        SymExpr denominator = sym_add(
+            sym_sub(sym_pow(sym_var(z_var), sym_const(2.0)),
+                    sym_mul(sym_const(2.0), sym_mul(sym_var(z_var), sym_cos(clone_expr(*w))))),
+            sym_const(1.0));
+        SymExpr numerator =
+            wanted == SymOp::Cos
+                ? sym_mul(sym_var(z_var), sym_sub(sym_var(z_var), sym_cos(clone_expr(*w))))
+                : sym_mul(sym_var(z_var), sym_sin(clone_expr(*w)));
+        return sym_simplify(sym_div(std::move(numerator), std::move(denominator)));
+    }
+    // Z{n^k f(n)} = (-z d/dz)^k F(z): the discrete counterpart of the Laplace
+    // frequency-differentiation rule, and the whole n^k family in one statement.
+    // Z{n} = z/(z-1)^2 is its k = 1, f = 1 case.
+    int k = 0;
+    SymExpr inner;
+    bool have_inner = false;
+    if (match_var_power_small_int(expr, n_var, k)) {
+        inner = sym_const(1.0);
+        have_inner = true;
+    } else if (expr.op == SymOp::Mul && expr.left && expr.right) {
+        if (match_var_power_small_int(*expr.left, n_var, k)) {
+            inner = clone_expr(*expr.right);
+            have_inner = true;
+        } else if (match_var_power_small_int(*expr.right, n_var, k)) {
+            inner = clone_expr(*expr.left);
+            have_inner = true;
+        }
+    }
+    if (have_inner) {
+        SymExpr transformed = sym_ztransform(inner, n_var, z_var);
+        if (!contains_unsupported_sentinel(transformed, n_var)) {
+            for (int i = 0; i < k; ++i) {
+                transformed = sym_simplify(
+                    sym_neg(sym_mul(sym_var(z_var), sym_diff(std::move(transformed), z_var))));
+            }
+            return transformed;
+        }
+    }
+    return transform_linearity(expr, n_var, [&](const SymExpr& child) {
+        return sym_ztransform(child, n_var, z_var);
+    });
 }
 
 SymExpr sym_iztransform(const SymExpr& expr, const std::string& z_var, const std::string& n_var) {
-    if (expr.op == SymOp::Mul && expr.left && expr.right) {
-        if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Div) {
-            if (auto base = match_z_over_z_minus_a(*expr.right, z_var)) {
-                return sym_simplify(sym_mul(clone_expr(*expr.left), sym_pow(std::move(*base), sym_var(n_var))));
-            }
-        }
-        if (expr.right->op == SymOp::Const && expr.left->op == SymOp::Div) {
-            if (auto base = match_z_over_z_minus_a(*expr.left, z_var)) {
-                return sym_simplify(sym_mul(clone_expr(*expr.right), sym_pow(std::move(*base), sym_var(n_var))));
-            }
-        }
-    }
     if (auto base = match_z_over_z_minus_a(expr, z_var)) {
+        double value = 0.0;
+        // z/(z - 1) is the unit sequence; 1^n is the same thing spelled worse.
+        if (try_get_const_value(*base, value) && value == 1.0) {
+            return sym_const(1.0);
+        }
         return sym_simplify(sym_pow(std::move(*base), sym_var(n_var)));
     }
+    // z/(z - a)^2 -> n * a^(n-1): the inverse of the multiplication-by-n rule, and
+    // the partner of the Z{n} row above. Without it the table was asymmetric -- every
+    // repeated pole a partial-fraction expansion produces was a dead end.
     if (expr.op == SymOp::Div && expr.left && is_named_var(*expr.left, z_var) && expr.right &&
-        expr.right->op == SymOp::Sub && expr.right->left && is_named_var(*expr.right->left, z_var) &&
-        expr.right->right && expr.right->right->op == SymOp::Const && expr.right->right->value == 1.0) {
-        return sym_const(1.0);
+        expr.right->op == SymOp::Pow && expr.right->left && expr.right->right &&
+        expr.right->right->op == SymOp::Const && expr.right->right->value == 2.0) {
+        const SymExpr& denominator = *expr.right->left;
+        if (denominator.op == SymOp::Sub && denominator.left && denominator.right &&
+            is_named_var(*denominator.left, z_var)) {
+            double a = 0.0;
+            if (try_get_const_value(*denominator.right, a) && a != 0.0) {
+                if (a == 1.0) {
+                    return sym_var(n_var);
+                }
+                return sym_simplify(sym_mul(
+                    sym_var(n_var),
+                    sym_pow(sym_const(a), sym_sub(sym_var(n_var), sym_const(1.0)))));
+            }
+        }
     }
-    return sym_transform_unsupported(expr, z_var);
+    return transform_linearity(expr, z_var, [&](const SymExpr& child) {
+        return sym_iztransform(child, z_var, n_var);
+    });
 }
 
 

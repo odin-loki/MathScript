@@ -15185,7 +15185,7 @@ Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, cons
     // Printing that gives the user "d/dx(...)" where they asked for an integral,
     // and feeding it to sym_eval yields the derivative's value with no error
     // anywhere. Report it instead.
-    if (sym_is_unsupported(result, *expr, var_text)) {
+    if (sym_is_unsupported(result, var_text)) {
         return std::unexpected(DomainError{
             "sym_integrate", "no closed form found for this expression"});
     }
@@ -15239,10 +15239,11 @@ Result<std::string> eval_sym_transform_strings(const std::string& expr_arg, cons
         return std::unexpected(
             DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var1\", \"var2\")"});
     }
-    // Check the raw result: the sentinel is sym_deriv(expr, var_a), and running it
-    // through sym_simplify first would compare against a rewritten expression.
+    // Check the raw result: sym_simplify may rewrite the sentinel's own operand, and
+    // the scan looks for a Deriv node rather than for a match against the input, so
+    // there is nothing to gain by simplifying first and something to lose.
     auto raw = transform(*expr, var_a, var_b);
-    if (sym_is_unsupported(raw, *expr, var_a)) {
+    if (sym_is_unsupported(raw, var_a)) {
         return std::unexpected(DomainError{
             fn, "no closed form found for this expression"});
     }
