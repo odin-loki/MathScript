@@ -22,11 +22,52 @@ namespace image {
 
 // ========================== Image ==========================
 
-Image::Image(int r, int c, int ch, float fill)
-    : rows(r), cols(c), channels(ch), data(r*c*ch, fill) {}
+namespace {
 
-float& Image::at(int r, int c, int ch) { return data[(r*cols+c)*channels+ch]; }
-float  Image::at(int r, int c, int ch) const { return data[(r*cols+c)*channels+ch]; }
+/// `r * c * ch` as a count, computed in `std::size_t` rather than in `int`.
+///
+/// `data(r*c*ch, fill)` was `int` arithmetic, and `impad(img, 1000000)` asks for a
+/// 2000002 x 2000002 image: the product is 4,000,008,000,004, which is not an `int`.
+/// Signed overflow is undefined, and what it did in practice was allocate a buffer of
+/// whatever the wrap produced and then let `at()` -- also `int` arithmetic, also
+/// overflowing -- write far outside it. That is a segmentation fault reachable from one
+/// line of a REPL session.
+///
+/// In `size_t` the count is exact, so an image too large to hold fails at the
+/// allocation instead of succeeding at the wrong size. Failing there is still a
+/// process death in a tree built without exceptions, which is why the callers bound
+/// the request as well; but a death at the allocation is a resource limit, and a write
+/// outside the buffer is a memory-safety defect, and only one of those two can be left
+/// to a caller.
+std::size_t image_element_count(int r, int c, int ch) {
+    if (r <= 0 || c <= 0 || ch <= 0) {
+        return 0;
+    }
+    return static_cast<std::size_t>(r) * static_cast<std::size_t>(c) *
+           static_cast<std::size_t>(ch);
+}
+
+} // namespace
+
+Image::Image(int r, int c, int ch, float fill)
+    : rows(r > 0 ? r : 0), cols(c > 0 ? c : 0), channels(ch > 0 ? ch : 0),
+      data(image_element_count(r, c, ch), fill) {}
+
+// The index is computed in `size_t` for the reason above: in `int` it overflows on an
+// image this type can legitimately hold -- 46341 x 46341 single-channel is past INT_MAX
+// -- and an overflowed index is an out-of-bounds access rather than a wrong pixel.
+float& Image::at(int r, int c, int ch) {
+    return data[(static_cast<std::size_t>(r) * static_cast<std::size_t>(cols) +
+                 static_cast<std::size_t>(c)) *
+                    static_cast<std::size_t>(channels) +
+                static_cast<std::size_t>(ch)];
+}
+float Image::at(int r, int c, int ch) const {
+    return data[(static_cast<std::size_t>(r) * static_cast<std::size_t>(cols) +
+                 static_cast<std::size_t>(c)) *
+                    static_cast<std::size_t>(channels) +
+                static_cast<std::size_t>(ch)];
+}
 
 float bilinear_sample(const Image& img, float r, float c, int ch) {
     int r0=(int)r, c0=(int)c;
@@ -1006,17 +1047,37 @@ Image bilateral(const Image& img, float sigma_s, float sigma_r) {
     const int rows = img.rows;
     const int cols = img.cols;
     const int channels = img.channels;
-    const int half = std::max(1, static_cast<int>(2.f * sigma_s));
+    // The radius follows sigma_s, which is a caller's float and so is unbounded. Two
+    // things had to change.
+    //
+    // A radius past the image is not a wider filter, it is the same filter with the
+    // extra taps falling outside every pixel's neighbourhood, so clamping it to the
+    // image changes no result and bounds the work. Without the clamp, sigma_s = 1e6
+    // asks for a 4000001 x 4000001 kernel.
+    //
+    // And `ksize * ksize` was `int` arithmetic. At that size the product is 1.6e13,
+    // which is not an `int`; the overflow is undefined, and what it did was size the
+    // weight buffer from whatever the wrap produced and then index it with
+    // `dri * ksize + dci`, overflowing again -- a write outside the buffer rather than
+    // a slow filter. The clamp makes the overflow unreachable and the `size_t`
+    // arithmetic makes it impossible, and both are worth having: the first is a policy
+    // about kernels and the second is about the type.
+    const int max_half = std::max(1, std::max(rows, cols));
+    const int half = std::min(max_half, std::max(1, static_cast<int>(2.f * sigma_s)));
     const int ksize = 2 * half + 1;
 
     const float inv_2_sigma_s_sq = 1.f / (2.f * sigma_s * sigma_s);
-    std::vector<float> spatial_weights(static_cast<std::size_t>(ksize * ksize));
+    const std::size_t kernel_area =
+        static_cast<std::size_t>(ksize) * static_cast<std::size_t>(ksize);
+    std::vector<float> spatial_weights(kernel_area);
     for (int dri = 0; dri < ksize; ++dri) {
         const int dr = dri - half;
         for (int dci = 0; dci < ksize; ++dci) {
             const int dc = dci - half;
-            spatial_weights[static_cast<std::size_t>(dri * ksize + dci)] =
-                std::exp(-(dr * dr + dc * dc) * inv_2_sigma_s_sq);
+            spatial_weights[static_cast<std::size_t>(dri) *
+                                static_cast<std::size_t>(ksize) +
+                            static_cast<std::size_t>(dci)] =
+                std::exp(-static_cast<float>(dr * dr + dc * dc) * inv_2_sigma_s_sq);
         }
     }
 
