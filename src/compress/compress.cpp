@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <queue>
@@ -260,6 +261,12 @@ ArithmeticResult arithmetic_encode(const Bytes& data) {
 Bytes arithmetic_decode(const ArithmeticResult& ar) {
     if (ar.original_size == 0) return {};
     RangeModel model = RangeModel::from_table(ar.freq_table);
+    // A model with no symbols cannot decode anything, and every line below assumes it
+    // has at least one: `model.total` would be zero and `rc.get_freq` divides by it,
+    // `sym[idx]` would index an empty vector. The table is the caller's -- for
+    // `ans_decode_vec` and its siblings, a matrix somebody typed -- so "no usable
+    // symbols" is an input, not an impossibility.
+    if (model.sym.empty() || model.total == 0) return {};
     ByteReader reader(ar.encoded);
     RngCoder rc;
     rc.start_decode(reader);
@@ -301,7 +308,17 @@ struct AnsModel {
     static AnsModel from_table(const std::vector<std::pair<uint8_t, uint32_t>>& ft) {
         std::vector<std::pair<uint8_t, int>> pairs;
         pairs.reserve(ft.size());
-        for (auto& [s, f] : ft) pairs.emplace_back(s, static_cast<int>(f));
+        // A frequency above INT_MAX became negative here, and a negative count then
+        // skewed every scaled frequency computed from the total. Clamping is safe: a
+        // count this large already saturates the 12-bit ANS scale, so it cannot change
+        // the model for any table that was not nonsense before the clamp.
+        for (auto& [s, f] : ft) {
+            const uint32_t bounded =
+                f > static_cast<uint32_t>(std::numeric_limits<int>::max())
+                    ? static_cast<uint32_t>(std::numeric_limits<int>::max())
+                    : f;
+            pairs.emplace_back(s, static_cast<int>(bounded));
+        }
         return from_counts(pairs);
     }
 
@@ -309,19 +326,48 @@ struct AnsModel {
         AnsModel m;
         if (pairs.empty()) return m;
 
-        int raw_total = 0;
-        for (auto& [_, c] : pairs) raw_total += c;
+        // `from_data` cannot produce a count below 1 -- it counts occurrences -- but
+        // `from_table` takes the counts from the caller, which for `ans_decode_vec` is
+        // a matrix somebody typed. A table of nothing but zeros made `raw_total` zero
+        // and the division four lines down raised SIGFPE: `ans_decode` on an all-zero
+        // frequency table ended the process.
+        //
+        // A symbol that occurs zero times has no place in a model, so it is dropped
+        // rather than given the frequency of 1 the `f == 0` bump below would have
+        // invented for it. That changes nothing for `from_data`, whose counts are all
+        // at least one, and it is the only reading of a zero count that is not a
+        // fabrication.
+        //
+        // `raw_total` is a `long long` because 256 counts of INT_MAX do not fit in an
+        // `int`, and a signed overflow there is undefined rather than merely large.
+        long long raw_total = 0;
+        for (auto& [symbol, count] : pairs) {
+            (void)symbol;
+            if (count > 0) {
+                raw_total += count;
+            }
+        }
+        if (raw_total <= 0) {
+            return m;
+        }
 
         m.sym.reserve(pairs.size());
         m.freq.reserve(pairs.size());
         uint32_t scaled_sum = 0;
         for (auto& [s, c] : pairs) {
+            if (c <= 0) {
+                continue;
+            }
             uint32_t f = static_cast<uint32_t>(
-                (static_cast<uint64_t>(c) * kAnsScale + raw_total / 2) / static_cast<uint64_t>(raw_total));
+                (static_cast<uint64_t>(c) * kAnsScale + static_cast<uint64_t>(raw_total) / 2) /
+                static_cast<uint64_t>(raw_total));
             if (f == 0) f = 1;
             m.sym.push_back(s);
             m.freq.push_back(f);
             scaled_sum += f;
+        }
+        if (m.sym.empty()) {
+            return m;
         }
 
         if (scaled_sum > kAnsScale) {
@@ -426,6 +472,7 @@ Bytes ans_decode(const AnsResult& ar) {
     if (ar.encoded.size() < 4) return {};
 
     AnsModel model = AnsModel::from_table(ar.freq_table);
+    if (model.sym.empty() || model.slot_to_sym.empty()) return {};
     uint32_t state = ans_read_state(ar.encoded);
     size_t pos = ar.encoded.size() - 4;
 
