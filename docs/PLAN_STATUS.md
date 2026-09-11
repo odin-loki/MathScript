@@ -289,8 +289,31 @@ were regressions; all were already true and none had a test.
   `vars` as a matrix. **Fixed** in passing: the resolver now distinguishes a name that
   does not exist from one that exists as a matrix, and says that matrices have no
   operator arithmetic.
-- **`not_a_function(1)` reports `unknown matrix: 1`** -- the diagnostic names the
-  argument rather than the function it could not find.
+- **`not_a_function(1)` reported `unknown matrix: 1`** -- the diagnostic named the
+  argument rather than the function it could not find, sending the reader to look for a
+  matrix called 1. **Fixed**, and what the fix is *not* is the point.
+
+  Saying "unknown function" instead would be a different false claim. `f(x)` reaches
+  that return from every dispatch form in the REPL, not just the one whose name list is
+  nearby: sweeping all 1,278 `fn == "..."` names through the binary as `N(1)` shows 502
+  reaching it, of which 278 are real, working callees -- `mat_at`, `finance_npv`,
+  `stats_percentile`, `finance_bs_call`, `stats_ttest` among them -- dispatched from
+  blocks no predicate at that point enumerates. Nothing there knows whether the callee
+  exists.
+
+  So the message says only what was established: that no reading of the line worked. It
+  keeps naming the argument when the argument is a *name*, because `det(no_such)` should
+  still say `no_such`.
+
+  The durable fix this finding really wants is one shared "is this a known REPL callee"
+  predicate generated from every dispatch form. `scripts/extract_manifest.py` covers the
+  485-entry matrix-call registry, which is one form of several. **Open.**
+
+- **`bigint("495.0")` is not diagnosed by name.** Noticed while fixing the line above.
+  The literal is rejected -- it no longer answers 0, which was the recorded defect --
+  but no reading of the line claims it, so it reports the generic "could not read" now
+  where it used to report a phantom matrix. `bigint: "495.0" is not an integer literal`
+  is what it should say. **Open.**
 - **`sym_simplify("x + x")` returns `(x + x)`.** Like terms are collected during
   `sym_expand` and not during `sym_simplify`.
 

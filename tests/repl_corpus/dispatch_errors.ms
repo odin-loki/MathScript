@@ -5,6 +5,12 @@
 # Every line here is a diagnostic, so this transcript is mostly stderr. That is the
 # point: the wording of a diagnostic is a contract, and a message that stops naming
 # what went wrong is a change a reviewer should see in a diff.
+#
+# The first four used to name the ARGUMENT: `not_a_function(1)` reported "unknown
+# matrix: 1", which sends the reader looking for a matrix called 1. Naming the function
+# instead would be a different false claim -- 278 real callees reach the same return in
+# this shape and nothing there knows whether a callee exists -- so the line now says
+# only what was established, which is that no reading of it worked.
 not_a_function(1)
 sqrt()
 sqrt(1, 2)

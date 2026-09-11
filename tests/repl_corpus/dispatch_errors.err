@@ -1,7 +1,7 @@
-error: resolve: unknown matrix: 1
+error: repl: could not read 'not_a_function(1)' as a matrix call, a matrix constructor, or a scalar expression
 error: repl: could not parse: sqrt()
-error: resolve: unknown matrix: 1, 2
-error: resolve: unknown matrix: 1, 2
+error: repl: could not read 'sqrt(1, 2)' as a matrix call, a matrix constructor, or a scalar expression
+error: repl: could not read 'mat_at(1, 2)' as a matrix call, a matrix constructor, or a scalar expression
 error: dimension mismatch: got 2x1
 error: mat_at: row index 5 is out of range (matrix has 2)
 error: mat_at: expected a non-negative integer row index

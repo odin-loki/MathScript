@@ -21874,6 +21874,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (built_error) {
                     return std::unexpected(*built_error);
                 }
+                // Last, the outer failure to resolve the argument as the name of a
+                // matrix -- but only when the argument IS a name. `det(no_such)` should
+                // keep naming `no_such`; `not_a_function(1)` was reported as "unknown
+                // matrix: 1", which sends the reader looking for a matrix called 1 when
+                // the fault is the callee.
+                //
+                // The obvious fix -- say "unknown function" instead -- is wrong, and
+                // measuring it is what showed that: 278 real callees reach this same
+                // return in the one-argument shape, `mat_at`, `finance_npv` and
+                // `stats_percentile` among them, because they are dispatched from other
+                // blocks of `execute` that no predicate here enumerates. Nothing at this
+                // point knows whether the callee exists. So the message says only what
+                // is established, which is that no reading of the line worked.
+                if (!is_identifier(arg)) {
+                    return std::unexpected(DomainError{
+                        "repl", "could not read '" + cmd +
+                                    "' as a matrix call, a matrix constructor, or a "
+                                    "scalar expression"});
+                }
                 return std::unexpected(matrix.error());
             }
         }
