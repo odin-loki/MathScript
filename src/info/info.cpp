@@ -382,9 +382,24 @@ static double range_max(std::span<const double> data) {
     return *std::max_element(data.begin(), data.end());
 }
 
+// The joint distribution `transfer_entropy` builds is bins x bins x bins, and the
+// product used to be formed in `int`: the SQUARE overflows at bins = 46341 and the
+// CUBE at 1291, so `transfer_entropy(x, y, 10000000, 1)` did not ask for a large
+// allocation -- it asked for an undefined one, and what came out reached
+// std::vector's max_size() check and ended the process.
+//
+// 256 is where a histogram stops being a histogram of anything rather than where the
+// memory stops being affordable: 256^3 is 16.7 million cells, and the caller has at
+// most `n` samples to put in them. The product is formed in std::size_t regardless,
+// because a bound that is only enforced after an overflowing multiply is not a bound.
+constexpr int kMaxTransferEntropyBins = 256;
+
 double transfer_entropy(const std::vector<double>& x,
                         const std::vector<double>& y, int bins, int lag) {
-    if (x.size() != y.size() || lag < 1 || bins < 1) return 0.0;
+    if (x.size() != y.size() || lag < 1 || bins < 1 ||
+        bins > kMaxTransferEntropyBins) {
+        return 0.0;
+    }
 
     const size_t n = x.size();
     if (n < static_cast<size_t>(lag) + 1) return 0.0;
@@ -397,12 +412,12 @@ double transfer_entropy(const std::vector<double>& x,
     const size_t n_samples = n - static_cast<size_t>(lag);
 
     // Joint p(y_t, y_{t+lag}) for H(y_{t+lag}|y_t): rows=y_t, cols=y_{t+lag}.
-    std::vector<double> p_yt_yfuture(static_cast<size_t>(bins * bins), 0.0);
+    const size_t bins_u = static_cast<size_t>(bins);
+    std::vector<double> p_yt_yfuture(bins_u * bins_u, 0.0);
     // Joint p(y_t, x_t) marginal for H(y_{t+lag}|y_t, x_t).
-    std::vector<double> p_yt_xt(static_cast<size_t>(bins * bins), 0.0);
+    std::vector<double> p_yt_xt(bins_u * bins_u, 0.0);
     // Joint p(y_t, x_t, y_{t+lag}): index = iy_past * bins * bins + ix * bins + iy_future.
-    std::vector<double> p_yt_xt_yfuture(
-        static_cast<size_t>(bins * bins * bins), 0.0);
+    std::vector<double> p_yt_xt_yfuture(bins_u * bins_u * bins_u, 0.0);
 
     for (size_t t = 0; t < n_samples; ++t) {
         const int iy_past =

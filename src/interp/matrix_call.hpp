@@ -251,6 +251,63 @@ inline Result<int> checked_superlinear_argument(const std::string& fn, const cha
     return static_cast<int>(value);
 }
 
+/// The index of a prime, bounded by the sieve the command runs to find it.
+///
+/// `numthy_prime_nth(n)` sieves to the Rosser-Schoenfeld bound p_n < n(ln n + ln ln n),
+/// so what it costs is that SPAN and not `n`: at n = 1e7 the span is about 1.8e8 and
+/// the command was measured at 20 s. The linear cap admitting 1e7 says nothing about
+/// whether this command can answer at 1e7.
+///
+/// Measured at 1900 ns per unit of n, which is the span's cost read back in the
+/// argument's own units -- the ratio between them is a logarithm and barely moves over
+/// the range the bound allows. The command has its own message rather than
+/// `WorkBudget`'s because there is no matrix here for "times the size of what it is
+/// given" to refer to.
+inline Result<double> checked_prime_index(const std::string& fn, double n) {
+    constexpr double kNanosPerPrimeIndex = 1900.0;
+    const double cap = std::floor(kMaxReplSimulationWorkNanos / kNanosPerPrimeIndex);
+    if (!std::isfinite(n) || n > cap) {
+        return std::unexpected(DomainError{
+            fn, "n " + describe_count(n) +
+                    " is too large; this sieves to about n * (ln n + ln ln n) to find "
+                    "the nth prime, so it is bounded at " + describe_count(cap)});
+    }
+    return n;
+}
+
+/// A result whose LENGTH one argument names outright.
+///
+/// The commonest shape in the REPL, and a family of them was found in one run once
+/// the oversized sweep started probing 10000000 -- the value the linear cap ADMITS --
+/// rather than only values it refuses. Each computes a column of exactly the length
+/// asked for and is then turned down for being longer than a REPL matrix may be:
+///
+///     signal_firwin(10000000, 0.25)     designs ten million taps in 52 s
+///     numthy_stern_brocot(10000000)     builds the tree in 16.6 s
+///     fftfreq(10000000, 10000000)       fills the bin centres in 8.9 s
+///     signal_blackman(10000000)         evaluates the window in 8.4 s
+///
+/// and a dozen more between 2 and 8 seconds. None of them is wrong, and every one of
+/// them is work for an answer that could never be shown -- the same shape the bignum
+/// commands had, arrived at from the other direction.
+inline Result<std::size_t> checked_result_length(const std::string& fn, const char* what,
+                                                 double length, std::size_t cols = 1) {
+    if (!std::isfinite(length) || length != std::floor(length) || length < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected non-negative integer ") + what});
+    }
+    // Clamped before the cast so a value past size_t is refused rather than converted:
+    // `static_cast` of an out-of-range double is undefined, not a wrap.
+    const double clamped = length > 4.0e18 ? 4.0e18 : length;
+    if (!repl_elems_allowed(static_cast<std::size_t>(clamped), cols)) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(length) +
+                    " is too large; the result is one row per unit and is limited to " +
+                    std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
+    return static_cast<std::size_t>(clamped);
+}
+
 /// The step count of a fixed-step ODE solver, bounded by the trajectory it keeps.
 ///
 /// These solvers return every step, and the REPL prints that as a `steps + 1` by (at

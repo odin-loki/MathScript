@@ -3371,6 +3371,10 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             if (!n_arg) {
                 return std::unexpected(n_arg.error());
             }
+            auto bounded_n = checked_prime_index(fn, static_cast<double>(*n_arg));
+            if (!bounded_n) {
+                return std::unexpected(bounded_n.error());
+            }
             // prime_nth sieves and reports the same UINT64_MAX sentinel prime_pi does
             // when the span is past what it can hold, so it is read the same way.
             return sieve_count_value(fn, numthy::prime_nth(*n_arg));
@@ -23582,6 +23586,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto n_arg = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
             if (!n_arg) {
                 return std::unexpected(n_arg.error());
+            }
+            // The second route to the same command, and the reason the first guard
+            // alone left `numthy_prime_nth(10000000)` at 20 s: the sweep measured it
+            // unchanged and said so.
+            auto bounded_n = checked_prime_index(fn, static_cast<double>(*n_arg));
+            if (!bounded_n) {
+                return std::unexpected(bounded_n.error());
             }
             return sieve_count_text(fn, numthy::prime_nth(*n_arg));
         }

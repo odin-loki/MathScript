@@ -107,8 +107,15 @@ TEST(ReplIntegerConversions, TheNthPrimeIsSievedRatherThanCountedTo) {
     // Past what a sieve of kMaxSieveSpan can hold there is no answer, and saying so is
     // different from saying the answer does not fit in 64 bits -- which is what the REPL
     // used to say about pi(3000000000), a number near 1.4e8.
-    expect_error_contains(interp, "numthy_prime_nth(3000000000)", "past what this can sieve");
     expect_error_contains(interp, "numthy_prime_pi(3000000000)", "past what this can sieve");
+    // `prime_nth` reaches a different refusal first, and it is the one that matters to
+    // a user: the sieve span is a multiple of the INDEX, so n = 1e7 is a 1.8e8 sieve and
+    // 20 s of it. The span bound is strictly looser than the time bound, so this message
+    // is the one every too-large n now gets, and it says which quantity is the problem.
+    expect_error_contains(interp, "numthy_prime_nth(3000000000)",
+                          "sieves to about n * (ln n + ln ln n)");
+    expect_error_contains(interp, "numthy_prime_nth(10000000)",
+                          "sieves to about n * (ln n + ln ln n)");
 }
 
 TEST(ReplIntegerConversions, SigmaComesOutOfTheFactorisation) {

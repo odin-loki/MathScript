@@ -647,3 +647,97 @@ TEST(ReplSuperlinearArguments, AndOneOfThemWasFixedRatherThanBounded) {
     expect_contains(interp, "stats_kendall([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])", "1");
     expect_ok(interp, "stats_kendall(a, a)");
 }
+
+TEST(ReplSuperlinearArguments, AResultOneRowPerUnitIsStillBuiltBeforeItIsRefused) {
+    // Found by the oversized sweep the moment it started probing 10000000 -- the
+    // value `kMaxReplIntegerArgument` ADMITS -- rather than only 3000000000 and 1e18,
+    // which it refuses. Fourteen commands build a column of exactly the length asked
+    // for and are then turned down for being longer than a REPL matrix may be. The
+    // refusal is right; the time spent reaching it was not:
+    //
+    //     signal_firwin(10000000, 0.25)    52.5 s     numthy_stern_brocot   16.6 s
+    //     fftfreq(10000000, ...)            8.9 s     signal_blackman        8.4 s
+    //     signal_autocorr / xcorr / xcov    7.2 s     signal_hanning         6.7 s
+    //
+    // and eight more between 2 and 7 seconds. The whole oversized sweep went from
+    // 193 s to 7.9 s once every one of them refused up front.
+    Interpreter interp;
+    for (const auto* call : {"signal_firwin(10000000, 0.25)",
+                             "numthy_stern_brocot(10000000)",
+                             "fftfreq(10000000, 0.001)",
+                             "rfftfreq(10000000, 0.001)",
+                             "signal_hamming(10000000)",
+                             "signal_hanning(10000000)",
+                             "signal_blackman(10000000)",
+                             "signal_parzen(10000000)",
+                             "signal_triangular(10000000)",
+                             "cfd_constant_velocity(10000000, 1.0)",
+                             "quantum_fock_state(1, 10000000)",
+                             "quantum_coherent_state(0.5, 0.5, 10000000)"}) {
+        expect_error_contains(interp, call, "is too large");
+        expect_error_contains(interp, call, "one row per unit");
+    }
+    // The four correlation commands return one row per LAG rather than one per
+    // max_lag, so their message names the lag count and not the argument -- a
+    // diagnostic that printed 20000001 beside the word max_lag when the user typed
+    // 10000000 would be worse than no number at all.
+    expect_ok(interp, "x = ones(2000,1)");
+    for (const auto* call : {"signal_autocorr(x, 10000000)",
+                             "signal_xcorr(x, x, 10000000)",
+                             "signal_xcov(x, x, 10000000)",
+                             "stats_acf(x, 10000000)"}) {
+        expect_error_contains(interp, call, "the number of lags");
+        expect_error_contains(interp, call, "is too large");
+    }
+    expect_ok(interp, "A = ones(64,64)");
+    expect_error_contains(interp, "imhist(A, 10000000)", "nbins 10000000 is too large");
+
+    // And the sizes anyone would use are unaffected.
+    expect_ok(interp, "signal_firwin(51, 0.25)");
+    expect_ok(interp, "numthy_stern_brocot(12)");
+    expect_ok(interp, "fftfreq(1024, 0.001)");
+    expect_ok(interp, "signal_blackman(64)");
+    expect_ok(interp, "signal_autocorr(x, 50)");
+    expect_ok(interp, "stats_acf(x, 40)");
+    expect_ok(interp, "quantum_fock_state(2, 8)");
+    expect_ok(interp, "imhist(A, 32)");
+}
+
+TEST(ReplSuperlinearArguments, ASieveSpanIsNotTheArgumentItIsReadFrom) {
+    // `numthy_prime_nth` sieves to the Rosser-Schoenfeld bound p_n < n(ln n + ln ln n),
+    // so what it costs is that SPAN and not n: at n = 1e7 the span is about 1.8e8 and
+    // the command took 20 s. The linear cap admitting 1e7 says nothing about whether
+    // this command can answer at 1e7, which is the same confusion the whole
+    // super-linear family is made of, one level in.
+    //
+    // The first guard left it at 20 s because the command has TWO dispatch routes and
+    // only one of them was patched -- and the sweep measured it unchanged and said so.
+    Interpreter interp;
+    expect_error_contains(interp, "numthy_prime_nth(10000000)",
+                          "sieves to about n * (ln n + ln ln n)");
+    // The values it is for still answer, exactly: the 10000th prime is 104729 and
+    // pi(100000) is 9592.
+    expect_contains(interp, "numthy_prime_nth(10000)", "104729");
+    expect_contains(interp, "numthy_prime_pi(100000)", "9592");
+}
+
+TEST(ReplSuperlinearArguments, AJointDistributionIsBinsCubed) {
+    // The first thing the at-the-cap sweep found, and it was a process abort rather
+    // than a slow command. `info_transfer_entropy` builds a bins x bins x bins joint
+    // distribution, nothing bounded bins, and the product was formed in `int` -- the
+    // square overflows at 46341 and the cube at 1291. So bins = 1e7 was not a large
+    // allocation but an undefined one, and what came out of it reached std::vector's
+    // max_size() check and ended the process.
+    //
+    // 64 is not only what fits: 64^3 is exactly the matrix cap, and a REPL matrix
+    // holds at most that many samples, so past 64 bins there is less than one
+    // observation per cell.
+    Interpreter interp;
+    expect_ok(interp, "t = ones(200,1)");
+    expect_error_contains(interp, "info_transfer_entropy(t, t, 10000000, 1)",
+                          "joint distribution");
+    expect_error_contains(interp, "info_transfer_entropy(t, t, 1291, 1)",
+                          "joint distribution");
+    expect_ok(interp, "info_transfer_entropy(t, t, 8, 1)");
+    expect_ok(interp, "info_transfer_entropy(t, t, 64, 1)");
+}

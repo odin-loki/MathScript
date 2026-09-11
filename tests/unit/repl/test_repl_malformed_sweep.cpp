@@ -178,6 +178,9 @@ void sweep_nonfinite(Interpreter& interp, const std::vector<const char*>& names)
 // rather than to an allocation: numthy_prime_nth does one primality test per prime asked
 // for, and numthy_sum_divisors enumerates divisors in O(sqrt(n)). Both are bounded and
 // interruptible through the interpreter's cancel flag, and their headers say so.
+//
+// The probe values matter as much as the shapes, and for a long time they did not cover
+// the interesting case: see the note beside 10000000 in `sweep_oversized` below.
 void sweep_oversized(Interpreter& interp, const std::vector<const char*>& names) {
     // There used to be an exclusion list here, of two commands whose cost was
     // proportional to the value of the argument rather than to its size:
@@ -198,6 +201,26 @@ void sweep_oversized(Interpreter& interp, const std::vector<const char*>& names)
         probe(interp, n + "(M3, M3, 3000000000)");
         probe(interp, n + "(M3, 2, 2, 2)");
         probe(interp, n + "(V4, V4, V4, V4)");
+
+        // And the value the linear cap ADMITS, which is the gap this sweep had.
+        //
+        // Every probe above is 3000000000 or 1e18, and `kMaxReplIntegerArgument` refuses
+        // both -- so this sweep could not see a command that dies on a value inside the
+        // cap, and nine of them did: `pde_heat_1d(ones(200,1), 0.1, 0.1, 0.001, 1e7)` and
+        // its siblings kept one grid per step, asked for a 16 GB history, and under
+        // `-fno-exceptions` the `std::bad_alloc` reached `std::terminate` with nothing on
+        // either stream. A sweep made of values the guard turns away cannot find a
+        // command that dies on a value it lets through, which is why 10000000 -- the cap
+        // itself, an ordinary integer -- is a probe now.
+        //
+        // The shapes are the ones the super-linear families actually take: a bare count,
+        // a product of two, a count after a vector or a pair of them, and the
+        // grid-plus-steps signature of the PDE solvers.
+        probe(interp, n + "(10000000)");
+        probe(interp, n + "(10000000, 10000000)");
+        probe(interp, n + "(V4, 10000000)");
+        probe(interp, n + "(V4, V4, 10000000)");
+        probe(interp, n + "(M3, 0.1, 0.1, 0.001, 10000000)");
     }
     ASSERT_TRUE(interp.execute("SANITY6 = [1, 2; 3, 4]").has_value());
     ASSERT_TRUE(interp.execute("trace(SANITY6)").has_value());

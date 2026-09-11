@@ -23,11 +23,17 @@ Result<Matrix<double>> handle_imhist(Interpreter& interp, const MatrixCallAssign
             if (!parse_number(assign.args[1], nbins_d)) {
                 return std::unexpected(DomainError{"imhist", "expected imhist(M[, nbins])"});
             }
-            nbins = static_cast<int>(nbins_d);
-            if (nbins < 1 || nbins_d != nbins) {
+            // Decided on the double: `static_cast<int>` of a value outside int's
+            // range is undefined rather than a wrap. The histogram is one row per
+            // bin, so a bin count past the matrix cap is counted and then refused.
+            auto bounded = checked_result_length("imhist", "nbins", nbins_d);
+            if (!bounded || *bounded < 1) {
                 return std::unexpected(
-                    DomainError{"imhist", "expected positive integer nbins"});
+                    bounded ? Error{DomainError{"imhist",
+                                                "expected positive integer nbins"}}
+                            : bounded.error());
             }
+            nbins = static_cast<int>(*bounded);
         }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {

@@ -3772,6 +3772,24 @@ Result<double> eval_info_transfer_entropy(const Matrix<double>& x_m, const Matri
     if (x->size() != y->size()) {
         return std::unexpected(DomainError{"info_transfer_entropy", "vector length mismatch"});
     }
+    // The joint distribution is bins x bins x bins. Nothing bounded it, and the
+    // product was formed in `int`, so `info_transfer_entropy(V, V, 10000000, 1)` --
+    // an ordinary integer, well inside the linear cap -- was an overflowing multiply
+    // followed by a vector longer than max_size(), and the process ended there.
+    //
+    // 64 is not only what fits: 64^3 is exactly kMaxReplMatrixElems, and a REPL
+    // matrix holds at most that many samples, so past 64 bins there is less than one
+    // observation per cell and the estimate is noise however long you wait for it.
+    const double cells = static_cast<double>(bins) * static_cast<double>(bins) *
+                         static_cast<double>(bins);
+    if (bins < 1 || cells > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            "info_transfer_entropy",
+            "bins " + describe_count(static_cast<double>(bins)) +
+                " gives a bins x bins x bins joint distribution of " +
+                describe_count(cells) + " cells, which is limited to " +
+                std::to_string(kMaxReplMatrixElems)});
+    }
     return info::transfer_entropy(*x, *y, bins, lag);
 }
 
@@ -3964,6 +3982,13 @@ Result<Matrix<double>> eval_quantum_fock_state(int n, int n_max) {
     }
     if (n < 0 || n > n_max) {
         return std::unexpected(DomainError{"quantum_fock_state", "expected 0 <= n <= n_max"});
+    }
+    // The ket has one amplitude per level from 0 to n_max, as a (real, imaginary)
+    // pair, and it is built before the matrix cap sees it.
+    auto bounded = checked_result_length("quantum_fock_state", "n_max",
+                                         static_cast<double>(n_max) + 1.0, 2);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     return ket_to_column_matrix(quantum::fock_state(n, n_max));
 }
@@ -4814,9 +4839,12 @@ Matrix<double> codes_to_matrix_col(const std::vector<uint32_t>& codes) {
 }
 
 Result<Matrix<double>> eval_numthy_stern_brocot(int n) {
-    if (n < 0) {
-        return std::unexpected(
-            DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
+    // The tree has one row per level and two columns, and it is built in full
+    // before the matrix cap gets to see it: n = 1e7 took 16.6 s to be refused.
+    auto bounded_n = checked_result_length("numthy_stern_brocot", "n",
+                                           static_cast<double>(n), 2);
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
     }
     const auto sb = numthy::stern_brocot(static_cast<uint64_t>(n));
     Matrix<double> out(sb.size(), 2);
@@ -5094,6 +5122,11 @@ Result<Matrix<double>> eval_quantum_coherent_state(double alpha_re, double alpha
     if (n_max < 0) {
         return std::unexpected(
             DomainError{"quantum_coherent_state", "expected n_max >= 0"});
+    }
+    auto bounded = checked_result_length("quantum_coherent_state", "n_max",
+                                         static_cast<double>(n_max) + 1.0, 2);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     return ket_to_column_matrix(
         quantum::coherent_state(quantum::C(alpha_re, alpha_im), n_max));
@@ -8540,10 +8573,21 @@ Result<Matrix<double>> eval_ifftshift(const Matrix<double>& S_m) {
 }
 
 Result<Matrix<double>> eval_fftfreq(size_t n, double d) {
+    auto bounded = checked_result_length("fftfreq", "n", static_cast<double>(n));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(fftfreq(n, d));
 }
 
 Result<Matrix<double>> eval_rfftfreq(size_t n, double d) {
+    // rfftfreq returns n/2 + 1 bins, so the bound is on that rather than on n --
+    // exactly twice as many bin centres fit as for the two-sided transform.
+    auto bounded = checked_result_length("rfftfreq", "n",
+                                         std::floor(static_cast<double>(n) / 2.0) + 1.0);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(rfftfreq(n, d));
 }
 
@@ -11010,6 +11054,10 @@ Result<Matrix<double>> eval_cfd_constant_velocity(std::size_t n, double v) {
     if (n < 1) {
         return std::unexpected(DomainError{fn, "expected n >= 1"});
     }
+    auto bounded = checked_result_length(fn, "n", static_cast<double>(n));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(cfd::constant_velocity(n, v));
 }
 
@@ -12967,6 +13015,12 @@ Result<Matrix<double>> eval_signal_xcorr(const Matrix<double>& a_m, const Matrix
         return std::unexpected(
             DomainError{"signal_xcorr", "expected non-negative integer max_lag"});
     }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_xcorr", "the number of lags", 2.0 * static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     auto out = xcorr(*a, *b, max_lag);
     if (out.empty()) {
         return std::unexpected(DomainError{"signal_xcorr", "xcorr failed"});
@@ -12991,6 +13045,12 @@ Result<Matrix<double>> eval_signal_xcov(const Matrix<double>& a_m, const Matrix<
         return std::unexpected(
             DomainError{"signal_xcov", "expected non-negative integer max_lag"});
     }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_xcov", "the number of lags", 2.0 * static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     auto out = xcov(*a, *b, max_lag);
     if (out.empty()) {
         return std::unexpected(DomainError{"signal_xcov", "xcov failed"});
@@ -13010,6 +13070,12 @@ Result<Matrix<double>> eval_signal_autocorr(const Matrix<double>& x_m, int max_l
     if (max_lag < 0) {
         return std::unexpected(
             DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
+    }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_autocorr", "the number of lags", static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
     }
     auto out = autocorr(*x, max_lag);
     if (out.empty()) {
@@ -13376,6 +13442,13 @@ Result<Matrix<double>> eval_signal_cheby1(int order, double rp_db, double cutoff
 Result<Matrix<double>> eval_signal_firwin(int n_taps, double cutoff, FirWindow window) {
     if (n_taps < 1) {
         return std::unexpected(DomainError{"signal_firwin", "expected n_taps >= 1"});
+    }
+    // Ten million taps take 52 s to design and are then refused for being ten
+    // million elements. The refusal is right; the 52 s was the problem.
+    auto bounded_taps = checked_result_length("signal_firwin", "n_taps",
+                                              static_cast<double>(n_taps));
+    if (!bounded_taps) {
+        return std::unexpected(bounded_taps.error());
     }
     const auto taps = firwin(n_taps, cutoff, window);
     if (taps.empty()) {
@@ -13803,6 +13876,12 @@ Result<Matrix<double>> eval_stats_acf(const Matrix<double>& x_m, int max_lag) {
     }
     if (max_lag < 0) {
         return std::unexpected(DomainError{"stats_acf", "expected non-negative integer max_lag"});
+    }
+    // One row per lag from 0 to max_lag inclusive.
+    auto bounded_lag = checked_result_length("stats_acf", "the number of lags",
+                                             static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
     }
     return vector_to_column(acf(*x, max_lag));
 }
@@ -15370,44 +15449,39 @@ Result<Matrix<double>> eval_unary_scalar_matrix_call(const std::string& fn, doub
         return eval_quantum_bell_state(index);
     }
     if (fn == "signal_hamming") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_hamming", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_hamming", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(hamming(static_cast<size_t>(n)));
+        return vector_to_column(hamming(*n));
     }
     if (fn == "signal_hanning") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_hanning", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_hanning", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(hanning(static_cast<size_t>(n)));
+        return vector_to_column(hanning(*n));
     }
     if (fn == "signal_blackman") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_blackman", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_blackman", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(blackman(static_cast<size_t>(n)));
+        return vector_to_column(blackman(*n));
     }
     if (fn == "signal_parzen") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_parzen", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_parzen", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(parzen(static_cast<size_t>(n)));
+        return vector_to_column(parzen(*n));
     }
     if (fn == "signal_triangular") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_triangular", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_triangular", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(triangular(static_cast<size_t>(n)));
+        return vector_to_column(triangular(*n));
     }
     return std::unexpected(DomainError{"eval", "unknown unary scalar matrix function: " + fn});
 }
