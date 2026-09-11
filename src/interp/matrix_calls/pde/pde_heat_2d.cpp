@@ -36,11 +36,15 @@ Result<Matrix<double>> handle_pde_heat_2d(Interpreter& interp, const MatrixCallA
         if (!steps_val) {
             return std::unexpected(steps_val.error());
         }
-        const int steps_i = static_cast<int>(*steps_val);
-        if (steps_i < 0 || *steps_val != steps_i) {
-            return std::unexpected(
-                DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+        WorkBudget budget(assign.callee, 38.0);
+        // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+        // the solver keeps one grid per step and the REPL reads only the last.
+        budget.charge(u0_m->rows() * u0_m->cols());
+        auto steps_arg = budget.take("steps", *steps_val);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
         }
+        const int steps_i = *steps_arg;
         result = eval_pde_heat_2d(*u0_m, *alpha, *dx, *dy, *dt, static_cast<std::size_t>(steps_i));
     }
 

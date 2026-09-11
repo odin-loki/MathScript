@@ -109,6 +109,29 @@ Result<double> combo_count_value(const std::string& fn, std::uint64_t count) {
     return static_cast<double>(count);
 }
 
+/// The same sentinel, read for the sieve-backed numthy functions rather than for the
+/// combinatorial ones.
+///
+/// `prime_pi` and `prime_nth` return UINT64_MAX when the span they would have to sieve is
+/// past `kMaxSieveSpan`, which is a different fact from a result too large to represent,
+/// and the combinatorial message asserted the wrong one: pi(3000000000) is about 1.4e8
+/// and fits in a `double` with room to spare, but the REPL said it did not fit in 64 bits.
+Result<double> sieve_count_value(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(
+            DomainError{fn, "n is past what this can sieve, so there is no answer to give"});
+    }
+    return static_cast<double>(count);
+}
+
+Result<std::string> sieve_count_text(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(
+            DomainError{fn, "n is past what this can sieve, so there is no answer to give"});
+    }
+    return format_scalar(count) + "\n";
+}
+
 Result<std::string> combo_count_text(const std::string& fn, std::uint64_t count) {
     if (count == kComboOverflow) {
         return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
@@ -878,9 +901,12 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!n_nodes_checked) {
             return std::unexpected(n_nodes_checked.error());
         }
+        auto seed_checked = checked_seed_argument(fn, "seed", seed_d);
+        if (!seed_checked) {
+            return std::unexpected(seed_checked.error());
+        }
         session_objects_.emplace(
-            handle,
-            izaac::consensus::Cluster(*n_nodes_checked, static_cast<unsigned>(seed_d)));
+            handle, izaac::consensus::Cluster(*n_nodes_checked, *seed_checked));
         return std::string{"created Cluster '" + handle + "'\n"};
     }
 
@@ -1032,7 +1058,14 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             }
             max_iter = *max_iter_checked;
         }
-        auto rank_checked = checked_int_argument(fn, "rank", rank_d);
+        // ALS converges out of `max_iter` long before reaching it -- 1e7 iterations of a
+        // 40x40 still returns in 0.02 s -- so the cost is driven by the rank alone.
+        // Measured at 1540 ns per rank*numel unit: an 80x80 at rank 2000 took 19.7 s.
+        // The "rank <= numel" ceiling above is a separate statement and still binds for
+        // small tensors, where it is tighter than this.
+        WorkBudget budget(fn, 1540.0, kMaxReplSimulationWorkNanos);
+        budget.charge(tensor->numel());
+        auto rank_checked = budget.take("rank", rank_d);
         if (!rank_checked) {
             return std::unexpected(rank_checked.error());
         }
@@ -1233,7 +1266,17 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             }
             max_iter = *max_iter_checked;
         }
-        auto rank_checked = checked_int_argument(fn, "rank", rank_d);
+        // The multiplicative update runs `max_iter` sweeps of a rank x numel factor pair
+        // and, unlike CP and Tucker below, does not converge out of them early. Measured
+        // at 88 ns per max_iter*rank*numel unit: a 40x40 at rank 40 took 2.83 s, and an
+        // 80x80 at rank 200 -- an entirely ordinary request, and well inside the
+        // "rank <= numel" ceiling -- had not finished after 45 s.
+        const std::size_t nmf_numel =
+            nested->empty() ? 0 : nested->size() * nested->front().size();
+        WorkBudget budget(fn, 88.0, kMaxReplSimulationWorkNanos);
+        budget.charge(nmf_numel);
+        budget.charge(static_cast<std::size_t>(max_iter));
+        auto rank_checked = budget.take("rank", rank_d);
         if (!rank_checked) {
             return std::unexpected(rank_checked.error());
         }
@@ -3179,107 +3222,169 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_num_divisors", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(
-                numthy::num_divisors(static_cast<uint64_t>(arg)));
+                numthy::num_divisors(*n_u64));
         }
         if (fn == "numthy_factor_count") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_factor_count", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(
-                numthy::factor(static_cast<uint64_t>(arg)).size());
+                numthy::factor(*n_u64).size());
         }
         if (fn == "numthy_sum_divisors") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_sum_divisors", "expected non-negative integer n"});
             }
-            return combo_count_value(fn, numthy::sum_divisors(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return combo_count_value(fn, numthy::sum_divisors(*n_u64));
         }
         if (fn == "numthy_isprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_isprime", "expected non-negative integer n"});
             }
-            return numthy::isprime(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::isprime(*n_u64) ? 1.0 : 0.0;
         }
         if (fn == "numthy_is_carmichael") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_is_carmichael", "expected non-negative integer n"});
             }
-            return numthy::is_carmichael(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::is_carmichael(*n_u64) ? 1.0 : 0.0;
         }
         if (fn == "numthy_euler_phi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_euler_phi", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::euler_phi(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::euler_phi(*n_u64));
         }
         if (fn == "numthy_carmichael_lambda") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_carmichael_lambda", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::carmichael_lambda(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::carmichael_lambda(*n_u64));
         }
         if (fn == "numthy_mobius") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_mobius", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::mobius(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::mobius(*n_u64));
         }
         if (fn == "numthy_nextprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_nextprime", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::nextprime(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::nextprime(*n_u64));
         }
         if (fn == "numthy_prevprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_prevprime", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::prevprime(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::prevprime(*n_u64));
         }
         if (fn == "numthy_liouville") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_liouville", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::liouville(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::liouville(*n_u64));
         }
         if (fn == "numthy_von_mangoldt") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
             }
-            return numthy::von_mangoldt(static_cast<uint64_t>(arg));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::von_mangoldt(*n_u64);
         }
         if (fn == "numthy_prime_pi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_prime_pi", "expected non-negative integer n"});
             }
-            return combo_count_value(fn, numthy::prime_pi(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return sieve_count_value(fn, numthy::prime_pi(*n_u64));
         }
         if (fn == "numthy_prime_nth") {
-            if (arg < 1.0 || std::floor(arg) != arg) {
+            if (arg < 1.0) {
                 return std::unexpected(
                     DomainError{"numthy_prime_nth", "expected integer n >= 1"});
             }
-            return static_cast<double>(numthy::prime_nth(static_cast<uint64_t>(arg)));
+            auto n_arg = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            // prime_nth sieves and reports the same UINT64_MAX sentinel prime_pi does
+            // when the span is past what it can hold, so it is read the same way.
+            return sieve_count_value(fn, numthy::prime_nth(*n_arg));
         }
         if (fn == "numthy_primitive_root") {
             if (arg < 2.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p >= 2"});
             }
-            const auto p = static_cast<uint64_t>(arg);
+            auto p_u64 = checked_u64_argument(fn, "p", arg, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            const auto p = *p_u64;
             if (!numthy::isprime(p)) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
@@ -3529,8 +3634,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_legendre_symbol", "expected odd prime p"});
             }
+            auto p_u64 = checked_u64_argument(fn, "p", args[1], kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
             return static_cast<double>(numthy::legendre_symbol(static_cast<int64_t>(args[0]),
-                                                                static_cast<uint64_t>(args[1])));
+                                                                *p_u64));
         }
         if (fn == "numthy_jacobi_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -3541,8 +3650,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected positive odd n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", args[1], kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(numthy::jacobi_symbol(static_cast<int64_t>(args[0]),
-                                                               static_cast<uint64_t>(args[1])));
+                                                               *n_u64));
         }
         if (fn == "numthy_kronecker_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -3573,8 +3686,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_is_primitive_root", "expected g >= 0 and p > 0"});
             }
-            return numthy::is_primitive_root(static_cast<uint64_t>(args[0]),
-                                             static_cast<uint64_t>(args[1]))
+            auto g_u64 = checked_u64_argument(fn, "g", args[0], kMaxU64AsDouble);
+            if (!g_u64) {
+                return std::unexpected(g_u64.error());
+            }
+            auto p_u64 = checked_u64_argument(fn, "p", args[1], kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            return numthy::is_primitive_root(*g_u64,
+                                             *p_u64)
                        ? 1.0
                        : 0.0;
         }
@@ -4171,8 +4292,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return geo::length(v);
         }
         if (fn == "numthy_gcd") {
-            const auto a = static_cast<uint64_t>(args[0]);
-            const auto b = static_cast<uint64_t>(args[1]);
+            auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            const auto a = *a_u64;
+            auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            const auto b = *b_u64;
             return static_cast<double>(numthy::gcd(a, b));
         }
         if (fn == "quantum_grover_optimal_iterations") {
@@ -4194,8 +4323,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return static_cast<double>(quantum::grover_optimal_iterations(n_qubits, n_marked));
         }
         if (fn == "numthy_lcm") {
-            const auto a = static_cast<uint64_t>(args[0]);
-            const auto b = static_cast<uint64_t>(args[1]);
+            auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            const auto a = *a_u64;
+            auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            const auto b = *b_u64;
             return static_cast<double>(numthy::lcm(a, b));
         }
         if (fn == "numthy_jordan_totient") {
@@ -4212,9 +4349,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", args[1], kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return combo_count_value(fn, numthy::jordan_totient(
                                              static_cast<uint32_t>(k),
-                                             static_cast<uint64_t>(args[1])));
+                                             *n_u64));
         }
         if (fn == "cplx_joukowski") {
             const cplx::C z{args[0], args[1]};
@@ -4526,34 +4667,90 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return poly::bernstein(n, i, args[2]);
     }
     if (args.size() == 3 && fn == "numthy_mod_pow") {
-        const auto base = static_cast<uint64_t>(args[0]);
-        const auto exp = static_cast<uint64_t>(args[1]);
-        const auto mod = static_cast<uint64_t>(args[2]);
+        auto base_u64 = checked_u64_argument(fn, "base", args[0], kMaxU64AsDouble);
+        if (!base_u64) {
+            return std::unexpected(base_u64.error());
+        }
+        const auto base = *base_u64;
+        auto exp_u64 = checked_u64_argument(fn, "exp", args[1], kMaxU64AsDouble);
+        if (!exp_u64) {
+            return std::unexpected(exp_u64.error());
+        }
+        const auto exp = *exp_u64;
+        auto mod_u64 = checked_u64_argument(fn, "mod", args[2], kMaxU64AsDouble);
+        if (!mod_u64) {
+            return std::unexpected(mod_u64.error());
+        }
+        const auto mod = *mod_u64;
         return static_cast<double>(numthy::mod_pow(base, exp, mod));
     }
     if (args.size() == 3 && fn == "gria_gf2n_mul") {
-        return static_cast<double>(gria::gf2n::mul(static_cast<uint64_t>(args[0]),
-                                                    static_cast<uint64_t>(args[1]),
-                                                    static_cast<uint64_t>(args[2])));
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+        if (!b_u64) {
+            return std::unexpected(b_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[2], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return static_cast<double>(gria::gf2n::mul(*a_u64,
+                                                    *b_u64,
+                                                    *poly_u64));
     }
     if (args.size() == 3 && fn == "gria_gf2n_pow") {
-        return static_cast<double>(gria::gf2n::pow(static_cast<uint64_t>(args[0]),
-                                                   static_cast<uint64_t>(args[1]),
-                                                   static_cast<uint64_t>(args[2])));
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto exp_u64 = checked_u64_argument(fn, "exp", args[1], kMaxU64AsDouble);
+        if (!exp_u64) {
+            return std::unexpected(exp_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[2], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return static_cast<double>(gria::gf2n::pow(*a_u64,
+                                                   *exp_u64,
+                                                   *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_gf2n_inv") {
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[1], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
         return static_cast<double>(
-            gria::gf2n::inv(static_cast<uint64_t>(args[0]), static_cast<uint64_t>(args[1])));
+            gria::gf2n::inv(*a_u64, *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_lfsr_step") {
+        auto state_u64 = checked_u64_argument(fn, "state", args[0], kMaxU64AsDouble);
+        if (!state_u64) {
+            return std::unexpected(state_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[1], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
         return static_cast<double>(
-            gria::lfsr::step(static_cast<uint64_t>(args[0]), static_cast<uint64_t>(args[1])));
+            gria::lfsr::step(*state_u64, *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_alpha_lfsr") {
         if (args[1] < 1.0 || std::floor(args[1]) != args[1]) {
             return std::unexpected(DomainError{fn, "expected positive integer steps"});
         }
-        return gria::lfsr::alpha_lfsr(static_cast<uint64_t>(args[0]),
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[0], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return gria::lfsr::alpha_lfsr(*poly_u64,
                                       static_cast<size_t>(args[1]));
     }
     if (args.size() == 2 && fn == "gria_lfsr_is_maximal") {
@@ -4564,7 +4761,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg1_int) {
             return std::unexpected(arg1_int.error());
         }
-        return gria::lfsr::is_maximal(static_cast<uint64_t>(args[0]), *arg1_int) ? 1.0 : 0.0;
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[0], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return gria::lfsr::is_maximal(*poly_u64, *arg1_int) ? 1.0 : 0.0;
     }
     if (args.size() == 3 && fn == "numthy_discrete_log") {
         return eval_numthy_discrete_log(args[0], args[1], args[2]);
@@ -5033,7 +5234,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::cir_bond_price(args[0], args[1], args[2], args[3], args[4]);
     }
     if (args.size() == 6 && fn == "finance_binomial_call") {
-        auto steps_arg = checked_int_argument(fn, "steps", args[5]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[5], 2, 11.0);
         if (!steps_arg) {
             return std::unexpected(steps_arg.error());
         }
@@ -5045,7 +5246,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::binomial_call(args[0], args[1], args[2], args[3], args[4], steps);
     }
     if (args.size() == 6 && fn == "finance_binomial_put") {
-        auto steps_arg = checked_int_argument(fn, "steps", args[5]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[5], 2, 11.0);
         if (!steps_arg) {
             return std::unexpected(steps_arg.error());
         }
@@ -5108,7 +5309,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"finance_american_option", "expected integer call (0=put, 1=call)"});
         }
-        auto steps_arg = checked_int_argument(fn, "steps", args[6]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[6], 2, 28.0);
         if (!steps_arg) {
             return std::unexpected(steps_arg.error());
         }
@@ -5121,124 +5322,98 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                         steps);
     }
     if (args.size() == 7 && fn == "finance_mc_european_call") {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[5]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_call", "expected non-negative integer n_paths"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_call", "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         return finance::mc_european_call(args[0], args[1], args[2], args[3], args[4], n_paths,
                                          seed);
     }
     if (args.size() == 7 && fn == "finance_mc_european_put") {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[5]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_put", "expected non-negative integer n_paths"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_put", "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         return finance::mc_european_put(args[0], args[1], args[2], args[3], args[4], n_paths,
                                         seed);
     }
     if (args.size() == 8 && fn == "finance_mc_asian_call") {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[5]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer n_paths"});
-        }
-        auto n_steps_arg = checked_int_argument(fn, "n_steps", args[6]);
+        auto n_steps_arg = budget.take("n_steps", args[6]);
         if (!n_steps_arg) {
             return std::unexpected(n_steps_arg.error());
         }
         const int n_steps = *n_steps_arg;
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer n_steps"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         return finance::mc_asian_call(args[0], args[1], args[2], args[3], args[4], n_paths,
                                       n_steps, seed);
     }
     if (args.size() == 8 && fn == "finance_mc_asian_put") {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[5]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer n_paths"});
-        }
-        auto n_steps_arg = checked_int_argument(fn, "n_steps", args[6]);
+        auto n_steps_arg = budget.take("n_steps", args[6]);
         if (!n_steps_arg) {
             return std::unexpected(n_steps_arg.error());
         }
         const int n_steps = *n_steps_arg;
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer n_steps"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         return finance::mc_asian_put(args[0], args[1], args[2], args[3], args[4], n_paths,
                                      n_steps, seed);
     }
     if (args.size() == 7 &&
         (fn == "finance_mc_lookback_floating_call" || fn == "finance_mc_lookback_floating_put")) {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[4]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[4]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[4] != n_paths) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_paths"});
-        }
-        auto n_steps_arg = checked_int_argument(fn, "n_steps", args[5]);
+        auto n_steps_arg = budget.take("n_steps", args[5]);
         if (!n_steps_arg) {
             return std::unexpected(n_steps_arg.error());
         }
         const int n_steps = *n_steps_arg;
-        if (n_steps < 0 || args[5] != n_steps) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_steps"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         if (fn == "finance_mc_lookback_floating_call") {
             return finance::mc_lookback_floating_call(args[0], args[1], args[2], args[3],
                                                        n_paths, n_steps, seed);
@@ -5248,29 +5423,23 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 8 &&
         (fn == "finance_mc_lookback_fixed_call" || fn == "finance_mc_lookback_fixed_put")) {
-        auto n_paths_arg = checked_int_argument(fn, "n_paths", args[5]);
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
         if (!n_paths_arg) {
             return std::unexpected(n_paths_arg.error());
         }
         const int n_paths = *n_paths_arg;
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_paths"});
-        }
-        auto n_steps_arg = checked_int_argument(fn, "n_steps", args[6]);
+        auto n_steps_arg = budget.take("n_steps", args[6]);
         if (!n_steps_arg) {
             return std::unexpected(n_steps_arg.error());
         }
         const int n_steps = *n_steps_arg;
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_steps"});
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-        }
+        const unsigned seed = *seed_arg;
         if (fn == "finance_mc_lookback_fixed_call") {
             return finance::mc_lookback_fixed_call(args[0], args[1], args[2], args[3], args[4],
                                                     n_paths, n_steps, seed);
@@ -5310,7 +5479,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                        call != 0, knock_in != 0, up != 0);
     }
     if (args.size() == 8 && fn == "finance_trinomial_option") {
-        auto n_steps_arg = checked_int_argument(fn, "n_steps", args[5]);
+        auto n_steps_arg = checked_superlinear_argument(fn, "n_steps", args[5], 2, 28.0);
         if (!n_steps_arg) {
             return std::unexpected(n_steps_arg.error());
         }
@@ -5500,16 +5669,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (rule < 0 || rule > 255 || args[0] != rule) {
             return std::unexpected(DomainError{"gria_alpha_ca", "expected integer rule in [0,255]"});
         }
-        auto steps_arg = checked_int_argument(fn, "steps", args[1]);
+        // alpha_ca reserves steps*width doubles to hold the history it measures the
+        // entropy of, so the two arguments have to be charged against one budget: each
+        // is ordinary at 1e7 and together they reserved 800 TB and aborted the process.
+        WorkBudget budget(fn, 177.0);
+        auto steps_arg = budget.take("steps", args[1]);
         if (!steps_arg) {
             return std::unexpected(steps_arg.error());
         }
         const int steps = *steps_arg;
-        if (steps < 0 || args[1] != steps) {
-            return std::unexpected(
-                DomainError{"gria_alpha_ca", "expected non-negative integer steps"});
-        }
-        auto width_arg = checked_int_argument(fn, "width", args[2]);
+        auto width_arg = budget.take("width", args[2]);
         if (!width_arg) {
             return std::unexpected(width_arg.error());
         }
@@ -5531,7 +5700,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_diffgeo_helix_torsion(t, a, b);
     }
     if (fn == "diffgeo_sphere_gauss_bonnet" && args.size() == 1) {
-        auto n_arg = checked_int_argument(fn, "n", args[0]);
+        auto n_arg = checked_superlinear_argument(fn, "n", args[0], 2, 1970.0);
         if (!n_arg) {
             return std::unexpected(n_arg.error());
         }
@@ -5543,7 +5712,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_diffgeo_sphere_gauss_bonnet(n);
     }
     if (fn == "diffgeo_sphere_gauss_bonnet_residual" && args.size() == 1) {
-        auto n_arg = checked_int_argument(fn, "n", args[0]);
+        auto n_arg = checked_superlinear_argument(fn, "n", args[0], 2, 1970.0);
         if (!n_arg) {
             return std::unexpected(n_arg.error());
         }
@@ -8846,7 +9015,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_binomial_call",
                         "expected finance_binomial_call(S,K,T,r,sigma,steps)"});
                 }
-                auto steps_checked = checked_int_argument(callee, "steps", steps_d);
+                auto steps_checked = checked_superlinear_argument(callee, "steps", steps_d, 2, 11.0);
                 if (!steps_checked) {
                     return std::unexpected(steps_checked.error());
                 }
@@ -8880,7 +9049,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_binomial_put",
                         "expected finance_binomial_put(S,K,T,r,sigma,steps)"});
                 }
-                auto steps_checked = checked_int_argument(callee, "steps", steps_d);
+                auto steps_checked = checked_superlinear_argument(callee, "steps", steps_d, 2, 11.0);
                 if (!steps_checked) {
                     return std::unexpected(steps_checked.error());
                 }
@@ -10196,12 +10365,15 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(rule_checked.error());
                 }
                 const int rule = *rule_checked;
-                auto steps_checked = checked_int_argument(callee, "steps", steps_d);
+                // See the gria_alpha_ca guard in eval_scalar_call: steps and width are
+                // charged against one budget because the history is their product.
+                WorkBudget budget(callee, 177.0);
+                auto steps_checked = budget.take("steps", steps_d);
                 if (!steps_checked) {
                     return std::unexpected(steps_checked.error());
                 }
                 const int steps = *steps_checked;
-                auto width_checked = checked_int_argument(callee, "width", width_d);
+                auto width_checked = budget.take("width", width_d);
                 if (!width_checked) {
                     return std::unexpected(width_checked.error());
                 }
@@ -10788,11 +10960,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "stats_bootstrap_mean",
                             "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                     }
-                    if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
-                        return std::unexpected(DomainError{
-                            "stats_bootstrap_mean", "expected non-negative integer seed"});
+                    auto seed_arg = checked_seed_argument("stats_bootstrap_mean", "seed", seed_d);
+                    if (!seed_arg) {
+                        return std::unexpected(seed_arg.error());
                     }
-                    seed = static_cast<unsigned>(seed_d);
+                    seed = *seed_arg;
                 }
                 auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
                 if (!value) {
@@ -12341,7 +12513,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!parse_number(arg, seed_value)) {
             return std::unexpected(DomainError{"izaac", "expected numeric seed"});
         }
-        izaac::seed_session(static_cast<uint64_t>(seed_value));
+        auto seed_u = checked_u64_argument("izaac", "seed", seed_value, kMaxU64AsDouble);
+        if (!seed_u) {
+            return std::unexpected(seed_u.error());
+        }
+        izaac::seed_session(*seed_u);
         return "izaac session seeded\n";
     }
     if (lcmd == "axiom evolve") {
@@ -13519,15 +13695,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_wave_2d", "expected pde_wave_2d(u0, v0, c, dx, dy, dt, steps)"});
             }
-            auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+            WorkBudget budget(fn, 45.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(u0_m->rows() * u0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
             if (!steps_i_checked) {
                 return std::unexpected(steps_i_checked.error());
             }
             const int steps_i = *steps_i_checked;
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_wave_2d", "expected non-negative integer steps"});
-            }
             auto value = eval_pde_wave_2d(*u0_m, *v0_m, c, dx, dy, dt,
                                           static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -13654,7 +13830,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_trinomial_option",
                     "expected finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american)"});
             }
-            auto n_steps_checked = checked_int_argument(fn, "n_steps", n_steps_d);
+            auto n_steps_checked = checked_superlinear_argument(fn, "n_steps", n_steps_d, 2, 28.0);
             if (!n_steps_checked) {
                 return std::unexpected(n_steps_checked.error());
             }
@@ -13704,28 +13880,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            auto n_paths_checked = checked_int_argument(fn, "n_paths", n_paths_d);
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
             if (!n_paths_checked) {
                 return std::unexpected(n_paths_checked.error());
             }
             const int n_paths = *n_paths_checked;
-            if (n_paths < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
-            }
-            auto n_steps_checked = checked_int_argument(fn, "n_steps", n_steps_d);
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
             if (!n_steps_checked) {
                 return std::unexpected(n_steps_checked.error());
             }
             const int n_steps = *n_steps_checked;
-            if (n_steps < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-            }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_asian_call") {
                 return format_scalar(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
                                                               seed)) +
@@ -13753,28 +13924,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            auto n_paths_checked = checked_int_argument(fn, "n_paths", n_paths_d);
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
             if (!n_paths_checked) {
                 return std::unexpected(n_paths_checked.error());
             }
             const int n_paths = *n_paths_checked;
-            if (n_paths < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
-            }
-            auto n_steps_checked = checked_int_argument(fn, "n_steps", n_steps_d);
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
             if (!n_steps_checked) {
                 return std::unexpected(n_steps_checked.error());
             }
             const int n_steps = *n_steps_checked;
-            if (n_steps < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-            }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_lookback_fixed_call") {
                 return format_scalar(finance::mc_lookback_fixed_call(
                            S, K, T, r, sigma, n_paths, n_steps, seed)) +
@@ -14034,7 +14200,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_american_option", "expected integer call (0=put, 1=call)"});
             }
-            auto steps_checked = checked_int_argument(fn, "steps", steps_d);
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 28.0);
             if (!steps_checked) {
                 return std::unexpected(steps_checked.error());
             }
@@ -14063,19 +14229,18 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,seed)"});
             }
-            auto n_paths_checked = checked_int_argument(fn, "n_paths", n_paths_d);
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
             if (!n_paths_checked) {
                 return std::unexpected(n_paths_checked.error());
             }
             const int n_paths = *n_paths_checked;
-            if (n_paths < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-            }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_european_call") {
                 return format_scalar(
                            finance::mc_european_call(S, K, T, r, sigma, n_paths, seed)) +
@@ -14102,28 +14267,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            auto n_paths_checked = checked_int_argument(fn, "n_paths", n_paths_d);
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
             if (!n_paths_checked) {
                 return std::unexpected(n_paths_checked.error());
             }
             const int n_paths = *n_paths_checked;
-            if (n_paths < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
-            }
-            auto n_steps_checked = checked_int_argument(fn, "n_steps", n_steps_d);
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
             if (!n_steps_checked) {
                 return std::unexpected(n_steps_checked.error());
             }
             const int n_steps = *n_steps_checked;
-            if (n_steps < 0) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
-            }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_lookback_floating_call") {
                 return format_scalar(finance::mc_lookback_floating_call(
                            S, T, r, sigma, n_paths, n_steps, seed)) +
@@ -14452,15 +14612,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{
                         "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 16.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_1d", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_heat_1d(*arg0_m, alpha, dx, dt,
                                               static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -14484,15 +14644,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_heat_1d_cn",
                         "expected pde_heat_1d_cn(x0, alpha, dx, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 41.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_1d_cn", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_heat_1d_cn(*arg0_m, alpha, dx, dt,
                                                    static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -14516,15 +14676,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_advection_1d",
                         "expected pde_advection_1d(u0, v, dx, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 14.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_advection_1d", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_advection_1d(*arg0_m, v, dx, dt,
                                                    static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -14548,15 +14708,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_advection_1d_lax_wendroff",
                         "expected pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 21.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_advection_1d_lax_wendroff(*arg0_m, v, dx, dt,
                                                                 static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -14611,15 +14771,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
             }
-            auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+            WorkBudget budget(fn, 25.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(arg0_m->rows() * arg0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
             if (!steps_i_checked) {
                 return std::unexpected(steps_i_checked.error());
             }
             const int steps_i = *steps_i_checked;
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
-            }
             auto value = eval_pde_burgers_1d(*arg0_m, nu, dx, dt,
                                              static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -15145,7 +15305,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_binomial_call",
                     "expected finance_binomial_call(S,K,T,r,sigma,steps)"});
             }
-            auto steps_checked = checked_int_argument(fn, "steps", steps_d);
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 11.0);
             if (!steps_checked) {
                 return std::unexpected(steps_checked.error());
             }
@@ -15171,7 +15331,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_binomial_put",
                     "expected finance_binomial_put(S,K,T,r,sigma,steps)"});
             }
-            auto steps_checked = checked_int_argument(fn, "steps", steps_d);
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 11.0);
             if (!steps_checked) {
                 return std::unexpected(steps_checked.error());
             }
@@ -15382,15 +15542,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{
                         "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 38.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_2d", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_heat_2d(*arg0_m, alpha, dx, dy, dt,
                                               static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -15416,15 +15576,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_heat_2d_cn_adi",
                         "expected pde_heat_2d_cn_adi(u0, alpha, dx, dy, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 101.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_heat_2d_cn_adi", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_heat_2d_cn_adi(*arg0_m, alpha, dx, dy, dt,
                                                      static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -15450,15 +15610,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_reaction_diffusion_1d",
                         "expected pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps)"});
                 }
-                auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+                WorkBudget budget(fn, 20.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
                 if (!steps_i_checked) {
                     return std::unexpected(steps_i_checked.error());
                 }
                 const int steps_i = *steps_i_checked;
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
-                }
                 auto value = eval_pde_reaction_diffusion_1d(*arg0_m, D, r, dx, dt,
                                                             static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -15484,15 +15644,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
             }
-            auto steps_i_checked = checked_int_argument(fn, "steps", steps_d);
+            WorkBudget budget(fn, 18.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(arg0_m->rows() * arg0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
             if (!steps_i_checked) {
                 return std::unexpected(steps_i_checked.error());
             }
             const int steps_i = *steps_i_checked;
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_wave_1d", "expected non-negative integer steps"});
-            }
             auto value = eval_pde_wave_1d(*arg0_m, *v0_m, c, dx, dt,
                                           static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -17191,9 +17351,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_mod_pow", "expected numthy_mod_pow(base,exp,mod)"});
             }
-            return format_scalar(numthy::mod_pow(static_cast<uint64_t>(base_d),
-                                                    static_cast<uint64_t>(exp_d),
-                                                    static_cast<uint64_t>(mod_d))) +
+            auto base_u64 = checked_u64_argument(fn, "base", base_d, kMaxU64AsDouble);
+            if (!base_u64) {
+                return std::unexpected(base_u64.error());
+            }
+            auto exp_u64 = checked_u64_argument(fn, "exp", exp_d, kMaxU64AsDouble);
+            if (!exp_u64) {
+                return std::unexpected(exp_u64.error());
+            }
+            auto mod_u64 = checked_u64_argument(fn, "mod", mod_d, kMaxU64AsDouble);
+            if (!mod_u64) {
+                return std::unexpected(mod_u64.error());
+            }
+            return format_scalar(numthy::mod_pow(*base_u64,
+                                                    *exp_u64,
+                                                    *mod_u64)) +
                    "\n";
         }
         if (fn == "numthy_discrete_log") {
@@ -18253,11 +18425,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "stats_bootstrap_mean",
                         "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                 }
-                if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
-                    return std::unexpected(DomainError{
-                        "stats_bootstrap_mean", "expected non-negative integer seed"});
+                auto seed_arg = checked_seed_argument("stats_bootstrap_mean", "seed", seed_d);
+                if (!seed_arg) {
+                    return std::unexpected(seed_arg.error());
                 }
-                seed = static_cast<unsigned>(seed_d);
+                seed = *seed_arg;
             }
             auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
             if (!value) {
@@ -18473,7 +18645,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "combo_unrank_combination",
                         "expected non-negative integer n, k and rank"});
                 }
-                auto value = eval_combo_unrank_combination(n, k, static_cast<uint64_t>(rank_d));
+                auto rank_u64 = checked_u64_argument(fn, "rank", rank_d, kMaxU64AsDouble);
+                if (!rank_u64) {
+                    return std::unexpected(rank_u64.error());
+                }
+                auto value = eval_combo_unrank_combination(n, k, *rank_u64);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -18511,14 +18687,18 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         fn,
                         "expected " + fn + "(H, psi0, t0, t1, n_steps)"});
                 }
-                auto n_steps_checked = checked_int_argument(fn, "n_steps", n_steps_d);
+                // The propagator is applied n_steps times to an H-sized state, so the
+                // cost is their product.
+                // quantum_schrodinger_final(eye(8), ones(8,1), 0, 1, 1e7) ran for 15.7 s,
+                // and quantum_schrodinger spent 24 s computing a trajectory before
+                // rejecting it as too large to print.
+                WorkBudget budget(fn, 25.0);
+                budget.charge(H_m->rows() * H_m->cols());
+                auto n_steps_checked = budget.take("n_steps", n_steps_d);
                 if (!n_steps_checked) {
                     return std::unexpected(n_steps_checked.error());
                 }
                 const int n_steps = *n_steps_checked;
-                if (n_steps < 0) {
-                    return std::unexpected(DomainError{fn, "expected non-negative integer n_steps"});
-                }
                 if (fn == "quantum_schrodinger_final") {
                     auto result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
                     if (!result) {
@@ -21801,7 +21981,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "combo_unrank_permutation", "expected non-negative integer n and rank"});
             }
-            auto value = eval_combo_unrank_permutation(n, static_cast<uint64_t>(rank_d));
+            auto rank_u64 = checked_u64_argument(fn, "rank", rank_d, kMaxU64AsDouble);
+            if (!rank_u64) {
+                return std::unexpected(rank_u64.error());
+            }
+            auto value = eval_combo_unrank_permutation(n, *rank_u64);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -21848,7 +22032,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primes", "expected non-negative integer bounds"});
             }
-            auto value = eval_numthy_primes(static_cast<uint64_t>(lo_d), static_cast<uint64_t>(hi_d));
+            auto lo_u64 = checked_u64_argument(fn, "lo", lo_d, kMaxU64AsDouble);
+            if (!lo_u64) {
+                return std::unexpected(lo_u64.error());
+            }
+            auto hi_u64 = checked_u64_argument(fn, "hi", hi_d, kMaxU64AsDouble);
+            if (!hi_u64) {
+                return std::unexpected(hi_u64.error());
+            }
+            auto value = eval_numthy_primes(*lo_u64, *hi_u64);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -21932,8 +22124,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_gcd", "expected numthy_gcd(a,b)"});
             }
-            return format_scalar(numthy::gcd(static_cast<uint64_t>(a_d),
-                                              static_cast<uint64_t>(b_d))) +
+            auto a_u64 = checked_u64_argument(fn, "a", a_d, kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            auto b_u64 = checked_u64_argument(fn, "b", b_d, kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            return format_scalar(numthy::gcd(*a_u64,
+                                              *b_u64)) +
                    "\n";
         }
 
@@ -21969,8 +22169,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_lcm", "expected numthy_lcm(a,b)"});
             }
-            return format_scalar(numthy::lcm(static_cast<uint64_t>(a_d),
-                                              static_cast<uint64_t>(b_d))) +
+            auto a_u64 = checked_u64_argument(fn, "a", a_d, kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            auto b_u64 = checked_u64_argument(fn, "b", b_d, kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            return format_scalar(numthy::lcm(*a_u64,
+                                              *b_u64)) +
                    "\n";
         }
 
@@ -21994,9 +22202,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return combo_count_text(fn, numthy::jordan_totient(
                                             static_cast<uint32_t>(k),
-                                            static_cast<uint64_t>(n_d)));
+                                            *n_u64));
         }
 
         if (fn == "combo_combinations_with_rep") {
@@ -22041,8 +22253,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_legendre_symbol", "expected odd prime p"});
             }
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
             return format_scalar(numthy::legendre_symbol(static_cast<int64_t>(a_d),
-                                                          static_cast<uint64_t>(p_d))) +
+                                                          *p_u64)) +
                    "\n";
         }
 
@@ -22057,12 +22273,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected integer arguments"});
             }
-            if (n_d <= 0.0 || static_cast<uint64_t>(n_d) % 2u == 0u) {
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            if (n_d <= 0.0 || *n_u64 % 2u == 0u) {
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected odd positive integer n"});
             }
             return format_scalar(numthy::jacobi_symbol(static_cast<int64_t>(a_d),
-                                                        static_cast<uint64_t>(n_d))) +
+                                                        *n_u64)) +
                    "\n";
         }
 
@@ -22154,8 +22374,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_is_primitive_root", "expected g >= 0 and p > 0"});
             }
-            return format_scalar(numthy::is_primitive_root(static_cast<uint64_t>(g_d),
-                                                            static_cast<uint64_t>(p_d))
+            auto g_u64 = checked_u64_argument(fn, "g", g_d, kMaxU64AsDouble);
+            if (!g_u64) {
+                return std::unexpected(g_u64.error());
+            }
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            return format_scalar(numthy::is_primitive_root(*g_u64,
+                                                            *p_u64)
                                       ? 1
                                       : 0) +
                    "\n";
@@ -23191,11 +23419,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "numthy_prime_nth") {
             double n_d = 0.0;
-            if (!parse_number(arg, n_d) || n_d < 1.0 || std::floor(n_d) != n_d) {
+            if (!parse_number(arg, n_d) || n_d < 1.0) {
                 return std::unexpected(
                     DomainError{"numthy_prime_nth", "expected integer n >= 1"});
             }
-            return format_scalar(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
+            auto n_arg = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            return sieve_count_text(fn, numthy::prime_nth(*n_arg));
         }
 
         if (fn == "numthy_factor_exp" || fn == "numthy_farey" ||
@@ -23273,7 +23505,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p >= 2"});
             }
-            const auto p = static_cast<uint64_t>(p_d);
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            const auto p = *p_u64;
             if (!numthy::isprime(p)) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
@@ -23296,7 +23532,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
             }
-            return format_scalar(numthy::von_mangoldt(static_cast<uint64_t>(n_d))) + "\n";
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return format_scalar(numthy::von_mangoldt(*n_u64)) + "\n";
         }
 
         if (fn == "combo_factorial" || fn == "combo_catalan" || fn == "combo_bell" ||
@@ -23337,59 +23577,111 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return combo_count_text(fn, combo::double_factorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "numthy_isprime") {
-                return format_scalar(numthy::isprime(static_cast<uint64_t>(n_d)) ? 1 : 0) + "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::isprime(*n_u64) ? 1 : 0) + "\n";
             }
             if (fn == "numthy_is_carmichael") {
-                return format_scalar(numthy::is_carmichael(static_cast<uint64_t>(n_d)) ? 1 : 0) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::is_carmichael(*n_u64) ? 1 : 0) +
                        "\n";
             }
             if (fn == "numthy_euler_phi") {
-                return format_scalar(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::euler_phi(*n_u64)) + "\n";
             }
             if (fn == "numthy_carmichael_lambda") {
-                return format_scalar(numthy::carmichael_lambda(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::carmichael_lambda(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_mobius") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           static_cast<double>(numthy::mobius(static_cast<uint64_t>(n_d)))) +
+                           static_cast<double>(numthy::mobius(*n_u64))) +
                        "\n";
             }
             if (fn == "numthy_nextprime") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           numthy::nextprime(static_cast<uint64_t>(n_d))) +
+                           numthy::nextprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           numthy::prevprime(static_cast<uint64_t>(n_d))) +
+                           numthy::prevprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           numthy::prevprime(static_cast<uint64_t>(n_d))) +
+                           numthy::prevprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_liouville") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           static_cast<double>(numthy::liouville(static_cast<uint64_t>(n_d)))) +
+                           static_cast<double>(numthy::liouville(*n_u64))) +
                        "\n";
             }
             if (fn == "numthy_prime_pi") {
-                return combo_count_text(fn, numthy::prime_pi(static_cast<uint64_t>(n_d)));
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return sieve_count_text(fn, numthy::prime_pi(*n_u64));
             }
             if (fn == "numthy_num_divisors") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           numthy::num_divisors(static_cast<uint64_t>(n_d))) +
+                           numthy::num_divisors(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_factor_count") {
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
                 return format_scalar(
-                           numthy::factor(static_cast<uint64_t>(n_d)).size()) +
+                           numthy::factor(*n_u64).size()) +
                        "\n";
             }
             if (fn == "numthy_sum_divisors") {
-                return combo_count_text(fn, numthy::sum_divisors(static_cast<uint64_t>(n_d)));
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return combo_count_text(fn, numthy::sum_divisors(*n_u64));
             }
             return combo_count_text(fn, numthy::partition(static_cast<uint32_t>(n_d)));
         }

@@ -10662,6 +10662,10 @@
         },
         {
           "fn": "pde_advection_1d",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_advection_1d",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -10693,6 +10697,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "pde_advection_1d_lax_wendroff",
+          "message": "expected an integer steps"
         },
         {
           "fn": "pde_advection_1d_lax_wendroff",
@@ -10730,6 +10738,10 @@
         },
         {
           "fn": "pde_burgers_1d",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_burgers_1d",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -10761,6 +10773,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "pde_heat_1d",
+          "message": "expected an integer steps"
         },
         {
           "fn": "pde_heat_1d",
@@ -10798,6 +10814,10 @@
         },
         {
           "fn": "pde_heat_1d_cn",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_heat_1d_cn",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -10832,6 +10852,10 @@
         },
         {
           "fn": "pde_heat_2d",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_heat_2d",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -10863,6 +10887,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "pde_heat_2d_cn_adi",
+          "message": "expected an integer steps"
         },
         {
           "fn": "pde_heat_2d_cn_adi",
@@ -11030,6 +11058,10 @@
         },
         {
           "fn": "pde_reaction_diffusion_1d",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_reaction_diffusion_1d",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -11065,6 +11097,10 @@
         },
         {
           "fn": "pde_wave_1d",
+          "message": "expected an integer steps"
+        },
+        {
+          "fn": "pde_wave_1d",
           "message": "expected non-negative integer steps"
         }
       ]
@@ -11097,6 +11133,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "pde_wave_2d",
+          "message": "expected an integer steps"
         },
         {
           "fn": "pde_wave_2d",
@@ -12471,6 +12511,10 @@
         },
         {
           "fn": "quantum_schrodinger",
+          "message": "expected an integer n_steps"
+        },
+        {
+          "fn": "quantum_schrodinger",
           "message": "expected non-negative integer n_steps"
         },
         {
@@ -12507,6 +12551,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "quantum_schrodinger_final",
+          "message": "expected an integer n_steps"
         },
         {
           "fn": "quantum_schrodinger_final",

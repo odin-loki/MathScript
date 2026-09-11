@@ -3082,7 +3082,15 @@ Result<double> eval_numthy_tonelli_shanks(double n_d, double p_d) {
         return std::unexpected(
             DomainError{"numthy_tonelli_shanks", "expected n >= 0 and p > 0"});
     }
-    auto root = numthy::tonelli_shanks(static_cast<uint64_t>(n_d), static_cast<uint64_t>(p_d));
+    auto n_u = checked_u64_argument("numthy_tonelli_shanks", "n", n_d, kMaxU64AsDouble);
+    if (!n_u) {
+        return std::unexpected(n_u.error());
+    }
+    auto p_u = checked_u64_argument("numthy_tonelli_shanks", "p", p_d, kMaxU64AsDouble);
+    if (!p_u) {
+        return std::unexpected(p_u.error());
+    }
+    auto root = numthy::tonelli_shanks(*n_u, *p_u);
     if (!root) {
         return std::unexpected(root.error());
     }
@@ -3098,7 +3106,15 @@ Result<double> eval_numthy_mod_inv(double a_d, double m_d) {
         return std::unexpected(
             DomainError{"numthy_mod_inv", "expected a >= 0 and m > 0"});
     }
-    auto inv = numthy::mod_inv(static_cast<uint64_t>(a_d), static_cast<uint64_t>(m_d));
+    auto a_u = checked_u64_argument("numthy_mod_inv", "a", a_d, kMaxU64AsDouble);
+    if (!a_u) {
+        return std::unexpected(a_u.error());
+    }
+    auto m_u = checked_u64_argument("numthy_mod_inv", "m", m_d, kMaxU64AsDouble);
+    if (!m_u) {
+        return std::unexpected(m_u.error());
+    }
+    auto inv = numthy::mod_inv(*a_u, *m_u);
     if (!inv) {
         return std::unexpected(inv.error());
     }
@@ -3114,8 +3130,19 @@ Result<double> eval_numthy_discrete_log(double g_d, double h_d, double p_d) {
         return std::unexpected(
             DomainError{"numthy_discrete_log", "expected g >= 0, h >= 0, p > 0"});
     }
-    auto x = numthy::discrete_log(static_cast<uint64_t>(g_d), static_cast<uint64_t>(h_d),
-                                   static_cast<uint64_t>(p_d));
+    auto g_u = checked_u64_argument("numthy_discrete_log", "g", g_d, kMaxU64AsDouble);
+    if (!g_u) {
+        return std::unexpected(g_u.error());
+    }
+    auto h_u = checked_u64_argument("numthy_discrete_log", "h", h_d, kMaxU64AsDouble);
+    if (!h_u) {
+        return std::unexpected(h_u.error());
+    }
+    auto p_u = checked_u64_argument("numthy_discrete_log", "p", p_d, kMaxU64AsDouble);
+    if (!p_u) {
+        return std::unexpected(p_u.error());
+    }
+    auto x = numthy::discrete_log(*g_u, *h_u, *p_u);
     if (!x) {
         return std::unexpected(x.error());
     }
@@ -4345,8 +4372,16 @@ Result<double> eval_numthy_crt(const Matrix<double>& r_m, const Matrix<double>& 
             return std::unexpected(
                 DomainError{"numthy_crt", "expected non-negative remainders and positive moduli"});
         }
-        r.push_back(static_cast<uint64_t>((*r_vec)[i]));
-        m.push_back(static_cast<uint64_t>((*m_vec)[i]));
+        auto r_u = checked_u64_argument("numthy_crt", "remainder", (*r_vec)[i], kMaxU64AsDouble);
+        if (!r_u) {
+            return std::unexpected(r_u.error());
+        }
+        auto m_u = checked_u64_argument("numthy_crt", "modulus", (*m_vec)[i], kMaxU64AsDouble);
+        if (!m_u) {
+            return std::unexpected(m_u.error());
+        }
+        r.push_back(*r_u);
+        m.push_back(*m_u);
     }
     auto x = numthy::crt(r, m);
     if (!x) {
@@ -4614,8 +4649,15 @@ Result<double> eval_numthy_multiplicative_order(double a_d, double n_d) {
         return std::unexpected(
             DomainError{"numthy_multiplicative_order", "expected a >= 0 and n >= 0"});
     }
-    auto ord = numthy::multiplicative_order(static_cast<uint64_t>(a_d),
-                                             static_cast<uint64_t>(n_d));
+    auto a_u = checked_u64_argument("numthy_multiplicative_order", "a", a_d, kMaxU64AsDouble);
+    if (!a_u) {
+        return std::unexpected(a_u.error());
+    }
+    auto n_u = checked_u64_argument("numthy_multiplicative_order", "n", n_d, kMaxU64AsDouble);
+    if (!n_u) {
+        return std::unexpected(n_u.error());
+    }
+    auto ord = numthy::multiplicative_order(*a_u, *n_u);
     if (!ord) {
         return std::unexpected(ord.error());
     }
@@ -11059,8 +11101,18 @@ Result<double> eval_mpc_reconstruct(const Matrix<double>& shares_m) {
         if (x_d != std::floor(x_d) || y_lo != std::floor(y_lo) || y_hi != std::floor(y_hi)) {
             return std::unexpected(DomainError{fn, "share components must be integers"});
         }
-        const uint64_t y =
-            (static_cast<uint64_t>(y_hi) << 32) | static_cast<uint64_t>(y_lo);
+        // Each column is one 32-bit half of a 64-bit share, so the bound is 2^32-1 and
+        // not the representable range: a y_hi of 1e10 would shift its top bits straight
+        // out of the result and reconstruct a different secret without saying so.
+        auto hi_u = checked_u64_argument("mpc_reconstruct", "y_hi", y_hi, kMaxU32AsDouble);
+        if (!hi_u) {
+            return std::unexpected(hi_u.error());
+        }
+        auto lo_u = checked_u64_argument("mpc_reconstruct", "y_lo", y_lo, kMaxU32AsDouble);
+        if (!lo_u) {
+            return std::unexpected(lo_u.error());
+        }
+        const uint64_t y = (*hi_u << 32) | *lo_u;
         shares.push_back({static_cast<int>(x_d), y});
     }
     auto secret = izaac::mpc::reconstruct_secret(shares);
@@ -16544,11 +16596,14 @@ Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::s
     unsigned seed = 42;
     if (!seed_arg.empty()) {
         double seed_d = 0.0;
-        if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
-            std::floor(seed_d) != seed_d) {
+        if (!parse_number(trim_copy(seed_arg), seed_d)) {
             return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
         }
-        seed = static_cast<unsigned>(seed_d);
+        auto seed_checked = checked_seed_argument(fn, "seed", seed_d);
+        if (!seed_checked) {
+            return std::unexpected(seed_checked.error());
+        }
+        seed = *seed_checked;
     }
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
@@ -16679,11 +16734,10 @@ Result<unsigned> parse_optional_seed(const std::string& seed_arg, const char* fn
         return seed;
     }
     double seed_d = 0.0;
-    if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
-        std::floor(seed_d) != seed_d) {
+    if (!parse_number(trim_copy(seed_arg), seed_d)) {
         return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
     }
-    return static_cast<unsigned>(seed_d);
+    return checked_seed_argument(fn, "seed", seed_d);
 }
 
 Func1D make_scalar_formula_func(SymExpr expr) {

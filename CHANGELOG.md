@@ -421,6 +421,84 @@ standard error) and cmd's own message sat 5,800 lines deep in a CTest log. The t
 everything it printed if it dies partway; and `std::cerr` being unit-buffered while
 `std::cout` was not could put a diagnostic ahead of output that came before it.
 
+### Nine more commands that ended the session, and the sweep that could not see them
+
+`test_repl_malformed_sweep` probes every command with `3000000000` and `1e18`. The
+linear cap (1e7) rejects both. **A sweep made of values the guard turns away cannot find
+a command that dies on a value the guard lets through** -- and nine did, all at
+`steps = 10000000`, all reproduced under a 4 GB address-space cap at `rc=134`:
+`pde_heat_1d`, `pde_heat_1d_cn`, `pde_advection_1d`,
+`pde_advection_1d_lax_wendroff`, `pde_reaction_diffusion_1d`, `pde_burgers_1d`,
+`pde_wave_1d`, `pde_heat_2d`, `pde_wave_2d`. (`pde_heat_2d_cn_adi` was still running at
+35 s instead of aborting inside it.) Each keeps the whole trajectory -- one grid per
+step -- and the REPL reads only the last: 16 GB of history to return 200 numbers.
+`gria_alpha_ca(30, 1e7, 1e7)` is the tenth, reserving the product as doubles: 800 TB.
+
+- **1e7 was never a bound on an argument's magnitude.** The comment beside it justifies
+  it by a duration, so it is a bound on the WORK a *linear* command does per unit of the
+  argument, read out in the argument's own units because for a linear command the two
+  coincide. `finance_binomial_call(S,K,T,r,sigma,10000000)` is an ordinary integer that
+  asks for 5e13 node visits: about twelve days.
+- **The policy is two numbers; the cost is a measurement at every call site.**
+  `kMaxReplCommandWorkNanos` (0.25 s) covers arguments where a large value is a slip --
+  a binomial tree converges like 1/steps and is finished by a thousand.
+  `kMaxReplSimulationWorkNanos` (4 s) covers the ones where it is a request: a Monte
+  Carlo converges like 1/sqrt(n_paths), so a hundred thousand paths is the command doing
+  its job. The per-command `nanos_per_unit` values differ by 120x -- 11 ns for a
+  binomial node, 1970 ns for a Gauss-Bonnet grid point -- which is why one shared
+  "quadratic arguments" cap would have been wrong in both directions at once: tight
+  enough to cost the tree three decimal places, and still 17 seconds for the quadrature.
+- **`WorkBudget` bounds products rather than factors.** `steps` sweeps of a grid,
+  `n_paths` walks of `n_steps`: no single factor looks wrong, and bounding each at 1e7
+  independently admits a product of 1e14. The operand matrix is charged first, so the
+  bound on `steps` shrinks as the grid grows.
+
+### A rank ceiling that measured the wrong thing
+
+`tensorops_decompose_cp` and `_nmf` bounded rank by the tensor's element count -- whether
+the decomposition is informative, not what it costs. `tensorops_decompose_nmf(h,
+ones(80,80), 200)` is rank 200 of 6400 and had not finished after 45 s. NMF runs every
+one of its `max_iter` sweeps, so the iteration count is now charged before the rank is
+read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in 0.02 s)
+so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
+unchanged.
+
+### Eighty-one conversions that fabricated an answer
+
+`static_cast<uint64_t>` of a double outside `[0, 2^64)` is undefined, and every guard in
+front of one read `if (arg < 0.0 || std::floor(arg) != arg)` -- the bottom of the range
+and not the top. What that looked like from the prompt was an answer: `numthy_gcd(1e300,
+18)` gave 18, `numthy_lcm(1e300, 3)` gave 0, `numthy_num_divisors(1e300)` gave 1.
+
+- **`numthy_sum_divisors(18446744073709551615)` printed 0.** That literal is 2^64-1,
+  which no double represents; it rounds up to exactly 2^64, one past the last value the
+  destination holds. The clamp is now written against 2^64 - 2048, the largest double
+  that is also a `uint64_t`, because `kTwoPow64 - 1.0` rounds back to `kTwoPow64` and
+  would have admitted the one value that cannot be converted.
+- **Two different seeds were the same seed.** `finance_mc_european_call(...,4294967296)`
+  and `(...,1e300)` both returned 10.757478 -- neither conversion had a value to
+  produce. Varying the seed to see the Monte Carlo spread was reading one sample twice.
+- Argument names in the new diagnostics are read out of the signatures the REPL's own
+  help prints, so `numthy_mod_pow(1e300, 2, 7)` says `base` and `gria_gf2n_inv` says
+  `poly`.
+
+### The proportional-cost exclusion list is gone, and neither entry needed a cap
+
+`test_repl_malformed_sweep` skipped `numthy_prime_nth` and `numthy_sum_divisors` because
+they did not finish -- a record of an unfixed defect rather than of a test that does not
+apply. In both cases the answer was not a bound:
+
+- `sum_divisors` built the divisor list by trial division to sqrt(n), 4.3e9 iterations at
+  the top of the range. Sigma is multiplicative, so it now reads the exponents out of the
+  factorisation, as `num_divisors` and `euler_phi` on either side of it always did:
+  `sum_divisors(1e18)` goes from 3.55 s to 0.01 s.
+- `prime_nth` ran one Miller-Rabin test per prime up to n -- 4.3 s at n=1e6. It sieves
+  once instead, to the Rosser-Schoenfeld bound `p_n < n(ln n + ln ln n)`, with the first
+  five primes listed because that bound is not valid below n=6.
+- Both report the sieve-span sentinel `prime_pi` uses, which got an honest message on the
+  way past: it used to say "result does not fit in 64 bits" about pi(3000000000), a
+  number near 1.4e8. The limit is the sieve, not the width.
+
 ### Commands that ended the session instead of reporting
 
 Found by running every one of the 485 matrix-call handlers at every arity it accepts,

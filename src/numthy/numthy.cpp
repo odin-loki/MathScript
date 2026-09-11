@@ -155,11 +155,37 @@ uint64_t prime_pi(uint64_t n) {
     return static_cast<uint64_t>(ps.size());
 }
 
+// The nth prime by ONE sieve rather than by n primality tests.
+//
+// The loop this replaces -- `while (c < n) { p = nextprime(p); ++c; }` -- is linear in n
+// with a Miller-Rabin test at every step, and that constant is what made it unusable:
+// `numthy_prime_nth(1000000)` took 4.3 s and `numthy_prime_nth(3000000000)` was still
+// running at half a minute. It was one of the two entries on the REPL's
+// proportional-cost exclusion list for exactly that reason.
+//
+// Sieving needs an upper bound on the answer to sieve up to, and there is a classical
+// one: p_n < n(ln n + ln ln n) for n >= 6 (Rosser & Schoenfeld 1962). Below 6 the bound
+// is not valid -- ln ln n is negative for n < e^e = 15.15, and for n = 1 the product is
+// negative outright -- so the first five primes are listed.
+//
+// The contract matches `prime_pi` directly above: when the sieve cannot span the range,
+// the answer is the UINT64_MAX sentinel rather than a wrong number, and the caller
+// decides what to say about it.
 uint64_t prime_nth(uint64_t n) {
     if (n == 0) return 0;
-    uint64_t c = 0, p = 1;
-    while (c < n) { p = nextprime(p); ++c; }
-    return p;
+    constexpr uint64_t kFirstFive[] = {2, 3, 5, 7, 11};
+    if (n <= 5) return kFirstFive[n - 1];
+
+    const double dn = static_cast<double>(n);
+    const double bound = dn * (std::log(dn) + std::log(std::log(dn)));
+    // Written as a negated `<` so a NaN or an infinity from a huge n takes this branch
+    // rather than falling through it.
+    if (!(bound < static_cast<double>(kMaxSieveSpan))) return UINT64_MAX;
+
+    const auto hi = static_cast<uint64_t>(bound) + 1;
+    const auto ps = primes(2, hi);
+    if (ps.size() < n) return UINT64_MAX;
+    return ps[static_cast<std::size_t>(n - 1)];
 }
 
 // --- Pollard rho factorisation ---
@@ -263,14 +289,34 @@ uint64_t num_divisors(uint64_t n) {
 
 // sigma(n) exceeds uint64_t well before n does -- sigma is superlinear, so a divisor
 // list summing past 2^64 wrapped and returned a number smaller than n itself.
+//
+// It is computed from the factorisation rather than from the divisor list, for the same
+// reason `num_divisors` and `euler_phi` immediately above and below already are: sigma
+// is multiplicative, so sigma(n) = prod (1 + p + ... + p^e) needs only the exponents.
+// The list costs a trial division up to sqrt(n), which is 4.3e9 iterations at the top of
+// the range the REPL passes in -- `numthy_sum_divisors(1e18)` took 3.55 s where
+// `numthy_num_divisors(1e18)` took 0.01 s, and the two read the same n out of the same
+// factorisation. The saving is not a micro-optimisation: it is what lets
+// numthy_sum_divisors come out of the REPL's proportional-cost exclusion list, where it
+// was the only entry that did not deserve to be there.
 uint64_t sum_divisors(uint64_t n) {
-    auto d = divisors(n);
-    uint64_t s = 0;
-    for (auto x : d) {
-        if (s > UINT64_MAX - x) return UINT64_MAX;
-        s += x;
+    if (n == 0) return 0;
+    uint64_t sigma = 1;
+    for (const auto& [p, e] : factor_exp(n)) {
+        // 1 + p + ... + p^e, accumulated a term at a time so an overflow is caught at the
+        // step that causes it rather than inferred afterwards from a wrapped total.
+        uint64_t power = 1;
+        uint64_t local = 1;
+        for (int i = 0; i < e; ++i) {
+            if (power > UINT64_MAX / p) return UINT64_MAX;
+            power *= p;
+            if (local > UINT64_MAX - power) return UINT64_MAX;
+            local += power;
+        }
+        if (local != 0 && sigma > UINT64_MAX / local) return UINT64_MAX;
+        sigma *= local;
     }
-    return s;
+    return sigma;
 }
 
 uint64_t euler_phi(uint64_t n) {

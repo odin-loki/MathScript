@@ -307,24 +307,170 @@ because a condition that reads as a guard and cannot fire is the thing this whol
 is about. 42 tests that asserted a combined message ("expected integer l and m") now
 assert the per-argument one, which names which argument.
 
-**What the bound does not cover, and why the rest needs judgement rather than a sweep.**
+**What a linear bound does not cover.** The number above is 1e7 and the comment beside
+it justifies it by a duration -- "a three-term recurrence is about a tenth of a second".
+Which means it was never a bound on the argument's MAGNITUDE. It was a bound on the WORK
+a linear command does per unit of it, read out in the argument's own units, because for a
+linear command the two coincide. For a command whose cost is not linear they do not, and
+the linear reading is not conservative, it is catastrophic:
+`finance_binomial_call(S,K,T,r,sigma,10000000)` is a perfectly ordinary integer that asks
+for 5e13 node visits, about twelve days.
 
-A linear bound is the wrong shape wherever the work is quadratic in the argument.
-`finance_binomial_call(S,K,T,r,sigma,38000)` builds a binomial tree of 7e8 nodes and is
-well inside 1e7; `tensorops_decompose_nmf` and `_cp` are slower still, at a rank of 2200.
+That gap is now closed, and closing it turned up **nine more commands that end the
+process**, in the same class as the fourteen above and missed by the same sweep that
+found those. The reason they were missed is worth stating plainly, because it is a fact
+about the test rather than about the code: `test_repl_malformed_sweep` probes
+`3000000000` and `1e18`, which the linear cap REJECTS. **A sweep made of values the guard
+turns away cannot find a command that dies on a value the guard lets through.**
 
-The `uint64_t` conversions are a separate family of about seventy, and one blanket cap
-would be wrong for them: `numthy_is_prime(1e18)` is a legitimate question with a fast
-answer, and `numthy_prime_nth(1e18)` is the same magnitude and not. Most of those sites
-guard the double against a negative before converting, which is the half that matters for
-undefined behaviour at the bottom of the range; none guard the top, and
-`static_cast<uint64_t>(1e30)` is undefined too.
+Each was reproduced under a 4 GB address-space cap and came back `rc=134`, a
+`std::bad_alloc` reaching `std::terminate` with nothing on either stream:
 
-`test_repl_malformed_sweep` names two of them out loud. Its oversized-argument sweep
-skips `numthy_prime_nth` and `numthy_sum_divisors` through an `is_proportional_cost`
-predicate -- an exclusion list that exists because those two do not finish, which is to
-say it is a record of an unfixed defect rather than of a test that does not apply. Both
-still run indefinitely on `3000000000`.
+| Command | At | Why |
+|---|---|---|
+| `pde_heat_1d(ones(200,1),0.1,0.1,0.001,10000000)` | 10.9 s | 16 GB of history for 200 numbers |
+| `pde_heat_1d_cn(...)` | 26.2 s | the same |
+| `pde_advection_1d(...)` | 8.6 s | the same |
+| `pde_advection_1d_lax_wendroff(...)` | 12.3 s | the same |
+| `pde_reaction_diffusion_1d(...)` | 12.2 s | the same |
+| `pde_burgers_1d(...)` | 11.9 s | the same |
+| `pde_wave_1d(...)` | 8.5 s | the same |
+| `pde_heat_2d(ones(60,60),...)` | 22.7 s | the same, per 3600-cell grid |
+| `pde_wave_2d(...)` | 26.4 s | the same |
+| `gria_alpha_ca(30,10000000,10000000)` | 0.02 s | `bits.reserve(steps*width)` -- 800 TB |
+
+`pde_heat_2d_cn_adi` is the tenth and was still running at 35 s rather than aborting
+inside it.
+
+The shape is the same in all nine solvers: they accumulate the whole trajectory,
+`result.u.push_back(u)` once per step, and the REPL reads only `.back()`. So the request
+is for a 16 GB history in order to return 200 numbers. (The waste is not fixed here --
+the library's return type is a trajectory and other callers read it -- but it no longer
+reaches a size that matters, because the bound on `steps` scales with the grid.)
+
+**Two policy numbers and a measurement at every call site.** A bound on a super-linear
+argument is really a bound on TIME, since a REPL command runs to completion with no
+interrupt. That splits cleanly into a judgement and a fact, and the two should not be
+confused:
+
+  - `kMaxReplCommandWorkNanos` (0.25 s) and `kMaxReplSimulationWorkNanos` (4 s) are the
+    POLICY. Two rather than one, because the distinction is in what the argument MEANS: a
+    binomial tree converges like 1/steps and is finished by about a thousand, so nobody
+    types `steps = 1000000` on purpose and bounding it costs no one anything; a Monte
+    Carlo converges like 1/sqrt(n_paths), so a hundred thousand paths is not a slip, it is
+    the command doing its job. Holding the second to a quarter of a second would take the
+    command away rather than protect it.
+  - `nanos_per_unit`, passed by each call site, is the MEASUREMENT. These differ by a
+    factor of a hundred and twenty, which is exactly why a single shared "quadratic
+    arguments" cap would have been wrong in both directions at once:
+
+| Command | ns per unit | Measured from |
+|---|---|---|
+| `finance_binomial_call` / `_put` | 11 | 2.69 s at steps=16000 |
+| `finance_american_option` | 28 | 2.65 s at steps=10000 |
+| `finance_trinomial_option` | 28 | 2.84 s at n_steps=10000 |
+| `diffgeo_sphere_gauss_bonnet` (+`_residual`) | 1970 | 1.97 s at n=1000 |
+| `pde_advection_1d` | 14 | 0.56 s at 200x2e5 |
+| `pde_heat_1d` | 16 | 0.62 s |
+| `pde_wave_1d` | 18 | 0.71 s |
+| `pde_reaction_diffusion_1d` | 20 | 0.78 s |
+| `pde_advection_1d_lax_wendroff` | 21 | 0.82 s |
+| `pde_burgers_1d` | 25 | 0.97 s |
+| `pde_heat_2d` | 38 | 1.50 s at 3600x1.1e4 |
+| `pde_heat_2d_cn_adi` | 101 | 4.03 s |
+| `pde_wave_2d` | 45 | 1.78 s |
+| `quantum_schrodinger` (+`_final`) | 25 | 15.7 s at 8x8, n=1e7 |
+| `gria_alpha_ca` | 177 | 17.7 s at 1e5x1e3 |
+| the Monte Carlo family | 190 | 1.68 s at 1e4 paths x 1e3 steps |
+
+A binomial tree at 3000 steps takes 0.21 s and is allowed; Gauss-Bonnet at 3000 takes
+17.4 s and is not. One cap could not have said both.
+
+**`WorkBudget` is `ExtentBudget`'s shape applied to work.** Where the cost is a PRODUCT
+-- `steps` sweeps of a grid, `n_paths` walks of `n_steps` -- no single factor looks wrong
+and `checked_int_argument` bounds each at 1e7 independently, so the product it admits is
+1e14. The budget multiplies the factors as they are read, and charges the operand matrix
+first so the bound on `steps` shrinks as the grid grows: a hundred steps of a large grid
+costs what ten thousand steps of a small one does, and that is the relationship that
+actually holds.
+
+**A shape ceiling is not a cost ceiling.** `tensorops_decompose_cp` and `_nmf` already
+refused a rank past the tensor's element count -- which is a statement about whether the
+decomposition is informative, and says nothing about what it costs. Underneath it,
+`tensorops_decompose_nmf(h, ones(80,80), 200)` is rank 200 of 6400, an entirely ordinary
+request, and had not finished after 45 s. The two differ in shape and are bounded
+differently: NMF runs every one of its `max_iter` sweeps, so the iteration count is
+charged before the rank is read; CP's ALS converges out of `max_iter` long before
+reaching it -- 1e7 iterations of a 40x40 still returns in 0.02 s -- so only the rank
+drives it. `tensorops_decompose_tucker` measured the same way as CP and is left alone:
+the mode-dimension ceiling it already has is the right one.
+
+**The `uint64_t` family: eighty-one sites, and the answers were fabricated rather than
+absent.** Every one guarded the bottom of the range and none the top --
+
+    if (arg < 0.0 || std::floor(arg) != arg) { /* reject */ }
+    ... static_cast<uint64_t>(arg) ...
+
+-- which rejects negatives and fractions and then converts anything else, 1e300 included.
+What that looked like from the prompt was an answer:
+
+| Typed | Printed |
+|---|---|
+| `numthy_gcd(1e300, 18)` | 18 |
+| `numthy_lcm(1e300, 3)` | 0 |
+| `numthy_num_divisors(1e300)` | 1 |
+| `numthy_euler_phi(1e300)` | 0 |
+| `numthy_sum_divisors(18446744073709551615)` | 0 |
+
+The last is the sharpest. That literal is 2^64-1, which no double represents; it rounds
+UP to exactly 2^64, one past the last value the destination holds, so the conversion had
+nothing to return and sigma was reported as zero. `checked_u64_argument` decides the range
+on the double, and the clamp is written against 2^64 - 2048 -- the largest double that is
+also a `uint64_t` -- because `kTwoPow64 - 1.0` rounds straight back to `kTwoPow64` and
+would have admitted the one value that cannot be converted.
+
+The argument names in those diagnostics are not invented. They are read out of the
+signatures the REPL's own help prints, so `numthy_mod_pow(1e300, 2, 7)` says `base` and
+`gria_gf2n_inv` says `poly`.
+
+**Fifteen seeds, and two of them were the same seed.** `static_cast<unsigned>` has the
+same problem one type down, and here it does not merely admit nonsense:
+
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,42)           10.799620
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,4294967296)   10.757478
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,1e300)        10.757478
+
+The last two agree because neither conversion had a value to produce. Somebody varying
+the seed to see the Monte Carlo spread would have been reading one sample twice and
+calling it two.
+
+**The exclusion list is gone, and neither entry needed a cap.** `test_repl_malformed_sweep`
+skipped `numthy_prime_nth` and `numthy_sum_divisors` through an `is_proportional_cost`
+predicate -- a record of an unfixed defect rather than of a test that does not apply. The
+earlier note here said both ran indefinitely on `3000000000`; measured, only `prime_nth`
+did. `sum_divisors(3000000000)` answers in 0.01 s and it is `sum_divisors(1e18)` that took
+3.55 s. In both cases the right answer turned out not to be a bound at all:
+
+  - `sum_divisors` built the divisor list by trial division to sqrt(n) -- 4.3e9 iterations
+    at the top of the range. Sigma is multiplicative, so the exponents are enough, which
+    is what `num_divisors` and `euler_phi` on either side of it already did: they answer
+    the same n in 0.01 s out of the same factorisation.
+  - `prime_nth` ran one Miller-Rabin test per prime up to n: 4.3 s at n=1e6 and still
+    going at half a minute for 3e9. It sieves once instead, to the Rosser-Schoenfeld
+    bound p_n < n(ln n + ln ln n), with the first five primes listed because that bound is
+    not valid below n=6.
+
+**One reported finding did not survive a probe.** The allocation audit recorded
+`graph_bipartite_match` aborting at its second argument. It does not:
+`graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and
+`graph_bipartite_match(M3, 10000000)` returns "not bipartite" promptly, which is the
+right answer for that matrix. Recorded here rather than dropped, because an unreproduced
+report left in a list reads later like an unfixed defect.
+
+Both now report the same sieve-span sentinel `prime_pi` does, and that sentinel got an
+honest message on the way past: it used to say "result does not fit in 64 bits" about
+pi(3000000000), a number near 1.4e8 that fits in a double with room to spare. The limit
+is the sieve, not the width, and it now says so.
 
 ## §7 — Stubs and half-implementations
 

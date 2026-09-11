@@ -29,11 +29,17 @@ Result<Matrix<double>> handle_quantum_schrodinger(Interpreter& interp, const Mat
                 "quantum_schrodinger",
                 "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
         }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger", "expected non-negative integer n_steps"});
+        // The propagator is applied n_steps times to an H-sized state, so the cost is
+        // their product. quantum_schrodinger_final(eye(8), ones(8,1), 0, 1, 1e7) ran for
+        // 15.7 s, and quantum_schrodinger spent 24 s computing a trajectory before
+        // rejecting it as too large to print.
+        WorkBudget budget(assign.callee, 25.0);
+        budget.charge(H_m->rows() * H_m->cols());
+        auto n_steps_arg = budget.take("n_steps", n_steps_d);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
+        const int n_steps = *n_steps_arg;
         result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
     }
 

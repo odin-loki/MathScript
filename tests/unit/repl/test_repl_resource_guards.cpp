@@ -127,14 +127,24 @@ TEST(ReplResourceGuards, SieveAndPartitionRefuseUnsatisfiableSizes) {
 
     // The REPL forms return rather than hanging, and now say what the marker means
     // instead of printing it as 18446744073709551615.
+    //
+    // The two sentinels look identical from the outside and mean different things, so
+    // they say different things. p(3000000000) really is past 64 bits -- p(417) already
+    // is. pi(1e18) is not: it is about 2.4e16 and fits with three digits to spare, and
+    // what stops it is the span a sieve can hold. Reporting that as "does not fit in 64
+    // bits" was a true-sounding sentence about the wrong quantity.
     Interpreter interp;
-    for (const char* cmd : {"numthy_partition(3000000000)", "numthy_prime_pi(1e18)"}) {
-        const auto result = interp.execute(cmd);
-        ASSERT_FALSE(result.has_value()) << cmd;
-        const std::string message = ms::format_error(result.error());
-        EXPECT_NE(message.find("does not fit in 64 bits"), std::string::npos)
-            << cmd << " error: " << message;
-    }
+    const auto overflowed = interp.execute("numthy_partition(3000000000)");
+    ASSERT_FALSE(overflowed.has_value());
+    EXPECT_NE(ms::format_error(overflowed.error()).find("does not fit in 64 bits"),
+              std::string::npos)
+        << ms::format_error(overflowed.error());
+
+    const auto unsievable = interp.execute("numthy_prime_pi(1e18)");
+    ASSERT_FALSE(unsievable.has_value());
+    EXPECT_NE(ms::format_error(unsievable.error()).find("past what this can sieve"),
+              std::string::npos)
+        << ms::format_error(unsievable.error());
 }
 
 TEST(ReplResourceGuards, RandomBytesAndTensorRankAreBounded) {

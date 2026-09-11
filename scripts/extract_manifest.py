@@ -192,12 +192,30 @@ def solve_arities(cond: str, callee: str, rejects: bool) -> tuple[list[int], boo
 # this field that does not match what the handler prints.
 _BUDGET_DECL = re.compile(r'ExtentBudget\s+(\w+)\s*\(\s*"([^"]*)"\s*\)')
 
-def extent_budget_errors(body: str) -> set[tuple[str, str]]:
+# `WorkBudget::take` does the same for the commands whose cost is a product of several
+# factors. Its `fn` is written as the dispatcher's own `assign.callee` rather than as a
+# literal -- ten of these sites sit in fall-through branches where the command name
+# nearest above them in the file belongs to a DIFFERENT command, and one literal was
+# wrong that way -- so the name is taken from the registration instead.
+#
+# It raises two fixed messages where ExtentBudget raises one, because it separates "not
+# an integer" from "negative"; the third, the too-large one, interpolates the value and
+# so has no fixed string to record.
+_WORK_BUDGET_DECL = re.compile(r'WorkBudget\s+(\w+)\s*\(\s*(assign\.callee|"[^"]*")')
+
+def extent_budget_errors(body: str, callee: str) -> set[tuple[str, str]]:
     out: set[tuple[str, str]] = set()
     for decl in _BUDGET_DECL.finditer(body):
         var, fn = decl.group(1), decl.group(2)
         for take in re.finditer(rf'\b{re.escape(var)}\.take\(\s*"([^"]*)"', body):
             out.add((fn, f"expected non-negative integer {take.group(1)}"))
+    for decl in _WORK_BUDGET_DECL.finditer(body):
+        var, name = decl.group(1), decl.group(2)
+        fn = callee if name == "assign.callee" else name.strip('"')
+        for take in re.finditer(rf'\b{re.escape(var)}\.take\(\s*"([^"]*)"', body):
+            what = take.group(1)
+            out.add((fn, f"expected an integer {what}"))
+            out.add((fn, f"expected non-negative integer {what}"))
     return out
 
 def parse_handler(path: pathlib.Path) -> dict:
@@ -239,7 +257,7 @@ def parse_handler(path: pathlib.Path) -> dict:
     errors = sorted({
         (m.group(1), m.group(2))
         for m in re.finditer(r'DomainError\s*\{\s*"([^"]*)"\s*,\s*"((?:[^"\\]|\\.)*)"', body)
-    } | extent_budget_errors(body))
+    } | extent_budget_errors(body, callee))
 
     return {
         "file": path.relative_to(ROOT).as_posix(),

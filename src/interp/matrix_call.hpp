@@ -104,6 +104,223 @@ inline Result<int> checked_int_argument(const std::string& fn, const char* what,
 }
 
 
+/// 2^64, exactly representable as a double and one past the last value a `uint64_t`
+/// holds. A double is convertible to `uint64_t` exactly when it is `>= 0` and `<` this.
+constexpr double kTwoPow64 = 18446744073709551616.0;
+
+/// The largest double that is also a `uint64_t`. Doubles are spaced 2^11 apart up here,
+/// so it is 2^64 - 2048 and not 2^64 - 1: `kTwoPow64 - 1.0` rounds straight back to
+/// `kTwoPow64` and would clamp to a value the destination cannot hold.
+constexpr double kMaxU64AsDouble = 18446744073709549568.0;
+static_assert(kMaxU64AsDouble < kTwoPow64);
+
+/// A non-negative integer argument the command takes as a `uint64_t`.
+///
+/// `static_cast<uint64_t>` of a double outside `[0, 2^64)` is undefined behaviour in
+/// exactly the way `static_cast<int>` is, and the guard every one of these sites used --
+///
+///     if (arg < 0.0 || std::floor(arg) != arg) { /* reject */ }
+///     ... static_cast<uint64_t>(arg) ...
+///
+/// tests neither end of that range. It rejects negatives and fractions and then converts
+/// anything else, including 1e300. `numthy_sum_divisors(18446744073709551615)` answered
+/// `0`: the literal is not representable as a double and rounds UP to exactly 2^64, one
+/// past the last value the destination holds, so the conversion had nothing to return
+/// and the REPL printed whatever it produced as though it were sigma.
+///
+/// `max_value` is the largest value this particular command can answer for. It is usually
+/// a WORK bound rather than a representability one -- `numthy_prime_nth` can name the
+/// nth prime long after it stops being able to find it -- so it is the caller's to pass,
+/// and it is clamped to the representable range here so no caller can widen it by
+/// mistake.
+inline Result<std::uint64_t> checked_u64_argument(const std::string& fn, const char* what,
+                                                  double value, double max_value) {
+    if (!std::isfinite(value) || value != std::floor(value)) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected an integer ") + what});
+    }
+    if (value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected non-negative integer ") + what});
+    }
+    const double limit = max_value < kMaxU64AsDouble ? max_value : kMaxU64AsDouble;
+    if (value > limit) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(value) +
+                    " is too large; this command is bounded at " + describe_count(limit)});
+    }
+    return static_cast<std::uint64_t>(value);
+}
+
+/// The largest `unsigned`, exact as a double. Also the ceiling for anything stored as a
+/// 32-bit half of a wider value.
+constexpr double kMaxU32AsDouble = 4294967295.0;
+
+/// A random seed, which is an `unsigned` and so has its own range.
+///
+/// The same cast-before-check shape as everywhere else, and here it does not merely
+/// admit nonsense, it quietly makes two different seeds the same seed:
+///
+///     finance_mc_european_call(100,100,1,0.05,0.2,1000,42)          10.799620
+///     finance_mc_european_call(100,100,1,0.05,0.2,1000,4294967296)  10.757478
+///     finance_mc_european_call(100,100,1,0.05,0.2,1000,1e300)       10.757478
+///
+/// The last two agree because neither conversion had a value to produce; a user varying
+/// the seed to see the Monte Carlo error would have been reading one sample twice.
+inline Result<unsigned> checked_seed_argument(const std::string& fn, const char* what,
+                                              double value) {
+    if (!std::isfinite(value) || value != std::floor(value) || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected non-negative integer ") + what});
+    }
+    if (value > kMaxU32AsDouble) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(value) +
+                    " is too large; a seed is bounded at " + describe_count(kMaxU32AsDouble)});
+    }
+    return static_cast<unsigned>(value);
+}
+
+/// How long the REPL is willing to disappear for.
+///
+/// A command runs to completion. There is no interrupt, no progress bar, and no way to
+/// take the prompt back, so a bound on a super-linear argument is really a bound on
+/// TIME, and it has two halves that should not be confused with each other. This number
+/// is the POLICY half: it is one number for the whole REPL, and it is a judgement about
+/// what a user will sit through, not a fact about any command.
+///
+/// It is the same judgement `kMaxReplIntegerArgument` already encodes. That comment
+/// justifies 1e7 by a duration -- "a three-term recurrence is about a tenth of a
+/// second" -- which means 1e7 was never a bound on the argument's MAGNITUDE. It was a
+/// bound on the work a linear command does per unit of it, read out in the argument's
+/// own units because for a linear command the two coincide. For a quadratic command
+/// they do not, and the linear reading is catastrophic:
+/// `finance_binomial_call(S,K,T,r,sigma,1e7)` is a perfectly ordinary integer that asks
+/// for 5e13 node visits, about twelve days.
+constexpr double kMaxReplCommandWorkNanos = 2.5e8;  // a quarter of a second
+
+/// The same policy for a command where a large argument is a REQUEST rather than a slip.
+///
+/// The distinction is in what the argument means, not in how patient anyone is feeling.
+/// A binomial tree converges like 1/steps and is done by about a thousand: nobody types
+/// `steps = 1000000` on purpose, so bounding it costs no one anything. A Monte Carlo
+/// converges like 1/sqrt(n_paths), so a million paths is not a slip -- it is three digits
+/// of accuracy, and it is the entire reason the command exists. Holding it to a quarter
+/// of a second would take the command away rather than protect it, so the bound here is
+/// only doing the one job that remains: keeping the answer finite.
+///
+/// It is deliberately NOT used for the time-stepping solvers, whose `steps` is just as
+/// deliberate. They allocate one grid per step, so for them a longer time budget is also
+/// a bigger allocation, and the thing being bounded is a 16 GB `std::bad_alloc` rather
+/// than a wait.
+constexpr double kMaxReplSimulationWorkNanos = 4e9;  // four seconds
+
+/// An argument whose cost is `value^power` units of work, at `nanos_per_unit` each.
+///
+/// `nanos_per_unit` is the MEASUREMENT half, and it is the caller's to supply because it
+/// is a fact about that command and nothing else. The numbers the callers pass differ by
+/// a factor of seventy -- a binomial-tree node is a multiply-add, a Gauss-Bonnet grid
+/// point is a numerical quadrature of a curvature tensor -- which is exactly why a single
+/// shared cap on "quadratic arguments" would be wrong in both directions at once: tight
+/// enough to cost the tree three decimal places, and still seventeen seconds for the
+/// quadrature. Each number, and the run it was measured from, is recorded in
+/// docs/PLAN_STATUS.md.
+///
+/// The derived cap is a machine-dependent number, as the 1e7 above always was. It is
+/// chosen so the answer is wrong in the safe direction on a slower machine: a command
+/// that takes a second instead of a quarter is still a command that came back.
+inline Result<int> checked_superlinear_argument(const std::string& fn, const char* what,
+                                                double value, int power,
+                                                double nanos_per_unit) {
+    if (!std::isfinite(value) || value != std::floor(value)) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected an integer ") + what});
+    }
+    const double units = kMaxReplCommandWorkNanos / nanos_per_unit;
+    const auto cap = static_cast<double>(
+        static_cast<long long>(std::pow(units, 1.0 / static_cast<double>(power))));
+    if (std::abs(value) > cap) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(std::abs(value)) +
+                    " is too large; this command does work proportional to " + what +
+                    "^" + std::to_string(power) + ", so it is bounded at " +
+                    describe_count(cap) + " rather than at " +
+                    describe_count(kMaxReplIntegerArgument)});
+    }
+    return static_cast<int>(value);
+}
+
+/// A budget for a command whose cost is a PRODUCT rather than a power of one argument: a
+/// time-stepping solver that does `steps` sweeps of a grid, a Monte Carlo that walks
+/// `n_paths` paths of `n_steps` each.
+///
+/// No single factor in such a command looks wrong, which is exactly the problem.
+/// `checked_int_argument` bounds each of them at 1e7 on its own and says nothing about
+/// the two together, so the product it admits is 1e14. This is `ExtentBudget`'s shape --
+/// multiply the factors as they are read, charge them against one budget -- applied to
+/// work instead of to elements.
+///
+/// For the solvers it is both at once, because they keep the whole trajectory: one grid
+/// per step, of which the REPL reads only `.back()`. So
+/// `pde_heat_1d(ones(200,1), 0.1, 0.1, 0.001, 10000000)` asks for a 16 GB history to
+/// return 200 numbers, and under `-fno-exceptions` that is not a slow command but a dead
+/// process -- the `std::bad_alloc` out of `std::vector` reaches `std::terminate` and the
+/// REPL is gone without printing anything. Seven commands were measured aborting exactly
+/// so, at `steps` = 1e7, which the linear cap admits: `pde_heat_1d`, `pde_heat_1d_cn`,
+/// `pde_advection_1d`, `pde_advection_1d_lax_wendroff`, `pde_reaction_diffusion_1d`,
+/// `pde_heat_2d` and `pde_wave_2d`. `pde_heat_2d_cn_adi` was still running at 35 s.
+///
+/// None of them was reachable by the existing oversized-argument sweep, and the reason
+/// is worth stating plainly: that sweep probes 3000000000 and 1e18, which the linear cap
+/// REJECTS. A sweep made of values the guard turns away cannot find a command that dies
+/// on a value the guard lets through.
+class WorkBudget {
+public:
+    /// `nanos_per_unit` is the measured cost of one unit of the product -- one cell of
+    /// one sweep, one step of one path. See `checked_superlinear_argument` above for why
+    /// this is the caller's number and not a shared one.
+    /// `fn` is taken by value so callers can pass the dispatcher's own `fn` /
+    /// `assign.callee` rather than retyping the command name as a literal. Ten of these
+    /// call sites sit in fall-through branches of a multi-command `if`, where the name
+    /// nearest above them in the file is a DIFFERENT command -- one literal was wrong
+    /// that way on the first pass.
+    WorkBudget(std::string fn, double nanos_per_unit,
+               double budget_nanos = kMaxReplCommandWorkNanos)
+        : fn_(std::move(fn)), remaining_(budget_nanos / nanos_per_unit) {}
+
+    /// A factor that is not an argument: the extent of a matrix the command will sweep.
+    /// Charging it before reading the arguments makes the bound on them shrink as the
+    /// data grows, which is the relationship that actually holds -- a hundred steps of a
+    /// large grid costs what ten thousand steps of a small one does.
+    void charge(std::size_t units) {
+        remaining_ /= (units == 0 ? 1.0 : static_cast<double>(units));
+    }
+
+    Result<int> take(const char* what, double value) {
+        if (!std::isfinite(value) || value != std::floor(value)) {
+            return std::unexpected(
+                DomainError{fn_, std::string("expected an integer ") + what});
+        }
+        if (value < 0.0) {
+            return std::unexpected(
+                DomainError{fn_, std::string("expected non-negative integer ") + what});
+        }
+        if (value > remaining_) {
+            return std::unexpected(DomainError{
+                fn_, std::string(what) + " " + describe_count(value) +
+                         " is too large; this command does work proportional to " + what +
+                         " times the size of what it is given, and for this input it is "
+                         "bounded at " + describe_count(std::floor(remaining_))});
+        }
+        remaining_ /= (value == 0.0 ? 1.0 : value);
+        return static_cast<int>(value);
+    }
+
+private:
+    std::string fn_;
+    double remaining_;
+};
+
 /// Reads one size-like REPL argument -- a count, an order, a grid extent -- and charges
 /// it against a budget of elements.
 ///
@@ -186,19 +403,30 @@ struct MatrixCallCtx {
 
     /// A dimension: a positive integer, exactly representable as the double it
     /// arrived as.
+    ///
+    /// The range is decided on the double. `static_cast<int>(value)` first -- which is
+    /// how this read -- is undefined for anything outside `int`, so `i < 1` was testing a
+    /// value that the standard does not say exists. It is the same defect the free
+    /// `checked_int_argument` above was written for, in the helper 485 generated handlers
+    /// call.
     static Result<std::size_t> parse_positive_size_arg(double value, const char* fn,
                                                        const char* label) {
-        const int i = static_cast<int>(value);
-        if (i < 1 || value != static_cast<double>(i)) {
+        if (!std::isfinite(value) || value < 1.0 || value != std::floor(value) ||
+            value > kMaxReplIntegerArgument) {
             return std::unexpected(DomainError{fn, label});
         }
-        return static_cast<std::size_t>(i);
+        return static_cast<std::size_t>(value);
     }
 
     /// A non-negative whole number.
+    ///
+    /// The guard rejected negatives and fractions and then converted whatever was left,
+    /// so 1e300 reached `static_cast<std::uint64_t>` -- undefined, and in practice a
+    /// fabricated answer rather than a diagnostic.
     static Result<std::uint64_t> parse_uint64_arg(double value, const char* fn,
                                                   const char* label) {
-        if (value < 0.0 || value != std::floor(value)) {
+        if (!std::isfinite(value) || value < 0.0 || value != std::floor(value) ||
+            !(value < kTwoPow64)) {
             return std::unexpected(DomainError{fn, label});
         }
         return static_cast<std::uint64_t>(value);

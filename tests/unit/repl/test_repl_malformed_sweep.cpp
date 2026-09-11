@@ -178,16 +178,16 @@ void sweep_nonfinite(Interpreter& interp, const std::vector<const char*>& names)
 // rather than to an allocation: numthy_prime_nth does one primality test per prime asked
 // for, and numthy_sum_divisors enumerates divisors in O(sqrt(n)). Both are bounded and
 // interruptible through the interpreter's cancel flag, and their headers say so.
-bool is_proportional_cost(const std::string& name) {
-    return name == "numthy_prime_nth" || name == "numthy_sum_divisors";
-}
-
 void sweep_oversized(Interpreter& interp, const std::vector<const char*>& names) {
+    // There used to be an exclusion list here, of two commands whose cost was
+    // proportional to the value of the argument rather than to its size:
+    // `numthy_prime_nth`, which tested one prime at a time up to n, and
+    // `numthy_sum_divisors`, which trial-divided to sqrt(n). Both ran for minutes on
+    // `(3000000000)` and had to be skipped. Neither is proportional any more --
+    // prime_nth sieves once and sum_divisors reads the exponents out of the
+    // factorisation -- so the sweep covers every name, with nothing excused.
     for (const char* name : names) {
         const std::string n(name);
-        if (is_proportional_cost(n)) {
-            continue;
-        }
         probe(interp, n + "(3000000000)");
         probe(interp, n + "(1e18)");
         probe(interp, n + "(3000000000, 2)");

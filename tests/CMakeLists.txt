@@ -39,6 +39,7 @@ add_executable(test_repl_commands
     unit/repl/test_repl_commands_graph.cpp
     unit/repl/test_repl_commands_image.cpp
     unit/repl/test_repl_commands_info.cpp
+    unit/repl/test_repl_commands_integer_conversions.cpp
     unit/repl/test_repl_commands_linalg.cpp
     unit/repl/test_repl_commands_ml.cpp
     unit/repl/test_repl_commands_numthy.cpp
@@ -49,6 +50,7 @@ add_executable(test_repl_commands
     unit/repl/test_repl_commands_quantum.cpp
     unit/repl/test_repl_commands_signal.cpp
     unit/repl/test_repl_commands_size_arguments.cpp
+    unit/repl/test_repl_commands_superlinear_arguments.cpp
     unit/repl/test_repl_commands_special.cpp
     unit/repl/test_repl_commands_stats.cpp
     unit/repl/test_repl_commands_tensorops.cpp
