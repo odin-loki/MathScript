@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eleven files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twelve files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1033,6 +1033,40 @@ argument for it:
 | `:183` `if (vtv > 0.0)` | `v[0] = x + sign*sqrt(x^2 + tail_sq)` with `sign` matching `x`, so `|v[0]| >= sqrt(tail_sq) > 0` whenever the enclosing `tail_sq != 0.0` holds. The guard is never false. Instrumented: not once, across every call in the eight suites. |
 | `:396` LDL's `amax` scan | It sets `zero_tol = amax * n * eps`. Skipping row 0 changes that tolerance only if row 0 held the largest entry, and the change is only observable for a pivot lying between the two tolerances -- within about 1e-15 relative. Killing it would test the tolerance rather than the code. |
 | `:433` `D(t, 0)` becoming `D(t, 1)` | D is n x 1, so that is a read one past the end. The harness rebuilds without sanitizers, and **mutation testing under a plain build is blind to memory errors** -- already recorded as a limitation of the method. The new tests do reach that branch with a non-trivial correction (`{{1,1,1},{1,1,3},{1,3,1}}`, whose first column eliminates to `L(1,0) = L(2,0) = 1`), which the pre-existing inputs did not: in all of them the L entries multiplying it were zero, so the subtraction was a no-op whatever it subtracted. |
+
+
+Twelfth file: `src/sym2/notation_mathml.cpp`, 22 mutants at seed 43 against the two suites
+that cover it. **6 of 9 viable killed, 66.7%** -- and the headline number here is the
+OTHER one: **13 of 22 mutants did not compile.** The file is string construction, and the
+harness's arithmetic operator is `+` becoming `-`, which between two `std::string`s is not
+an expression. That is a fact about the method rather than about the file, and it is why
+the score is reported over nine mutants with the raw counts beside it: a score over a
+sample that small says less than it looks like it says, and folding the thirteen in as
+"killed" would have reported 81.8% while testing nothing.
+
+One of the three survivors was a real gap, and a precise one. `vars.size() > 1` chooses
+between `d` and `d^n` in the numerator of a Presentation MathML derivative. The Content
+MathML side of the same file asserts exactly that distinction for its own spelling -- one
+variable is `<diff/>`, several are `<partialdiff/>`, and the test renders both -- but the
+Presentation side rendered only `d/dx sin(x)`. So the branch that writes the exponent
+never ran, and `d^2/dx dy` would have come out as `d/dx dy`: a first derivative written
+with two denominators, which is not a thing. Two cases now assert it, at two and at three
+variables so the exponent is the count rather than a fixed 2, and the three-variable one
+repeats a variable, since the node says which variables and not how many distinct.
+
+The other two survivors are equivalent, and **measured rather than argued**. Content
+MathML's `needs_grouping()` returns false and its `exponent_is_fenced()` returns true, and
+both mutate to their opposite without changing a byte of output. The dataflow says why --
+`place()` is the only reader of `exponent_is_fenced()` and short-circuits on
+`!needs_grouping()` before it uses the value, and Content MathML's `group()` is the
+identity, so the two call sites of `needs_grouping()` select between `inner` and
+`group(inner)` -- but the check is a corpus: 24 expressions rendered in both notations,
+chosen for the shapes those hooks govern (nested powers, a power whose exponent is a sum,
+an unfenced quotient with a multi-factor numerator, a negated product), **byte-identical
+under each mutant**.
+
+Score after: **77.8%**, 7 of 9, with the two remaining measured equivalent. Same file,
+same seed, same twenty-two mutants, so this one is a ratchet.
 
 
 ### What the corpus found on its first run

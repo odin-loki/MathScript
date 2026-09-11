@@ -833,6 +833,31 @@ uses at most **20 sweeps of 260, 7.7% of its budget**, so the non-convergence br
 unreachable from any input in the tree; and `if (vtv > 0.0)` is never false, not once
 across every call in the eight suites, because the enclosing condition already forces it.
 
+### §8.4 — a derivative in two variables that Presentation MathML never rendered
+
+`src/sym2/notation_mathml.cpp` scored **66.7%**, and the number worth reading is the other
+one: **13 of 22 mutants did not compile.** The file is string construction, and the
+harness's arithmetic mutation is `+` becoming `-`, which between two `std::string`s is not
+an expression. Reported over nine viable mutants with the raw counts beside it — folding
+the thirteen in as killed would have said 81.8% while testing nothing.
+
+One survivor was a real gap. `vars.size() > 1` chooses between `d` and `d^n` in the
+numerator of a Presentation MathML derivative, and while the Content MathML side of the
+same file asserts exactly that distinction for its own spelling — one variable is
+`<diff/>`, several are `<partialdiff/>`, and both are rendered — the Presentation side
+rendered only `d/dx sin(x)`. The branch that writes the exponent never ran, so `d^2/dx dy`
+would have come out as `d/dx dy`: a first derivative written with two denominators, which
+is not a thing. Asserted now at two and at three variables, so the exponent is the count
+rather than a fixed 2, with a repeated variable in the three — the node says which
+variables, not how many distinct ones.
+
+The other two survivors are equivalent, and measured rather than argued: Content MathML's
+`needs_grouping()` (false) and `exponent_is_fenced()` (true) each mutate to their opposite
+without changing a byte of output, checked over 24 expressions in both notations chosen
+for the shapes those hooks govern — nested powers, a power whose exponent is a sum, an
+unfenced quotient with a multi-factor numerator, a negated product. **77.8%** after, and a
+genuine ratchet: same file, same seed, same twenty-two mutants.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

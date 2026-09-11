@@ -227,6 +227,27 @@ TEST(MathmlPresentation, UnevaluatedHeads) {
     EXPECT_EQ(to_presentation_mathml(derivative(function("sin", {x}), {x})),
               "<mrow><mfrac><mi>d</mi><mrow><mi>d</mi><mi>x</mi></mrow></mfrac>" + sin_x +
                   "</mrow>");
+    // A derivative in more than one variable raises the numerator's `d` to the number
+    // of them, which is what makes `d^2/dx dy` different from `d/dx dy` -- the latter
+    // being a first derivative written with two denominators, which is not a thing.
+    // The Content MathML side of this file asserts the same distinction (one variable
+    // is `<diff/>`, several are `<partialdiff/>`); the Presentation side asserted only
+    // the single-variable case, so the branch that writes the exponent never ran.
+    const ExprRef y = symbol("y");
+    const std::string f_xy =
+        "<mrow><mi>f</mi><mo>&#x2061;</mo><mrow><mo>(</mo><mi>x</mi><mo>,</mo>"
+        "<mi>y</mi><mo>)</mo></mrow></mrow>";
+    EXPECT_EQ(to_presentation_mathml(derivative(function("f", {x, y}), {x, y})),
+              "<mrow><mfrac><msup><mi>d</mi><mn>2</mn></msup>"
+              "<mrow><mi>d</mi><mi>x</mi><mi>d</mi><mi>y</mi></mrow></mfrac>" + f_xy +
+                  "</mrow>");
+    // Three, so the exponent is the count rather than a fixed 2, and a repeated
+    // variable stays repeated: the node says which variables, not how many distinct.
+    EXPECT_EQ(to_presentation_mathml(derivative(function("f", {x, y}), {x, y, x})),
+              "<mrow><mfrac><msup><mi>d</mi><mn>3</mn></msup>"
+              "<mrow><mi>d</mi><mi>x</mi><mi>d</mi><mi>y</mi><mi>d</mi><mi>x</mi></mrow>"
+              "</mfrac>" + f_xy + "</mrow>");
+
     EXPECT_EQ(to_presentation_mathml(integral(x, {x})),
               "<mrow><mo>&#x222B;</mo><mi>x</mi><mi>d</mi><mi>x</mi></mrow>");
     // `lim` is an `<mo>`, not an `<mi>`. The operator dictionary is where its upright
