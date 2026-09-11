@@ -6,10 +6,12 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "ms/core/format.hpp"
 
@@ -109,7 +111,30 @@ bool shallow_equal(const Node& a, const Node& b) {
 struct Interner {
     std::mutex mutex;
     std::unordered_map<std::size_t, std::vector<std::weak_ptr<const Node>>> buckets;
+    /// Inserts since the last sweep. A bucket is pruned when it is touched again, which
+    /// never happens for a hash whose nodes have all died -- so without a sweep the map
+    /// grows by one empty entry per distinct expression the process ever built and
+    /// released, forever. A REPL session survives that; the GUI's worker and the
+    /// distributed layer's long-lived processes do not.
+    std::size_t since_sweep = 0;
 };
+
+/// Erase the buckets that hold nothing live. Called once every `kSweepInterval`
+/// inserts, so the cost is amortised to a constant per insert and the table's size
+/// tracks what is actually reachable rather than what was ever built. A bucket with no
+/// live entry can be dropped without a second thought: nothing can find it again,
+/// because finding requires locking a weak reference that has already expired.
+constexpr std::size_t kSweepInterval = 4096;
+
+void sweep_expired(Interner& table) {
+    for (auto it = table.buckets.begin(); it != table.buckets.end();) {
+        auto& bucket = it->second;
+        std::erase_if(bucket, [](const std::weak_ptr<const Node>& slot) {
+            return slot.expired();
+        });
+        it = bucket.empty() ? table.buckets.erase(it) : std::next(it);
+    }
+}
 
 Interner& interner() {
     static Interner instance;
@@ -139,6 +164,10 @@ ExprRef intern(Node&& node) {
     }
     auto created = std::make_shared<const Node>(std::move(node));
     bucket.push_back(created);
+    if (++table.since_sweep >= kSweepInterval) {
+        table.since_sweep = 0;
+        sweep_expired(table);
+    }
     return created;
 }
 
@@ -193,6 +222,12 @@ bool bigint_to_ll(const BigInt& value, long long& out) {
 } // namespace
 
 // --- Construction ------------------------------------------------------------------
+
+std::size_t interned_bucket_count() {
+    Interner& table = interner();
+    const std::lock_guard<std::mutex> lock(table.mutex);
+    return table.buckets.size();
+}
 
 ExprRef integer(long long value) { return integer(BigInt(value)); }
 

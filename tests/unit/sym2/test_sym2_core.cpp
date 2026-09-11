@@ -273,6 +273,28 @@ TEST(Sym2Core, InterningSurvivesChurn) {
     EXPECT_EQ(to_string(kept), "kept + 1");
 }
 
+// The interning table keeps weak references, and a bucket is pruned when something
+// hashes into it again. A hash whose nodes have all died is never hashed into again, so
+// without a sweep the table grows by one empty entry for every distinct expression the
+// process has ever built and released. Nothing about a *value* can see that: every
+// answer stays correct while the table grows without bound.
+//
+// The bound asserted is deliberately loose. What is being tested is that the growth is
+// not one-per-expression, not the exact sweep interval -- an assertion on the interval
+// would fail the day somebody tunes it, which is not a regression.
+TEST(Sym2Core, TheInternerDoesNotKeepBucketsForNodesThatDied) {
+    constexpr int kTemporaries = 40000;
+    const std::size_t before = interned_bucket_count();
+    for (int i = 0; i < kTemporaries; ++i) {
+        const ExprRef temporary = add({symbol("sweep" + std::to_string(i)), integer(i)});
+        EXPECT_FALSE(is_undefined(temporary));
+    }
+    const std::size_t after = interned_bucket_count();
+    EXPECT_LT(after, before + kTemporaries / 2)
+        << "the table kept " << after - before << " buckets for " << kTemporaries
+        << " expressions that are all gone";
+}
+
 // Every constructor here takes an `ExprRef`, which is a `shared_ptr` and so can be
 // null, and `make` hashes what it is given by dereferencing it. `add`, `mul`, `pow` and
 // `function` all refuse a null already. `derivative`, `integral` and `limit` did not,

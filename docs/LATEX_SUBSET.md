@@ -484,20 +484,23 @@ Rules:
    bytes: a symbol name may carry raw non-ASCII (the `default:` case of `escape`,
    notation_latex.cpp:70, passes bytes through untouched), and a byte column would
    point into the middle of a character.
-2. **The message names what was expected and what was found**, with the found text
+2. **Each message begins with its stable code** from §3.2 -- `[E-LATEX-0013]` -- which
+   is what makes a diagnostic quotable in a bug report and searchable in this document.
+   Codes are never renumbered; a rule that goes away leaves its number unused.
+3. **The message names what was expected and what was found**, with the found text
    quoted verbatim and never normalised -- a diagnostic about `\varGamma` says
    `\varGamma` and not `\Gamma`. At end of input it says so rather than quoting
    nothing.
-3. **A delimiter mismatch names the opener too.** `\left(` closed by `\right]`, an
+4. **A delimiter mismatch names the opener too.** `\left(` closed by `\right]`, an
    unclosed `{`, a `\begin{pmatrix}` closed by `\end{bmatrix}`: the position is the
    closer and the message carries the opener's position, because the closer is where
    the reader is and the opener is what they have to go back to.
-4. **The parser reports the first error and stops.** No recovery and no cascade: a
+5. **The parser reports the first error and stops.** No recovery and no cascade: a
    strict parser that guesses its way past an error is the failure mode this document
    exists to prevent, and a list of ten errors nine of which are consequences of the
    first is worse than one error.
-5. **There are no warnings.** A construct is in the subset or it is not.
-6. `options.decimal_separator` selects the decimal terminal. `options.matrix_environment`
+6. **There are no warnings.** A construct is in the subset or it is not.
+7. `options.decimal_separator` selects the decimal terminal. `options.matrix_environment`
    is ignored on input -- all five environments are accepted -- and so are `display`,
    `sized_delimiters`, `multiplication` and `roots_as_radicals`: the grammar accepts
    every setting's output at once, which is what makes the round-trip property

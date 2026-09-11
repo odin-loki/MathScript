@@ -130,6 +130,16 @@ bool as_rational(const ExprRef& e, bignum::Rational& out);
 /// the only place in this namespace where an exact value becomes approximate.
 bool as_double(const ExprRef& e, double& out);
 
+/// How many hash buckets the interning table currently holds.
+///
+/// A diagnostic, not a tuning knob: the table keeps weak references, so a bucket whose
+/// nodes have all died holds nothing and is swept, and this is how a test can tell that
+/// the sweeping happens. Without it the table grows by one entry per distinct
+/// expression the process ever built, which a REPL session survives and a long-lived
+/// worker does not -- and a leak that slow is not visible in any assertion about
+/// values.
+std::size_t interned_bucket_count();
+
 /// Structural equality. Cheap when the hashes differ, which is the common case; a
 /// hash collision falls through to a full comparison rather than being trusted.
 bool structurally_equal(const ExprRef& a, const ExprRef& b);
