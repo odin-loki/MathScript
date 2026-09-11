@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "ms/cpu/blas.hpp"
+#include "ms/cpu/blas_kernel.hpp"
 #include "ms/linalg/linalg.hpp"
 
 using namespace ms;
@@ -179,6 +180,105 @@ TEST(CpuSgemm, TransposedFormsAndDegenerateArguments) {
                      untouched.data(), 1);
     for (std::size_t i = 0; i < untouched.size(); ++i) {
         EXPECT_FLOAT_EQ(untouched[i], C0[i]) << "m = 0 wrote at " << i;
+    }
+}
+
+// Differential tests for the per-ISA sgemm kernels themselves.
+//
+// `CpuSgemm` above goes through the dispatcher, which declines the blocked kernel
+// below its work threshold and on hosts without the ISA -- so on its own it cannot
+// tell a broken kernel from one that was never called. These call each kernel
+// directly, and skip where the host does not have it.
+//
+// The sizes straddle every boundary in the decomposition: the AVX2 micro-kernel is
+// 16x6 and the AVX-512 one is 32x8, so one short of, exactly at, and one past each,
+// and around the depth blocking. A kernel that mishandles a partial tile passes at
+// the multiples and fails here.
+namespace {
+
+const std::vector<int> kSgemmEdgeSizes = {
+    1, 2, 5, 6, 7, 8, 11, 12, 13, 15, 16, 17, 23, 24, 25, 31, 32, 33, 47, 48, 49,
+};
+
+void expect_kernel_matches(void (*kernel)(int, int, int, float, const float*, int,
+                                          const float*, int, float, float*, int),
+                           const char* name, int m, int n, int k,
+                           std::uint64_t seed) {
+    const auto A = filled(static_cast<std::size_t>(m) * static_cast<std::size_t>(k),
+                          seed * 7919ULL + 1ULL);
+    const auto B = filled(static_cast<std::size_t>(k) * static_cast<std::size_t>(n),
+                          seed * 104729ULL + 3ULL);
+    const std::vector<float> C0(static_cast<std::size_t>(m) *
+                                    static_cast<std::size_t>(n),
+                                0.25F);
+    std::vector<float> got = C0;
+    kernel(m, n, k, 1.25F, A.data(), m, B.data(), k, -0.5F, got.data(), m);
+    const auto want = reference_gemm(m, n, k, 1.25F, A, B, -0.5F, C0);
+    for (std::size_t i = 0; i < got.size(); ++i) {
+        const float scale = std::max(1.0F, std::abs(want[i]));
+        ASSERT_NEAR(got[i], want[i], scale * 1e-5F * static_cast<float>(std::max(1, k)))
+            << name << " m=" << m << " n=" << n << " k=" << k << " at " << i;
+    }
+}
+
+} // namespace
+
+TEST(SgemmKernels, Avx2MatchesReferenceAtEveryEdgeSize) {
+    if (!cpu::blas::avx2::sgemm_available()) {
+        GTEST_SKIP() << "AVX2/FMA not available on this host";
+    }
+    std::uint64_t seed = 1;
+    for (const int m : kSgemmEdgeSizes) {
+        for (const int n : kSgemmEdgeSizes) {
+            expect_kernel_matches(&cpu::blas::avx2::sgemm_nn, "avx2", m, n, 9, ++seed);
+        }
+    }
+    for (const int k : {1, 2, 7, 16, 63, 64, 65, 255, 256, 257}) {
+        expect_kernel_matches(&cpu::blas::avx2::sgemm_nn, "avx2 depth", 33, 13, k, ++seed);
+    }
+}
+
+TEST(SgemmKernels, Avx512MatchesReferenceAtEveryEdgeSize) {
+    if (!cpu::blas::avx512::sgemm_available()) {
+        GTEST_SKIP() << "AVX-512F not available on this host or not built in";
+    }
+    std::uint64_t seed = 1000;
+    for (const int m : kSgemmEdgeSizes) {
+        for (const int n : kSgemmEdgeSizes) {
+            expect_kernel_matches(&cpu::blas::avx512::sgemm_nn, "avx512", m, n, 9, ++seed);
+        }
+    }
+    for (const int k : {1, 2, 7, 16, 63, 64, 65, 511, 512, 513}) {
+        expect_kernel_matches(&cpu::blas::avx512::sgemm_nn, "avx512 depth", 65, 17, k,
+                              ++seed);
+    }
+}
+
+TEST(SgemmKernels, EveryAvailableIsaPathAgreesWithEveryOther) {
+    // The answer must not depend on which ISA the host happens to have. Both kernels
+    // accumulate in float and both reassociate the sum over k differently from the
+    // rank-1 fallback, so they are compared against each other rather than for
+    // bit-equality with it.
+    const int n = 70;
+    const auto A = filled(static_cast<std::size_t>(n) * static_cast<std::size_t>(n),
+                          424242ULL);
+    const auto B = filled(static_cast<std::size_t>(n) * static_cast<std::size_t>(n),
+                          242424ULL);
+    const std::vector<float> C0(static_cast<std::size_t>(n) * static_cast<std::size_t>(n),
+                                0.0F);
+    const auto want = reference_gemm(n, n, n, 1.0F, A, B, 0.0F, C0);
+
+    if (cpu::blas::avx2::sgemm_available()) {
+        std::vector<float> got = C0;
+        cpu::blas::avx2::sgemm_nn(n, n, n, 1.0F, A.data(), n, B.data(), n, 0.0F,
+                                  got.data(), n);
+        expect_close(got, want, n, "avx2");
+    }
+    if (cpu::blas::avx512::sgemm_available()) {
+        std::vector<float> got = C0;
+        cpu::blas::avx512::sgemm_nn(n, n, n, 1.0F, A.data(), n, B.data(), n, 0.0F,
+                                    got.data(), n);
+        expect_close(got, want, n, "avx512");
     }
 }
 

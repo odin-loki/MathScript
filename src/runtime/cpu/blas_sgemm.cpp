@@ -90,10 +90,16 @@ void sgemm_nn_dispatch(
     float beta,
     float* C,
     int ldc) {
-    // available() is a runtime question: a binary built with AVX2 kernels still has
-    // to run on hosts whose OS never enabled YMM state, and the kernel answers
-    // through ms::simd::detect_isa(), which checks OSXSAVE and XCR0 rather than
-    // trusting CPUID alone.
+    // Widest first, and available() is a runtime question: a binary built with
+    // AVX-512 kernels still has to run on hosts whose OS never enabled ZMM state,
+    // and the kernels answer through ms::simd::detect_isa(), which checks OSXSAVE
+    // and XCR0 rather than trusting CPUID alone.
+#if defined(MS_ENABLE_AVX512) && MS_ENABLE_AVX512
+    if (avx512::sgemm_available() && avx512::sgemm_worthwhile(m, n, k)) {
+        avx512::sgemm_nn(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+        return;
+    }
+#endif
     if (avx2::sgemm_available() && avx2::sgemm_worthwhile(m, n, k)) {
         avx2::sgemm_nn(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
         return;

@@ -33,6 +33,22 @@ void dgemm_nn(
     double* C,
     int ldc);
 
+bool sgemm_available();
+bool sgemm_worthwhile(int m, int n, int k);
+
+void sgemm_nn(
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const float* A,
+    int lda,
+    const float* B,
+    int ldb,
+    float beta,
+    float* C,
+    int ldc);
+
 } // namespace ms::cpu::blas::avx512
 
 namespace ms::cpu::blas::avx2 {

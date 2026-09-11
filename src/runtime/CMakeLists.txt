@@ -19,9 +19,10 @@ set(MS_RUNTIME_CPU_SOURCES
 )
 
 if(MS_ENABLE_AVX512)
-    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm.cpp)
+    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm.cpp cpu/avx512_sgemm.cpp)
 else()
-    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm_stub.cpp)
+    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm_stub.cpp
+                                       cpu/avx512_sgemm_stub.cpp)
 endif()
 
 if(MS_ENABLE_AVX2)
@@ -53,9 +54,11 @@ target_compile_features(ms_runtime PUBLIC cxx_std_23)
 # is meant to be deciding about can fault before it returns an answer.
 if(MS_ENABLE_AVX512)
     if(MSVC)
-        set_source_files_properties(cpu/avx512_dgemm.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+        set_source_files_properties(cpu/avx512_dgemm.cpp cpu/avx512_sgemm.cpp
+                                    PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
     else()
-        set_source_files_properties(cpu/avx512_dgemm.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512dq")
+        set_source_files_properties(cpu/avx512_dgemm.cpp cpu/avx512_sgemm.cpp
+                                    PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512dq")
     endif()
 endif()
 
