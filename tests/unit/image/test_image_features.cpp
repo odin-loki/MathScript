@@ -608,3 +608,162 @@ TEST(ImageSift, SelfMatchAndDeterminism) {
         EXPECT_NEAR(0.f, mm.distance, 1e-6f);
     }
 }
+
+// ---------------------------------------------------------------------------
+// §8.4: the detectors' output, pinned.
+//
+// A sample of 24 mutants aimed at the detector and pyramid code scored 52.2%,
+// and the survivors said why in one line: `ImageOrb.IsDeterministic` compares
+// ORB against ANOTHER CALL OF ORB. That is the same blindness a codec's
+// round-trip has -- any change applied consistently is invisible to it -- and
+// for a detector, "consistently" covers the whole pyramid: the number of
+// levels, each level's dimensions, the per-level feature budget, and the
+// octave a keypoint is attributed to. Every existing assertion here is a bound
+// (`0 <= x <= 95`, responses descending, orientation in [-pi, pi]) or a
+// comparison between two outputs, and a pyramid one level taller satisfies all
+// of them.
+//
+// These pin the output itself. The float fields are compared at 1e-3 rather
+// than exactly: they are products of an integer coordinate with a power of the
+// scale factor, so they agree far more closely than that between compilers,
+// while a structural change moves them by whole pixels. The counts and octaves
+// are exact, because those are integers and a pyramid of a different height
+// changes them outright.
+//
+// Captured from the implementation, so this is a regression guard rather than
+// a proof -- what makes it worth having is the property tests around it. The
+// covariance, scale-selection, unit-norm and sortedness tests above establish
+// that the answers are RIGHT; this freezes the freedom they leave.
+// ---------------------------------------------------------------------------
+
+TEST(ImageFeatureGolden, OrbOnTheTextureIsExactlyThisPyramid) {
+    const auto f = orb_detect_and_compute(make_texture(96), 200);
+    ASSERT_EQ(f.keypoints.size(), f.descriptors.size());
+
+    // 176 rather than the 200 asked for: the coarse levels run out of corners
+    // before their budget does. A pyramid with one more or one fewer level
+    // reaches a different number.
+    EXPECT_EQ(f.keypoints.size(), 176u);
+
+    int octmax = 0;
+    std::vector<int> per_octave(16, 0);
+    for (const auto& k : f.keypoints) {
+        ASSERT_GE(k.octave, 0);
+        ASSERT_LT(k.octave, 16);
+        octmax = std::max(octmax, k.octave);
+        ++per_octave[static_cast<std::size_t>(k.octave)];
+    }
+    EXPECT_EQ(octmax, 5) << "the pyramid is not the height it was";
+    // 96 / 1.2^k stops being wide enough for a FAST ring at k = 6, so six
+    // levels is what this image supports and every one of them contributes.
+    for (int i = 0; i <= 5; ++i) {
+        EXPECT_GT(per_octave[static_cast<std::size_t>(i)], 0) << "level " << i << " empty";
+    }
+
+    struct Want { float x, y, scale, orientation, response; int octave; };
+    const Want want[12] = {
+        {51.8400f, 36.0000f, 1.4400f,  3.1393f, 5.98135f, 2},
+        {52.0000f, 36.0000f, 1.0000f,  0.0730f, 5.84092f, 0},
+        {51.6000f, 36.0000f, 1.2000f, -1.0642f, 5.79097f, 1},
+        {31.6800f, 27.3600f, 1.4400f,  2.3822f, 5.72686f, 2},
+        {36.0000f, 24.0000f, 1.2000f,  2.1742f, 5.70816f, 1},
+        {36.0000f, 24.0000f, 1.0000f,  1.6318f, 5.68782f, 0},
+        {51.8400f, 36.2880f, 1.7280f, -2.1571f, 5.56609f, 3},
+        {73.0000f, 76.0000f, 1.0000f, -1.9233f, 5.20680f, 0},
+        {31.1040f, 27.6480f, 1.7280f,  2.1588f, 5.16292f, 3},
+        {31.2000f, 26.4000f, 1.2000f,  2.0368f, 5.10253f, 1},
+        {39.6000f, 27.6000f, 1.2000f,  3.0478f, 4.98170f, 1},
+        {73.2000f, 75.6000f, 1.2000f, -1.4108f, 4.96723f, 1},
+    };
+    ASSERT_GE(f.keypoints.size(), 12u);
+    for (int i = 0; i < 12; ++i) {
+        const auto& k = f.keypoints[static_cast<std::size_t>(i)];
+        const Want& w = want[i];
+        EXPECT_NEAR(k.x, w.x, 1e-3f) << "keypoint " << i << " column";
+        EXPECT_NEAR(k.y, w.y, 1e-3f) << "keypoint " << i << " row";
+        EXPECT_NEAR(k.scale, w.scale, 1e-3f) << "keypoint " << i << " scale";
+        EXPECT_NEAR(k.orientation, w.orientation, 1e-3f) << "keypoint " << i << " orientation";
+        EXPECT_NEAR(k.response, w.response, 1e-3f) << "keypoint " << i << " response";
+        EXPECT_EQ(k.octave, w.octave) << "keypoint " << i << " octave";
+    }
+
+    // A budget small enough to bind. At 200 the levels run out of corners first
+    // -- 176 come back -- so the per-level allocation is never the constraint and
+    // an allocation off by one is invisible. At 24 it IS the constraint, and the
+    // count is then exactly what the geometric share plus the last level's
+    // remainder come to.
+    const auto tight = orb_detect_and_compute(make_texture(96), 24);
+    EXPECT_EQ(tight.keypoints.size(), 24u) << "the per-level budget did not sum to what was asked";
+    EXPECT_EQ(tight.descriptors.size(), tight.keypoints.size());
+    const auto tight7 = orb_detect_and_compute(make_texture(96), 7);
+    EXPECT_EQ(tight7.keypoints.size(), 7u);
+
+    // The same keypoint found at three scales -- (51.84, 36) at levels 2, 0 and
+    // 1 in the first three rows -- is the pyramid working, and the exact
+    // coordinates are the level-to-base mapping (r * s, c * s) the comment in
+    // `orb_detect_and_compute` promises. A level sized one row wider breaks it.
+    EXPECT_NEAR(f.keypoints[0].x / f.keypoints[0].scale, 36.0f, 1e-3f);
+    EXPECT_NEAR(f.keypoints[2].x / f.keypoints[2].scale, 43.0f, 1e-3f);
+}
+
+TEST(ImageFeatureGolden, SiftOnTheBlobFieldIsExactlyThisScaleSpace) {
+    const auto f = sift_detect_and_compute(make_blob_field(128), 200);
+    ASSERT_EQ(f.keypoints.size(), f.descriptors.size());
+    EXPECT_EQ(f.keypoints.size(), 160u);
+
+    int lo = 99, hi = -99;
+    for (const auto& k : f.keypoints) { lo = std::min(lo, k.octave); hi = std::max(hi, k.octave); }
+    // floor(log2(128)) - 2 = 5 octaves are built; the blobs (sigma 2.5 to 5)
+    // are resolved in the first two, and nothing survives past them. An octave
+    // count computed as floor(log2(n)) + 2 instead searches four more.
+    EXPECT_EQ(lo, 0);
+    EXPECT_EQ(hi, 1) << "the scale space is not the depth it was";
+
+    struct Want { float x, y, scale, orientation, response; int octave; };
+    const Want want[8] = {
+        {112.0000f, 48.0000f, 2.1927f, -2.2573f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f, -1.5708f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f, -0.6080f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f, -0.0000f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f,  0.7373f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f,  1.5708f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f,  2.2335f, 0.059632f, 0},
+        {112.0000f, 48.0000f, 2.1927f,  3.1416f, 0.059632f, 0},
+    };
+    ASSERT_GE(f.keypoints.size(), 8u);
+    for (int i = 0; i < 8; ++i) {
+        const auto& k = f.keypoints[static_cast<std::size_t>(i)];
+        const Want& w = want[i];
+        EXPECT_NEAR(k.x, w.x, 1e-3f) << "keypoint " << i << " column";
+        EXPECT_NEAR(k.y, w.y, 1e-3f) << "keypoint " << i << " row";
+        EXPECT_NEAR(k.scale, w.scale, 1e-3f) << "keypoint " << i << " scale";
+        EXPECT_NEAR(k.orientation, w.orientation, 1e-3f) << "keypoint " << i << " orientation";
+        EXPECT_NEAR(k.response, w.response, 1e-4f) << "keypoint " << i << " response";
+        EXPECT_EQ(k.octave, w.octave) << "keypoint " << i << " octave";
+    }
+
+    // Eight keypoints at one location, one per orientation histogram peak: a
+    // blob on a 4x4 grid of blobs is locally symmetric, so the peaks come in
+    // at the grid's own angles. That is the orientation assignment's output and
+    // nothing else asserted it.
+    for (int i = 1; i < 8; ++i) {
+        EXPECT_NEAR(f.keypoints[static_cast<std::size_t>(i)].x, f.keypoints[0].x, 1e-3f);
+        EXPECT_NEAR(f.keypoints[static_cast<std::size_t>(i)].y, f.keypoints[0].y, 1e-3f);
+        EXPECT_GT(f.keypoints[static_cast<std::size_t>(i)].orientation,
+                  f.keypoints[static_cast<std::size_t>(i - 1)].orientation);
+    }
+
+    // The first descriptor's leading two spatial rows. The 4x4x8 layout means
+    // these are bins (0,0,*) and (0,1,*), and the zeros are as much of the
+    // contract as the peaks: a blob's gradient points one way in each quadrant,
+    // so most orientation bins in a cell are empty. Descriptor binning that
+    // wrote to the neighbouring bin would fill them.
+    const float want_d[16] = {
+        0.00172f, 0.01530f, 0.00130f, 0.00000f, 0.00000f, 0.00000f, 0.00000f, 0.00000f,
+        0.00121f, 0.07209f, 0.09400f, 0.00814f, 0.00001f, 0.00000f, 0.00000f, 0.00000f,
+    };
+    for (int i = 0; i < 16; ++i) {
+        EXPECT_NEAR(f.descriptors[0][static_cast<std::size_t>(i)], want_d[i], 2e-4f)
+            << "descriptor component " << i;
+    }
+}

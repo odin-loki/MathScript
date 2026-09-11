@@ -858,6 +858,47 @@ for the shapes those hooks govern — nested powers, a power whose exponent is a
 unfenced quotient with a multi-factor numerator, a negated product. **77.8%** after, and a
 genuine ratchet: same file, same seed, same twenty-two mutants.
 
+### §8.4 — the ORB determinism test compared ORB against ORB
+
+The two earlier `image.cpp` samples both put the rest of the gap in the feature detectors
+and the segmentation code, and both recorded it rather than closing it. The obstacle was
+the method: a uniform sample of 22 mutants over a 4048-line file lands one or two in any
+one function, which is not a measurement of that function. `scripts/mutation_test.py`
+takes `--lines` now, so the sample can be aimed. Aimed at the SIFT and ORB detectors, the
+graph cut and CLAHE there are **437 sites**, and 24 of them scored **52.2%**.
+
+The survivors gave the same answer `compress.cpp` did. **`ImageOrb.IsDeterministic`
+compares ORB against another call of ORB** — a round trip, blind to any change applied
+consistently, and for a detector "consistently" covers the whole pyramid: its height, each
+level's dimensions, the per-level feature budget, and which octave a keypoint is
+attributed to. Every other assertion in that suite is a bound — coordinates inside the
+image, responses descending, orientation within ±pi, descriptors of unit norm — and a
+pyramid one level taller satisfies all of them.
+
+So the detectors' output is pinned the way the compressed format is. `ImageFeatureGolden`
+fixes ORB's 176 keypoints on the standard texture and SIFT's 160 on the blob field —
+counts, occupied octaves, the leading keypoints' position, scale, orientation, response
+and octave, and SIFT's first descriptor. Float fields compare at 1e-3: they are an integer
+coordinate times a power of the scale factor, so they agree far more closely between
+compilers, while a structural change moves them by whole pixels. Three more assertions
+came from reading the survivors: **CLAHE's mapping must reach 1 at the top occupied bin**
+(every existing CLAHE test compares ranges between two outputs, which a constant offset
+leaves alone — and dropping the first bin from the running sum is exactly such an offset);
+**ORB's per-level budget must sum to what was asked** at a `max_features` small enough to
+bind, since at 200 the levels run out of corners first; and **a grabcut rectangle empty in
+only one dimension**, where the existing case is empty in both and cannot tell `||` from
+`&&`.
+
+That last one did not kill its mutant, and that is the finding: once a zero-height
+rectangle gets through, the first fit finds no foreground samples, breaks, and returns all
+background anyway. The guard is a shortcut, not a correctness requirement. **52.2% ->
+73.9%**, the same twenty-four mutants re-scored. Of the six that survive, two are
+equivalent and measured — that shortcut, and SIFT's octave cap, which is subsumed by the
+size guard inside the octave loop (keypoint counts and octave ranges identical across
+fifteen image sizes from 16 to 512) — two are reads one past the end, which a build
+without sanitizers cannot see and the ASan job covers, one turns on a single neighbour of
+twenty-six in the extremum test, and one is in `radon`, which this pass was not aimed at.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

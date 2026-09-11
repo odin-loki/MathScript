@@ -179,6 +179,28 @@ def find_sites(text: str, rng: random.Random) -> list[Mutation]:
     return sites
 
 
+def parse_ranges(spec: str) -> list[tuple[int, int]]:
+    """`"100:200,340:355"` as inclusive (first, last) line pairs."""
+    ranges: list[tuple[int, int]] = []
+    for piece in spec.split(","):
+        piece = piece.strip()
+        if not piece:
+            continue
+        if ":" not in piece:
+            raise SystemExit(f"--lines wants START:END, got {piece!r}")
+        first, _, last = piece.partition(":")
+        try:
+            lo, hi = int(first), int(last)
+        except ValueError:
+            raise SystemExit(f"--lines wants two integers, got {piece!r}") from None
+        if lo > hi:
+            raise SystemExit(f"--lines range runs backwards: {piece!r}")
+        ranges.append((lo, hi))
+    if not ranges:
+        raise SystemExit("--lines named no range")
+    return ranges
+
+
 def run(command: list[str], timeout: int) -> tuple[int, str]:
     try:
         finished = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
@@ -197,6 +219,12 @@ def main() -> int:
                              "mutant is killed if ANY of them fails, so leaving one out "
                              "reports a survivor that is not one")
     parser.add_argument("--build-dir", default="build-test")
+    parser.add_argument("--lines", default=None,
+                        help="restrict the sample to these inclusive line ranges, "
+                             "comma-separated, e.g. 2680:2820,3100:3190. A uniform sample "
+                             "over a four-thousand-line file lands a couple of mutants in "
+                             "any one function, which is not a measurement of that "
+                             "function; this aims the sample where the question is")
     parser.add_argument("--limit", type=int, default=30, help="mutants to try")
     parser.add_argument("--seed", type=int, default=1,
                         help="which mutants get tried; a run is reproducible from it")
@@ -209,8 +237,15 @@ def main() -> int:
     source = Path(args.source)
     original = source.read_text()
     sites = find_sites(original, random.Random(args.seed))
+    if args.lines:
+        ranges = parse_ranges(args.lines)
+        before = len(sites)
+        sites = [site for site in sites
+                 if any(lo <= site.line_of(original) <= hi for lo, hi in ranges)]
+        print(f"{source}: {before} sites, {len(sites)} within {args.lines}")
     if not sites:
-        print(f"no mutation sites in {source}", file=sys.stderr)
+        where = f" within {args.lines}" if args.lines else ""
+        print(f"no mutation sites in {source}{where}", file=sys.stderr)
         return 1
 
     targets = [name.strip() for name in args.target.split(",") if name.strip()]

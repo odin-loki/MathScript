@@ -526,6 +526,42 @@ TEST(ImageAdaptHistEq, ClipLimitMonotonicity) {
     EXPECT_LT(range_low, range_high);
 }
 
+TEST(ImageAdaptHistEq, TheTopOccupiedBinMapsToOne) {
+    // Equalisation's defining property, and the one every existing CLAHE test is
+    // insensitive to: they compare RANGES and ORDERINGS between two outputs, which a
+    // constant offset applied to both leaves alone. The mapping is a cumulative
+    // histogram divided by its total, so the highest occupied bin accumulates every
+    // count there is and must come out at exactly 1 -- a single tile so bilinear
+    // blending has nothing to blend, and a bin-0 pixel present, because dropping the
+    // first bin from the running sum shifts every later value down by hist[0]/total
+    // and is invisible to a comparison of two shifted outputs.
+    Image img(8, 8, 1, 0.f);
+    for (int i = 0; i < 64; ++i) {
+        // Bins 0, 40, 80, ... 240 with bin 0 well populated, so hist[0] is a
+        // substantial fraction of the total rather than a rounding of it.
+        const int bin = (i < 24) ? 0 : 40 * ((i - 24) % 7 + 1);
+        img.data[i] = (bin + 0.5f) / 255.f;
+    }
+    const auto out = adapthisteq(img, 8, 1.0f);
+    ASSERT_EQ(out.rows, 8);
+
+    float brightest = 0.f;
+    for (int i = 0; i < 64; ++i) brightest = std::max(brightest, out.data[i]);
+    EXPECT_NEAR(brightest, 1.0f, 1e-6f)
+        << "the cumulative histogram did not reach its total";
+
+    // And the whole mapping is a CDF: it never decreases with the input value. A pixel
+    // that was darker than another cannot come out brighter.
+    for (int i = 0; i < 64; ++i) {
+        for (int j = 0; j < 64; ++j) {
+            if (img.data[i] < img.data[j]) {
+                EXPECT_LE(out.data[i], out.data[j] + 1e-6f)
+                    << "order reversed between " << i << " and " << j;
+            }
+        }
+    }
+}
+
 TEST(ImageAdaptHistEq, UniformImageUnchanged) {
     Image img(16,16,1,0.5f);
     auto out=adapthisteq(img, 4, 0.01f);

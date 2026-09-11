@@ -560,6 +560,22 @@ TEST(ImageGrabCut, DegenerateRectanglesAndImages) {
     EXPECT_EQ(empty_rect.channels, 1);
     EXPECT_EQ(gc_count_fg(empty_rect), 0);
 
+    // ... and so does one that is empty in only ONE dimension, which is the case the
+    // line above cannot see. `r1 <= r0 || c1 <= c0` and `r1 <= r0 && c1 <= c0` agree
+    // on a rectangle degenerate in both, and differ on every rectangle with zero
+    // height and positive width, or the other way about. A zero-area rectangle has no
+    // pixels in it whichever side is flat, and the blob image is used rather than a
+    // uniform one so the two readings cannot agree by the data being featureless.
+    const Image blob = gc_blob8();
+    const Image flat_rows = grabcut_segment(blob, 4, 1, 4, 7);
+    EXPECT_EQ(flat_rows.rows, 8);
+    EXPECT_EQ(flat_rows.cols, 8);
+    EXPECT_EQ(gc_count_fg(flat_rows), 0) << "a rectangle of zero height selected pixels";
+    const Image flat_cols = grabcut_segment(blob, 1, 4, 7, 4);
+    EXPECT_EQ(gc_count_fg(flat_cols), 0) << "a rectangle of zero width selected pixels";
+    // And the same through the clamp rather than as written: c1 clamps to 0.
+    EXPECT_EQ(gc_count_fg(grabcut_segment(blob, 1, -3, 7, -1)), 0);
+
     // A rectangle covering the whole image leaves no background samples for the
     // first fit, so the initial labelling stands.
     const Image gray = gc_blob8();

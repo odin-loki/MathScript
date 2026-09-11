@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twelve files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twelve files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1067,6 +1067,66 @@ under each mutant**.
 
 Score after: **77.8%**, 7 of 9, with the two remaining measured equivalent. Same file,
 same seed, same twenty-two mutants, so this one is a ratchet.
+
+
+**Closing image.cpp's detectors, and a harness change to make it possible.** The two
+earlier image samples both said the rest of the gap was in the feature detectors and the
+segmentation code, and both recorded it rather than closing it. The obstacle was the
+method: a uniform sample of 22 mutants over a 4048-line file lands one or two in any given
+function, which is not a measurement of that function. `scripts/mutation_test.py` takes
+`--lines` now, so the sample can be aimed. Aimed at the three regions in question -- the
+SIFT and ORB detectors, the graph cut, and CLAHE -- there are **437 sites**, and 24 of them
+scored **12 of 23 viable killed, 52.2%**.
+
+The survivors named the reason in one line, and it is the same reason `compress.cpp` gave:
+**`ImageOrb.IsDeterministic` compares ORB against another call of ORB.** A round trip is
+blind to any change applied consistently, and for a detector "consistently" covers the
+whole pyramid: how many levels it has, each level's dimensions, the per-level feature
+budget, and which octave a keypoint is attributed to. Every other assertion in that suite
+is a bound -- `0 <= x <= 95`, responses descending, orientation within +/-pi, descriptors
+of unit norm -- and a pyramid one level taller satisfies all of them.
+
+So the detectors got their output pinned, the way the compressed format was:
+`ImageFeatureGolden` fixes ORB's 176 keypoints on the standard texture (count, the six
+occupied octaves, and the first twelve keypoints' position, scale, orientation, response
+and octave) and SIFT's 160 on the blob field (count, octave range, the first eight
+keypoints, and the first descriptor's leading two spatial rows). The float fields compare
+at 1e-3 rather than exactly: they are an integer coordinate times a power of the scale
+factor, so they agree far more closely than that between compilers, while a structural
+change moves them by whole pixels. It is a regression guard rather than a proof, and what
+makes it worth having is the property tests already around it -- rotation covariance,
+translation covariance, scale selection, unit norm -- which establish that the answers are
+right and leave exactly this freedom for the golden to freeze.
+
+Three more assertions came from reading the survivors rather than the code:
+
+- **CLAHE's mapping must reach 1 at the top occupied bin.** It is a cumulative histogram
+  over its total, so the highest occupied bin accumulates everything. Every existing CLAHE
+  test compares RANGES between two outputs, which a constant offset applied to both leaves
+  alone -- and dropping the first bin from the running sum is exactly such an offset,
+  `hist[0]/total`. Killed its mutant.
+- **ORB's per-level budget must sum to what was asked**, at a `max_features` small enough
+  to bind. At 200 the levels run out of corners first (176 come back), so the allocation
+  is never the constraint and an allocation off by one is invisible; at 24 and at 7 it is.
+  Killed its mutant.
+- **A grabcut rectangle empty in only ONE dimension.** The existing degenerate case uses
+  `(3, 3, 1, 1)`, empty in both, on which `r1 <= r0 || c1 <= c0` and `r1 <= r0 && c1 <= c0`
+  agree. This one did NOT kill its mutant, and that is the finding: after the `&&` lets a
+  zero-height rectangle through, `inside` is all zero, the first fit finds no foreground
+  samples and breaks, and the output is all background anyway. **The guard is a shortcut,
+  not a correctness requirement.** The test stays -- it pins the documented behaviour for
+  cases nothing covered -- and the survivor is classified equivalent, measured by a test
+  written specifically to discriminate and unable to.
+
+Score after: **52.2% -> 73.9%**, the same twenty-four mutants re-scored. Six survive:
+
+| Survivor | Why |
+|---|---|
+| `:2519` the grabcut shortcut | Equivalent, measured as above. |
+| `:3784` SIFT's octave cap | `floor(log2(min_side)) - 2` becoming `+ 2` changes nothing, for any image. The octave loop carries its own guard -- it stops when a level falls below `2*border + 2` -- and that guard binds at or before the cap every time. Measured: keypoint counts and octave ranges **identical across fifteen sizes from 16 to 512**. The cap is subsumed by the guard that follows it. |
+| `:2547`, `:3825` loop bounds becoming `<=` | Reads one past the end. **Mutation testing under a build without sanitizers is blind to memory errors**, which is a limitation of the method, already recorded. The ASan job in CI is what covers this class. |
+| `:3870` SIFT's skip-the-centre test | `dl == 0 && dr == 0 && dc2 == 0` becoming `dl == 1 && ...` skips the neighbour at (layer+1, r, c) instead of the centre -- and comparing the centre with itself is a no-op, so the only effect is that one of twenty-six neighbours goes unchecked. It shows only on a candidate that exactly that neighbour rejects, and the golden's 160 keypoints contain none. |
+| `:2749` radon's sampling bound | The line range overshot into `radon`, which was not one of the three regions. `x >= 0` becoming `x >= 1` drops the first column from a projection's average. A real gap, in a function this pass was not aimed at, and recorded as such. |
 
 
 ### What the corpus found on its first run
