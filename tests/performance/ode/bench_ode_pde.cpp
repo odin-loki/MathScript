@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript ODE / PDE Numerical Benchmark Suite
 
 #include <benchmark/benchmark.h>

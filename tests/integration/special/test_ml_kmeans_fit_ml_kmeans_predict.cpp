@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationSpecial,  Kmeans) {
     EXPECT_EQ(interp.state().matrices.at("labels").rows(), 6u);
 }
 
-TEST(IntegrationSpecial,  JacobiNsScalar) {
+TEST(IntegrationSpecial, JacobiNsScalar_MlKmeansFitMlKmeansPredict) {
     Interpreter interp;
     expect_ok(interp, "jns = jacobi_ns(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jns"), ms::jacobi_ns(0.5, 0.5), 1e-8);

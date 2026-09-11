@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Linalg Tests - norm(p), CG on SPD, eig accuracy
 
 #include <gtest/gtest.h>
@@ -23,12 +25,21 @@ TEST(LinalgNormCGAdv, Norm_P2_Vector) {
 }
 
 TEST(LinalgNormCGAdv, Norm_P1_Vector) {
-    // norm([3,4], 1) = max column sum of abs values
+    // TIGHTENED: the old comment claimed "max column sum of abs values" (the
+    // INDUCED 1-norm) and then asserted only finiteness, so it never noticed
+    // that p = 1 is the ENTRYWISE sum sum|a_ij| -- which happens to coincide
+    // with the induced 1-norm for a column vector. Assert the actual value.
     DMatrix v({{3.0}, {4.0}});
     auto result = norm(v, 1);
     ASSERT_TRUE(result.has_value());
-    EXPECT_TRUE(std::isfinite(result.value()));
-    EXPECT_GT(result.value(), 0.0);
+    EXPECT_NEAR(result.value(), 7.0, 1e-12);
+
+    // For a matrix the two conventions differ, and the documented one (see
+    // include/ms/linalg/matrix_operations.hpp) is the entrywise sum.
+    DMatrix A({{1.0, 2.0}, {3.0, 4.0}});
+    auto ma = norm(A, 1);
+    ASSERT_TRUE(ma.has_value());
+    EXPECT_NEAR(ma.value(), 10.0, 1e-12);
 }
 
 TEST(LinalgNormCGAdv, Norm_Default_2) {

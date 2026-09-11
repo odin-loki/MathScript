@@ -37,6 +37,11 @@ option(MS_ENABLE_NCCL "Enable multi-GPU NCCL" ON)
 # AVX-512
 option(MS_ENABLE_AVX512 "Enable AVX-512 kernels" ON)
 
+# AVX2/FMA. Separate from AVX-512 because they are separate markets: every Zen
+# part before Zen 4 and every Intel client part since Alder Lake has AVX2 and no
+# AVX-512, and CI itself builds with MS_ENABLE_AVX512=OFF.
+option(MS_ENABLE_AVX2 "Enable AVX2/FMA kernels" ON)
+
 # Force ASan
 option(MS_ENABLE_ASAN "Force ASan regardless of build type" OFF)
 
@@ -68,6 +73,12 @@ if(MS_ENABLE_AVX512)
     add_compile_definitions(MS_ENABLE_AVX512=1)
 else()
     add_compile_definitions(MS_ENABLE_AVX512=0)
+endif()
+
+if(MS_ENABLE_AVX2)
+    add_compile_definitions(MS_ENABLE_AVX2=1)
+else()
+    add_compile_definitions(MS_ENABLE_AVX2=0)
 endif()
 
 if(MS_ENABLE_ASAN)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationImage,  RobertsLaplacianTail15) {
     ASSERT_GT(interp.state().matrices.count("L"), 0u);
 }
 
-TEST(IntegrationImage,  ProbTPpfScalar) {
+TEST(IntegrationImage, ProbTPpfScalar_RobertsLaplacianPipeline2) {
     Interpreter interp;
     expect_ok(interp, "tq = prob_t_ppf(0.5, 5)");
     EXPECT_NEAR(interp.state().scalars.at("tq"), ms::t_ppf(0.5, 5), 1e-8);

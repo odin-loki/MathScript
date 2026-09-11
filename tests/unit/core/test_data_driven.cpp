@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <complex>
 #include <string>
@@ -9,6 +11,11 @@
 #include "ms/fft/fft.hpp"
 #include "ms/linalg/linalg.hpp"
 #include "ms/special/special.hpp"
+
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace ms;
 

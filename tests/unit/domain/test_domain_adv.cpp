@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Domain Operation Tests
 // Tests for factorial, nchoosek, gcd, lcm, extended_gcd, Graph, graph_num_edges
 

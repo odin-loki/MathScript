@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -22,7 +24,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationLinalg,  Minres) {
+TEST(IntegrationLinalg, Minres_MinresFftGoertzelPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "A = [4, 1, 0; 1, 3, 1; 0, 1, 2]");
@@ -55,7 +57,7 @@ TEST(IntegrationLinalg,  StatsVif) {
     expect_contains(interp, "help", "stats_vif(X,j)");
 }
 
-TEST(IntegrationLinalg,  ControlStepResponse) {
+TEST(IntegrationLinalg, ControlStepResponse_MinresFftGoertzelPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "step = control_step_response([1], [1, 1], 5, 100)");

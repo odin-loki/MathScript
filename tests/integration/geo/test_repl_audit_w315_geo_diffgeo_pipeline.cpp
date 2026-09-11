@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: REPL Interpreter – Audit Wave 315 Geo/Diffgeo Pipeline
 //
 // Inventory: leftover geo names are already bound as geo_* aliases, or Wave 311-descoped

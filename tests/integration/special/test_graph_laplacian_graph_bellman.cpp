@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -50,7 +52,7 @@ TEST(IntegrationSpecial,  GraphStatsGeoImage) {
     EXPECT_EQ(interp.state().matrices.at("F").rows(), 2u);
 }
 
-TEST(IntegrationSpecial,  SpecialScalar) {
+TEST(IntegrationSpecial, SpecialScalar_GraphLaplacianGraphBellman) {
     Interpreter interp;
 
     expect_ok(interp, "ll = laguerre_l(2, 0.5)");

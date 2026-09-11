@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationGraph,  BellmanMstKruskalTail31) {
     ASSERT_GT(interp.state().matrices.count("mst"), 0u);
 }
 
-TEST(IntegrationGraph,  ProbExpCdfScalar) {
+TEST(IntegrationGraph, ProbExpCdfScalar_GraphBellmanFordGraphMst) {
     Interpreter interp;
     expect_ok(interp, "ec = prob_exp_cdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("ec"), ms::exp_cdf(1, 1), 1e-8);

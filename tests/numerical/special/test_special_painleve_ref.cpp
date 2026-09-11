@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Special Functions: Painlevé transcendents (smoke tests)
 // These are nonlinear ODEs; we test that the implementations run without crash
 // and return finite values for reasonable inputs.

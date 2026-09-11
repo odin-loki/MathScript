@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -31,7 +33,12 @@ TEST(IntegrationFem,  FemSolveTail27) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 

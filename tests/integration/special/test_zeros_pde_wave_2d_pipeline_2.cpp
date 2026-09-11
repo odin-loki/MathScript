@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationSpecial,  Wave2dFemPoisson1dTail14) {
     EXPECT_GT(interp.state().matrices.at("u1").rows(), 0u);
 }
 
-TEST(IntegrationSpecial,  StruveHScalar) {
+TEST(IntegrationSpecial, StruveHScalar_ZerosPdeWave2dPipeline2) {
     Interpreter interp;
     expect_ok(interp, "sh = struve_h(1, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("sh"), ms::struve_h(1, 1.0), 1e-8);

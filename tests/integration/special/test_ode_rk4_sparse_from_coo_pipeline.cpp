@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationSpecial,  Rk4SparseCoo) {
     EXPECT_EQ(interp.state().matrices.at("A").rows(), 4u);
 }
 
-TEST(IntegrationSpecial,  ChebyshevUScalar) {
+TEST(IntegrationSpecial, ChebyshevUScalar_OdeRk4SparseFromCooPipeline) {
     Interpreter interp;
     expect_ok(interp, "cu = chebyshev_u(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cu"), ms::chebyshev_u(2, 0.5), 1e-8);

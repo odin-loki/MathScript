@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/distributed/mpi_context.hpp"
 
 #if defined(MS_HAS_MPI) && MS_HAS_MPI

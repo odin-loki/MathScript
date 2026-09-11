@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Special Functions Group 4 - Remaining Low-Coverage Functions
 // Theta, Bessel, Elliptic, Heun, Lerch, Fox-H
 

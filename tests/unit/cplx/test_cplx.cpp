@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/cplx/cplx.hpp"
 #include <algorithm>
@@ -530,10 +532,28 @@ TEST(CplxArgumentPrinciple, UnitCircleAroundHalf) {
     EXPECT_EQ(argument_principle(g, gamma), 0);
 }
 
-TEST(CplxInversion, ReturnsIdentityMobius) {
-    auto inv = inversion(C(1.0, 2.0), 3.0);
-    EXPECT_NEAR(inv(C(0.5, -0.25)).real(), 0.5, 1e-12);
-    EXPECT_NEAR(inv(C(0.5, -0.25)).imag(), -0.25, 1e-12);
+TEST(CplxInversion, MobiusActsOnConjugate) {
+    // inversion() returns the Mobius of u = conj(z) representing reflection in
+    // |z - centre| = r:  a = centre, b = r^2 - |centre|^2, c = 1,
+    // d = -conj(centre).  It must be applied to conj(z), not to z.
+    const C centre(1.0, 2.0);
+    const double r = 3.0;
+    const Mobius m = inversion(centre, r);
+    EXPECT_NEAR(m.a.real(), 1.0, 1e-15);
+    EXPECT_NEAR(m.a.imag(), 2.0, 1e-15);
+    EXPECT_NEAR(m.b.real(), 4.0, 1e-15);  // r^2 - |c|^2 = 9 - 5
+    EXPECT_NEAR(m.b.imag(), 0.0, 1e-15);
+    EXPECT_NEAR(m.c.real(), 1.0, 1e-15);
+    EXPECT_NEAR(m.c.imag(), 0.0, 1e-15);
+    EXPECT_NEAR(m.d.real(), -1.0, 1e-15);
+    EXPECT_NEAR(m.d.imag(), 2.0, 1e-15);
+    // Applied to conj(z) it is the true inversion:
+    //   z = 0.5 - 0.25i  ->  13/85 - (154/85) i
+    const C z(0.5, -0.25);
+    const C w = m(std::conj(z));
+    EXPECT_NEAR(w.real(), 13.0 / 85.0, 1e-12);
+    EXPECT_NEAR(w.imag(), -154.0 / 85.0, 1e-12);
+    EXPECT_NEAR(std::abs(w - apply_inversion(z, centre, r)), 0.0, 1e-12);
 }
 
 TEST(CplxHarmonicConjugate, CosineOnCircle) {

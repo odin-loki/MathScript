@@ -1,0 +1,271 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
+//
+// Arguments that used to end the process.
+//
+// Every command here takes a count, an order or a grid extent, converted it with
+//
+//     const int n_i = static_cast<int>(n_d);
+//     if (n_i < 0 || n_d != n_i) { ... }
+//
+// and handed the result straight to an allocation. Three things are wrong with that
+// and the guard caught none of them:
+//
+//   - the cast IS the check. `static_cast<int>` of a double outside `int`'s range is
+//     undefined behaviour, not a wrap, so by the time the guard reads `n_i` there is
+//     no value there to test;
+//   - a count that fits in an `int` is not a count that is affordable --
+//     `fem_poisson1d(100000000)` is a perfectly ordinary `int` and asks for 800 MB;
+//   - a cap on each extent alone is not a cap on the allocation. What gets allocated
+//     is the PRODUCT, and `imresize(A, 100000, 100000)` names two extents that each
+//     look like a resolution.
+//
+// The library is built with `-fno-exceptions`, so the `std::bad_alloc` that came out
+// of `std::vector` reached `std::terminate`: the process was gone, with nothing on
+// either stream, before it could say what had happened. Which is why the strongest
+// assertion in this file is that it runs to the end at all -- a regression here does
+// not fail a test, it takes the executable down with it.
+//
+// Each command is asserted twice: once at a value that used to be fatal, and once at
+// a small one, because a guard that refuses everything is not a fix.
+
+#include <string>
+
+#include <gtest/gtest.h>
+
+#include "ms/error/error_types.hpp"
+#include "ms/interp/repl_engine.hpp"
+
+#include "repl/repl_test_helpers.hpp"
+
+using ms::interp::Interpreter;
+
+namespace {
+
+/// A 2x2 to hand the image and ML commands, so the only large number in the call is
+/// the one under test.
+void seed(Interpreter& interp) {
+    expect_ok(interp, "A = [1, 2; 3, 4]");
+}
+
+}  // namespace
+
+TEST(ReplSizeArguments, FemPoissonRefusesAGridItCannotAllocate) {
+    Interpreter interp;
+    expect_error_contains(interp, "fem_poisson1d(100000000)", "n 100000000 is too large");
+    // The no-assignment form of fem_poisson1d goes through the matrix-call registry
+    // and prints under `_`; fem_poisson2d and 3d keep their own hand-written branches
+    // and print under `u`. Both paths had the defect and both are guarded.
+    expect_contains(interp, "fem_poisson1d(4)", "_ =");
+
+    // Neither extent is large. Their product is ten billion, which is the case a
+    // per-extent cap is blind to.
+    expect_error_contains(interp, "fem_poisson2d(100000, 100000)", "is too large");
+    expect_contains(interp, "fem_poisson2d(3, 3)", "u =");
+
+    expect_error_contains(interp, "fem_poisson3d(5000, 5000, 5000, 0, 0, 0)", "is too large");
+    expect_contains(interp, "fem_poisson3d(2, 2, 2, 0, 0, 0)", "u =");
+}
+
+TEST(ReplSizeArguments, CfdAdvectionRefusesAGridItCannotAllocate) {
+    Interpreter interp;
+    expect_error_contains(interp, "cfd_advection2d(100000, 100000, 1, 0, 0.1, 0.01)",
+                          "is too large");
+    expect_contains(interp, "cfd_advection2d(8, 8, 1, 0, 0.1, 0.01)", "u =");
+    expect_error_contains(interp, "x = cfd_advection3d(2000, 2000, 2000, 1, 0, 0, 0.1, 0.01)",
+                          "is too large");
+    expect_ok(interp, "x = cfd_advection3d(4, 4, 4, 1, 0, 0, 0.1, 0.01)");
+    // One extent, so no product to catch it -- 1e8 alone is 800 MB.
+    expect_error_contains(interp, "cfd_advection1d(100000000, 1, 0.5, 0.01)",
+                          "nx 100000000 is too large");
+    expect_contains(interp, "cfd_advection1d(8, 1, 0.5, 0.01)", "_ =");
+}
+
+TEST(ReplSizeArguments, FareyCountsItsSequenceBeforeBuildingIt) {
+    Interpreter interp;
+    // |F_n| is about 0.304 n^2, so the length is quadratic in an argument that reads
+    // as an ordinary count: order 1000000 is three hundred billion fractions. The
+    // message quotes the true count rather than an estimate, because an estimate
+    // would have to be conservative and would then refuse an order that fits.
+    expect_error_contains(interp, "y = numthy_farey(1000000)", "the Farey sequence of order");
+    expect_error_contains(interp, "y = numthy_farey(1000000)", "the result is limited to");
+    expect_ok(interp, "y = numthy_farey(5)");
+    // The order just past the budget is refused with its exact length, not with a
+    // guess -- 131072 rows is the cap, and F_658 is the first order over it.
+    expect_error_contains(interp, "y = numthy_farey(2000)", "fractions in it");
+}
+
+TEST(ReplSizeArguments, ImageResizingRefusesAResultItCannotAllocate) {
+    Interpreter interp;
+    seed(interp);
+    // The padded result grows on all FOUR sides, so its element count goes as the
+    // square of the padding: a pad of a million is four trillion elements.
+    expect_error_contains(interp, "B = impad(A, 1000000)", "too large");
+    expect_ok(interp, "B = impad(A, 1)");
+
+    expect_error_contains(interp, "C = imresize(A, 100000, 100000)", "is too large");
+    expect_ok(interp, "C = imresize(A, 4, 4)");
+    // imresize never checked integrality either, so a fractional extent was silently
+    // truncated rather than reported.
+    expect_error_contains(interp, "C = imresize(A, 2.5, 4)",
+                          "expected non-negative integer rows");
+}
+
+TEST(ReplSizeArguments, HoughAccumulatorsAreBoundedByTheirProduct) {
+    Interpreter interp;
+    seed(interp);
+    // One cell per (theta, rho) pair: each resolution alone reads as a plausible
+    // number and together they are ten quadrillion cells.
+    expect_error_contains(interp, "G = hough_lines(A, 0.5, 100000000, 100000000, 1)",
+                          "is too large");
+    expect_ok(interp, "G = hough_lines(A, 0.5, 8, 8, 1)");
+
+    // One cell per (radius, row, column): the radius count multiplies a bounded image
+    // rather than adding to it.
+    expect_error_contains(interp, "H = hough_circles(A, 1, 100000000)", "radii");
+    expect_ok(interp, "H = hough_circles(A, 1, 3)");
+}
+
+TEST(ReplSizeArguments, TheMlFitsAskForAShapeRatherThanASize) {
+    Interpreter interp;
+    seed(interp);
+    // These two are not size caps and should not be. A principal component is a
+    // direction in feature space and there are only min(samples, features) of them;
+    // k clusters need k points to put in them. Asking for a hundred million of either
+    // is not an expensive request, it is a request with no answer -- and it was
+    // treated as the former, sized an allocation from the count, and ended the
+    // process for a matrix with two rows in it.
+    expect_error_contains(interp, "D = ml_pca_fit(A, 100000000)", "1 <= n_components <= 2");
+    expect_error_contains(interp, "D = ml_pca_fit(A, 3)", "1 <= n_components <= 2");
+    expect_ok(interp, "D = ml_pca_fit(A, 1)");
+
+    expect_error_contains(interp, "F = ml_pca_fit_transform(A, 100000000)",
+                          "1 <= n_components <= 2");
+    expect_ok(interp, "F = ml_pca_fit_transform(A, 1)");
+
+    expect_error_contains(interp, "E = ml_kmeans_fit(A, 100000000)", "1 <= k <= 2");
+    expect_error_contains(interp, "E = ml_kmeans_fit(A, 3)", "the number of rows");
+    expect_ok(interp, "E = ml_kmeans_fit(A, 1)");
+}
+
+TEST(ReplSizeArguments, AnExtentIsRangeCheckedOnTheDoubleRatherThanAfterTheCast) {
+    Interpreter interp;
+    seed(interp);
+    // `static_cast<int>(1e18)` is undefined behaviour. On x86-64 it happens to yield
+    // INT_MIN, so the `n_i < 0` that followed it rejected these inputs by accident --
+    // an accident that reads exactly like a guard and is not one. The range is decided
+    // on the double now, before any conversion.
+    for (const char* huge : {"1e18", "1e300", "1e9999"}) {
+        const std::string call = std::string("fem_poisson1d(") + huge + ")";
+        expect_error_contains(interp, call, "fem_poisson1d");
+    }
+    expect_error_contains(interp, "fem_poisson1d(2.5)", "expected non-negative integer n");
+    expect_error_contains(interp, "fem_poisson1d(-1)", "expected non-negative integer n");
+    expect_error_contains(interp, "C = imresize(A, 1e18, 2)", "rows");
+}
+
+TEST(ReplSizeArguments, AnOrderIsNotAnExtentAndIsBoundedByWorkRatherThanMemory) {
+    // A second family, and `ExtentBudget` is the wrong shape for it: nothing is
+    // allocated per unit of a special-function order and there is no product to charge
+    // it against. What it does is drive a recurrence, one step per unit, inside a REPL
+    // that has no way to interrupt one -- `legendre_p(1750000000, 0.5)` RETURNS, and
+    // takes longer than the twenty seconds a probe will wait for it.
+    //
+    // The bound is a work bound and not an accuracy one. These recurrences still carry
+    // several correct digits well past it; what they do not do is finish.
+    Interpreter interp;
+    for (const char* call : {"legendre_p(1750000000, 0.5)", "legendre_q(1700000000, 0.5)",
+                             "laguerre_l(1650000000, 0.5)", "bessel_zero_ynu(2000000000, 1)",
+                             "bessel_hy(1650000000, 1)"}) {
+        expect_error_contains(interp, call, "is too large");
+        expect_error_contains(interp, call, "an integer argument is bounded at 10000000");
+    }
+    // And the orders anyone actually writes still evaluate.
+    expect_ok(interp, "legendre_p(5, 0.5)");
+    expect_ok(interp, "bessel_j(2, 1)");
+    expect_ok(interp, "laguerre_l(3, 0.5)");
+}
+
+TEST(ReplSizeArguments, AnOrderIsRefusedRatherThanTruncated) {
+    // `static_cast<int>(2.5)` is well defined and was the old behaviour: the answer came
+    // back as though 2 had been written, with nothing to say so. That is the same class
+    // as every "a value silently changed on the way through" finding of the audits, and
+    // it is the half of this that is not about undefined behaviour at all.
+    Interpreter interp;
+    expect_error_contains(interp, "legendre_p(2.5, 0.5)", "expected an integer n");
+    expect_error_contains(interp, "bessel_j(1.5, 1)", "expected an integer nu");
+    expect_error_contains(interp, "sph_harm(1.5, 1, 0.5, 1)", "expected an integer l");
+    // Infinity and NaN are not integers either, and reach the same message rather than
+    // an undefined conversion.
+    expect_error_contains(interp, "legendre_p(1e9999, 0.5)", "expected an integer n");
+}
+
+
+TEST(ReplSizeArguments, AFemSolveIsBoundedByItsStiffnessMatrixAndNotByItsAnswer) {
+    // 262144 IS the element budget, and charging `n` against it still let the process
+    // die: the result is a vector of n node values, but `assemble_stiffness_1d` builds a
+    // DENSE n_nodes by n_nodes matrix to solve it through, so this asked for 6.9e10
+    // doubles -- 550 GB. Measured aborting with the extent guard already in place, which
+    // is why it is a separate assertion from the one above rather than a second value in
+    // the same loop.
+    Interpreter interp;
+    expect_error_contains(interp, "fem_poisson1d(262144)", "gives a dense");
+    expect_error_contains(interp, "fem_poisson2d(512, 512)", "gives a dense");
+    expect_error_contains(interp, "fem_poisson3d(64, 64, 64)", "gives a dense");
+    // A mesh anyone would actually solve on still solves.
+    expect_contains(interp, "fem_poisson1d(16)", "_ =");
+}
+
+TEST(ReplSizeArguments, AMeshIsBoundedOnTheProductOfItsExtents) {
+    // `parse_positive_size_arg` bounds each extent at 1e7 on its own and says nothing
+    // about the two together, so a mesh of 1e7 by 1e7 is 1e14 nodes.
+    Interpreter interp;
+    expect_error_contains(interp, "fem_mesh2d(0, 0, 1, 1, 10000000, 10000000)", "too large");
+    expect_error_contains(interp, "fem_mesh2d_rectangular(0, 0, 1, 1, 10000000, 10000000)",
+                          "too large");
+    expect_error_contains(interp, "fem_mesh3d(0,0,0,1,1,1,10000,10000,10000)", "too large");
+    expect_error_contains(interp, "fem_mesh3d_box(0,0,0,1,1,1,10000,10000,10000)", "too large");
+    expect_ok(interp, "fem_mesh2d(0, 0, 1, 1, 8, 8)");
+}
+
+TEST(ReplSizeArguments, EightMoreCommandsThatEndedTheSession) {
+    // Each of these was measured aborting the process, under a 4 GB address-space cap,
+    // at the value below. They are grouped because the shapes are the four the guards
+    // already know, arriving in places the earlier sweeps had not looked:
+    //
+    //   an output that is a MULTIPLE of the input  -- signal_upsample, _interpolate,
+    //                                                 _resample
+    //   an output that is the SQUARE of an extent  -- quantum_identity_n,
+    //                                                 topo_pairwise_distances
+    //   a PRODUCT of two arguments                 -- topo_persistence_landscape
+    //   a parameter whose MAGNITUDE sizes a matrix -- mathieu_a's q, and lbfgs's history
+    Interpreter interp;
+    expect_ok(interp, "X = ones(1000,1)");
+    // 512 points is the honest ceiling: the RESULT is a 512 x 512 distance matrix,
+    // which is exactly kMaxReplMatrixElems, so a larger point set has nowhere to put
+    // its answer either.
+    expect_ok(interp, "P = zeros(256,2)");
+    expect_ok(interp, "D = zeros(1,3)");
+    for (const auto* call : {"signal_upsample(X, 10000000)",
+                             "signal_interpolate(X, 1000000)",
+                             "signal_resample(X, 1000000, 1000000)",
+                             "quantum_identity_n(1000000)",
+                             "topo_persistence_landscape(D, 200000, 200000)",
+                             "mathieu_a(0, 1000000000000000000)",
+                             "lbfgs(\"x0*x0\", [1], 2000000000)"}) {
+        // Any diagnostic at all beats std::terminate, so the assertion is that one
+        // comes back rather than that it says a particular thing.
+        const auto refused = interp.execute(call);
+        EXPECT_FALSE(refused.has_value()) << call;
+    }
+    // topo_pairwise_distances takes no size argument at all: the cost is its INPUT, so
+    // the guard is on the row count of the matrix it is handed.
+    expect_ok(interp, "BIG = zeros(131072,2)");
+    expect_error_contains(interp, "topo_pairwise_distances(BIG)", "gives a dense");
+    // And the ordinary uses of every one of them still work.
+    expect_ok(interp, "signal_upsample(X, 2)");
+    expect_ok(interp, "signal_resample(X, 3, 2)");
+    expect_ok(interp, "quantum_identity_n(4)");
+    expect_ok(interp, "topo_pairwise_distances(P)");
+    expect_ok(interp, "mathieu_a(0, 1.5)");
+}

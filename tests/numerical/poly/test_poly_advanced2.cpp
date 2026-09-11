@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: Advanced polynomial tests — roots, gcd, compose, integ, fit, lagrange
 #include "ms/poly/poly.hpp"
 #include <algorithm>

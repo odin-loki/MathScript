@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <string>
@@ -50,7 +52,7 @@ TEST(IntegrationGeo,  GeoDistPointPlane) {
     EXPECT_NEAR(interp.state().scalars.at("d"), 5.0, 1e-12);
     expect_contains(interp, "help", "geo_dist_point_plane(px,py,pz,nx,ny,nz,d)");
 }
-TEST(IntegrationGeo,  MpiBcastIdentityAssignment) {
+TEST(IntegrationGeo, MpiBcastIdentityAssignment_GeoKdtree3dNearestGeoIntersect) {
     Interpreter interp;
 
     expect_ok(interp, "bx = mpi_bcast(3.5)");

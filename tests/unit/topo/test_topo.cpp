@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/topo/topo.hpp"
 #include "ms/geo/geo.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <set>
 #include <vector>
@@ -424,13 +427,31 @@ TEST(TopoCech, LargeEpsilonGivesFullComplex) {
     EXPECT_EQ(sc.simplices(2).size(), 4u);   // all C(4,3) triangles
 }
 
-TEST(TopoCech, MaxDimClampedAboveTwo) {
-    // max_dim > 2 is not supported (see @note on cech_complex); it must be clamped
-    // to 2 rather than crash or fabricate higher-dimensional simplices.
+TEST(TopoCech, BuildsAboveDimensionTwo) {
+    // Dimensions >= 3 are supported: the MEB of 4+ points comes from the bordered
+    // Cayley-Menger system, which needs only the distance matrix. At a huge epsilon
+    // every subset of the 4 unit-square corners qualifies, so the complex is the full
+    // 3-simplex: C(4,1) vertices, C(4,2) edges, C(4,3) triangles, C(4,4) tetrahedron.
     std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
     auto D = pairwise_distances(pts);
     auto sc = cech_complex(D, 1000.0, 5);
+    EXPECT_EQ(sc.dimension(), 3);
+    EXPECT_EQ(sc.simplices(0).size(), 4u);
+    EXPECT_EQ(sc.simplices(1).size(), 6u);
+    EXPECT_EQ(sc.simplices(2).size(), 4u);
+    EXPECT_EQ(sc.simplices(3).size(), 1u);
+    // Only 4 points, so there is no 4-simplex to build even though max_dim allows one.
+    EXPECT_TRUE(sc.simplices(4).empty());
+}
+
+TEST(TopoCech, MaxDimStillBoundsTheBuild) {
+    // max_dim remains the ceiling: asking for 2 must not fabricate the tetrahedron
+    // that the same points produce at max_dim = 5.
+    std::vector<std::vector<double>> pts = {{0, 0}, {1, 0}, {0, 1}, {1, 1}};
+    auto D = pairwise_distances(pts);
+    auto sc = cech_complex(D, 1000.0, 2);
     EXPECT_EQ(sc.dimension(), 2);
+    EXPECT_EQ(sc.simplices(2).size(), 4u);
     EXPECT_TRUE(sc.simplices(3).empty());
 }
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
 #include <cmath>
 #include "ms/special/special.hpp"
@@ -87,6 +89,8 @@ TEST(SpecialHyperTest, kummer_u_degenerate_inputs) {
 }
 
 TEST(SpecialHyperTest, meijer_and_fox_scaffold) {
-    EXPECT_NEAR(meijer_g(1.0, 2.0, 0.5), 0.39346934028736663, 1e-3);
+    // AUDIT FIX: 0.39346934 was z^a e^{-z} M(b-a,b,z)/Gamma(a), which is not
+    // G^{1,1}_{1,1}(z | a; b) = Gamma(1-a+b) z^b (1+z)^{a-b-1} = 1/9 at (1, 2, 0.5).
+    EXPECT_NEAR(meijer_g(1.0, 2.0, 0.5), 1.0 / 9.0, 1e-13);
     EXPECT_NEAR(fox_h(1.0, 2.0, 0.5), meijer_g(1.0, 2.0, 0.5), 1e-12);
 }

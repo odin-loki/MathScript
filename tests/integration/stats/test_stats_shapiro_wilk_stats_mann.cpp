@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationStats,  ShapiroMannWhitneyTail31) {
     EXPECT_EQ(interp.state().matrices.at("mw").cols(), 3u);
 }
 
-TEST(IntegrationStats,  ProbExpPdfScalar) {
+TEST(IntegrationStats, ProbExpPdfScalar_StatsShapiroWilkStatsMann) {
     Interpreter interp;
     expect_ok(interp, "ep = prob_exp_pdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("ep"), ms::exp_pdf(1, 1), 1e-8);

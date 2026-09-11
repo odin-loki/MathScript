@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: Control/Graph/Cplx/Quantum/Finance/Info/Stats (Wave 58)
 
 #define _USE_MATH_DEFINES

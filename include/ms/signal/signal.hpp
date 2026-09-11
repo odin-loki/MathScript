@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include <array>
@@ -9,7 +11,20 @@
 
 namespace ms {
 
-std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs);
+/// Butterworth lowpass filter of @p x at @p cutoff (Hz, sample rate @p fs).
+///
+/// Designs an @p order -pole Butterworth IIR -- poles equally spaced on the left
+/// half of the unit circle, giving the maximally-flat magnitude response
+/// |H(w)|^2 = 1/(1 + (w/wc)^(2n)) and a -6n dB/octave rolloff -- via the same
+/// analog-prototype plus bilinear-transform pipeline as cheby1()/cheby2(), then
+/// applies it with filtfilt() so the result has zero phase distortion.
+///
+/// Unlike lowpass(), which is an ideal brick-wall FFT mask, this has a finite
+/// transition band and no Gibbs ringing. An invalid cutoff (not in (0, fs/2)),
+/// an empty signal, or order < 1 returns @p x unchanged.
+std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs,
+                                int order = 4);
+
 std::vector<double> lowpass(const std::vector<double>& x, double cutoff, double fs);
 std::vector<double> highpass(const std::vector<double>& x, double cutoff, double fs);
 std::vector<double> bandpass(const std::vector<double>& x, double low, double high, double fs);
@@ -165,6 +180,12 @@ struct IirCoeffs {
 // cutoff 1 rad/s, applies frequency prewarping and the bilinear transform, and returns
 // ascending-power (b, a) with a[0] == 1. Defensive early returns (empty b/a) for order < 1,
 // fs <= 0, rp_db < 0, or cutoff outside (0, fs/2) for lowpass/highpass.
+/// Butterworth IIR design returning the (b, a) coefficients, for callers that
+/// want to apply the filter themselves. Same analog prototype and bilinear
+/// transform as butterworth(); returns empty coefficients on invalid input
+/// (order < 1, or cutoff outside (0, fs/2)).
+IirCoeffs butter(int order, double cutoff, double fs, FilterType type);
+
 IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs,
                   FilterType type = FilterType::Lowpass);
 

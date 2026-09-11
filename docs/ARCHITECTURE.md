@@ -128,7 +128,7 @@ Headers mirror `src/` plus `cpu/`, `memory/`, `error/` (`Result<T>`), and `unsaf
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `MS_BUILD_TESTS` | ON | GoogleTest + CTest |
-| `MS_BUILD_INTEGRATION` | ON | Per-file integration executables |
+| `MS_BUILD_INTEGRATION` | ON | Integration executables, one per domain |
 | `MS_LINK_TESTS_SHARED` | OFF | PIC `libms_bundle.so` so Debug coverage/ASan can link 800 tests without copying the static library |
 | `MS_BUILD_BENCHMARKS` | OFF | 28 Google Benchmark targets |
 | `MS_BUILD_GUI` | OFF | Qt6 IDE |
@@ -138,12 +138,16 @@ Headers mirror `src/` plus `cpu/`, `memory/`, `error/` (`Result<T>`), and `unsaf
 | `MS_ENABLE_CUDA` | OFF | GPU backend |
 | `MS_ENABLE_MPI` | OFF | Distributed MPI |
 | `MS_ENABLE_NCCL` | ON | NCCL when CUDA is on (stubs if not implemented) |
-| `MS_ENABLE_AVX512` | ON | AVX-512 kernels |
+| `MS_ENABLE_AVX512` | ON | AVX-512 `dgemm` kernel |
+| `MS_ENABLE_AVX2` | ON | AVX2/FMA `dgemm` kernel |
 | `MS_ENABLE_COVERAGE` | OFF | gcov (Linux) |
 | `MS_ENABLE_ASAN` | OFF | ASan + UBSan |
 | `MS_USE_LIBCXX` | OFF | libc++ on Linux |
 
-CI typically uses `-DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF`.
+CI typically uses `-DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF`, which is why the AVX2 kernel matters:
+with AVX-512 off and no AVX2 path, matrix multiply used to fall all the way to a rank-1 update loop.
+Both options select which kernel is *compiled*; whether it is *used* is decided at runtime by
+`ms::simd::detect_isa()`, which checks the OS register state and not only the CPUID bit.
 
 ## Tests
 
@@ -154,12 +158,13 @@ Tests are grouped by **mathematical domain** (`linalg`, `fft`, `special`, …), 
 | `tests/unit/<domain>/` | Library unit tests for that module |
 | `tests/unit/repl/` | REPL session tests plus `test_repl_commands_<domain>.cpp` |
 | `tests/numerical/<domain>/` | NIST/DLMF and residual/accuracy regressions |
-| `tests/integration/<domain>/` | REPL/cross-module pipelines for that domain |
+| `tests/integration/<domain>/` | REPL/cross-module pipelines for that domain; all of a domain's files link into one `int_<domain>` executable |
+| `tests/unit/matrix_calls/` | Generated dispatch tests, one translation unit per domain, all linked into `test_matrix_calls`. Regenerate with `scripts/extract_manifest.py` then `scripts/gen_matrix_call_tests.py`; CI fails on a dirty tree |
 | `tests/compliance/` | Clang plugin compile-fail/pass pairs |
 | `tests/fuzz/` | Seven libFuzzer targets + corpora; `test_fuzz_stress` always built |
 | `tests/performance/<domain>/` | 28 `bench_*` executables when `MS_BUILD_BENCHMARKS=ON` |
 
-CTest catalogue: **816** suites (Windows MSVC, CUDA off). Suite count is the number of test executables after configure. Wave-numbered pipelines were collapsed to one file per unique command set.
+CTest catalogue: **831** suites (Linux GCC 13, CUDA off). Suite count is the number of test executables after configure. Wave-numbered pipelines were collapsed to one file per unique command set.
 
 REPL matrix handlers live in `src/interp/matrix_calls/<domain>/`.
 
@@ -169,7 +174,7 @@ On push/PR to `main`:
 
 1. **build-test-windows** — MSVC Release, full CTest, ZIP smoke
 2. **build-test-linux** — GCC 13, no-exceptions syntax gate, CTest, CPack, unsafe audit
-3. **coverage-linux** — 80% line coverage minimum (90% is the v1.0.0 tag goal)
+3. **coverage-linux** — 80% line coverage minimum (the 90% v1.0.0 tag goal is met; last measured 91.3% line / 97.7% function)
 4. **fuzz-linux** — 7 libFuzzer smokes
 5. **sanitizer-linux** — ASan/UBSan (full CTest via shared test bundle; leak detection off)
 6. **plugin-linux** — twenty compile-fail rules

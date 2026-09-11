@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/core/attributes.hpp"
 #include "ms/cpu/blas.hpp"
 #include "ms/cpu/blas_kernel.hpp"
@@ -73,12 +75,25 @@ void dgemm_nn(
     double beta,
     double* C,
     int ldc) {
+    // Widest first, and only when the problem is large enough to repay packing
+    // two aligned panels. Below that threshold the rank-1 path -- which is itself
+    // vectorised through ms::simd::axpy -- wins on the allocation alone, so the
+    // blocked kernels decline rather than the caller having to guess a size.
+    //
+    // available() is a runtime question, not a compile-time one: a binary built
+    // with AVX-512 kernels still has to run on hosts whose OS never enabled the
+    // ZMM state. Both kernels answer it through ms::simd::detect_isa(), which
+    // checks OSXSAVE and XCR0 rather than trusting CPUID alone.
 #if defined(MS_ENABLE_AVX512) && MS_ENABLE_AVX512
-    if (m >= 4 && n >= 8 && k >= 4 && avx512::available()) {
+    if (avx512::available() && avx512::worthwhile(m, n, k)) {
         avx512::dgemm_nn(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
         return;
     }
 #endif
+    if (avx2::available() && avx2::worthwhile(m, n, k)) {
+        avx2::dgemm_nn(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
+        return;
+    }
     dgemm_nn_rank1(m, n, k, alpha, A, lda, B, ldb, beta, C, ldc);
 }
 

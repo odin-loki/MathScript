@@ -1,14 +1,20 @@
 # MathScript Clang Plugin (stub when LLVM unavailable)
 
+# The unsafe registry is plain standard C++ -- it includes no Clang or LLVM header,
+# and its job (collecting MS_UNSAFE sites and merging them into an audit report) is
+# the same whether or not the AST plugin was built. Keeping it inside the
+# MS_BUILD_PLUGIN guard meant its tests could only run in the one optional CI job
+# that has LLVM installed, which is why 282 lines deciding which unsafe sites are
+# approved had never been tested at all.
+add_library(ms_plugin_registry STATIC unsafe_registry.cpp)
+set_target_properties(ms_plugin_registry PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(ms_plugin_registry PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+)
+
 if(MS_BUILD_PLUGIN)
     find_package(LLVM REQUIRED CONFIG)
     find_package(Clang REQUIRED CONFIG)
-
-    add_library(ms_plugin_registry STATIC unsafe_registry.cpp)
-    set_target_properties(ms_plugin_registry PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(ms_plugin_registry PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}
-    )
 
     add_library(ms_plugin_rules STATIC
         rule_context.cpp

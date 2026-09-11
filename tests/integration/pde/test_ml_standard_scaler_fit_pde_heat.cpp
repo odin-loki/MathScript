@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -51,7 +53,7 @@ TEST(IntegrationPde,  MlStandardScalerFit) {
     expect_contains(interp, "help", "ml_standard_scaler_fit(");
 }
 
-TEST(IntegrationPde,  PdeHeat1dCn) {
+TEST(IntegrationPde, PdeHeat1dCn_MlStandardScalerFitPdeHeat) {
     Interpreter interp;
 
     expect_ok(interp, "x0 = [0; 0.5; 1; 0.5; 0]");
@@ -65,7 +67,7 @@ TEST(IntegrationPde,  PdeHeat1dCn) {
     expect_contains(interp, "help", "pde_heat_1d_cn(");
 }
 
-TEST(IntegrationPde,  Brentq) {
+TEST(IntegrationPde, Brentq_MlStandardScalerFitPdeHeat) {
     Interpreter interp;
 
     // (x-2)(x+1) has root x=2 on [0, 5]
@@ -73,7 +75,7 @@ TEST(IntegrationPde,  Brentq) {
     expect_contains(interp, "help", "brentq(");
 }
 
-TEST(IntegrationPde,  FemPoisson1d) {
+TEST(IntegrationPde, FemPoisson1d_MlStandardScalerFitPdeHeat) {
     Interpreter interp;
 
     expect_ok(interp, "u1 = fem_poisson1d(8)");
@@ -84,7 +86,7 @@ TEST(IntegrationPde,  FemPoisson1d) {
     expect_contains(interp, "help", "fem_poisson1d(");
 }
 
-TEST(IntegrationPde,  ArithmeticEncodeVec) {
+TEST(IntegrationPde, ArithmeticEncodeVec_MlStandardScalerFitPdeHeat) {
     Interpreter interp;
 
     expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");

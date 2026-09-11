@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Core Matrix Operations Tests (Wave 50)
 // Tests for det, trace, norm, expm, lu, qr, chol properties
 

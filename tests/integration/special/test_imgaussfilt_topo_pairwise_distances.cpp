@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -44,7 +46,7 @@ TEST(IntegrationSpecial,  ImageTopoStats) {
     EXPECT_EQ(interp.state().matrices.at("lr").rows(), 1u);
 }
 
-TEST(IntegrationSpecial,  SpecialScalar) {
+TEST(IntegrationSpecial, SpecialScalar_ImgaussfiltTopoPairwiseDistances) {
     Interpreter interp;
 
     expect_ok(interp, "cv = chebyshev_v(2, 0.5)");

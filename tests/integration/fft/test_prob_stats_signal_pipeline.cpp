@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Probability + Statistics + Signal Integration Pipeline
 // Tests combining prob distributions, stats analysis, and signal processing
 

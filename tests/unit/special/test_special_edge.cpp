@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -86,10 +88,17 @@ TEST(SpecialEdgeTest, orthogonal_polynomial_degrees) {
 }
 
 TEST(SpecialEdgeTest, chebyshev_tn_un_with_positive_k) {
-    for (int k : {1, 3, 5}) {
-        EXPECT_NEAR(chebyshev_tn(3, k, 0.25), chebyshev_t(3, 0.25), 1e-12);
-        EXPECT_NEAR(chebyshev_un(3, k, 0.25), chebyshev_u(3, 0.25), 1e-12);
+    // AUDIT FIX: this test asserted that k was IGNORED (the bodies were `(void)k; return
+    // chebyshev_t(n,x);`). k is now the derivative order, so only k = 0 reproduces the
+    // two-argument function and k > n vanishes.
+    EXPECT_NEAR(chebyshev_tn(3, 0, 0.25), chebyshev_t(3, 0.25), 1e-12);
+    EXPECT_NEAR(chebyshev_un(3, 0, 0.25), chebyshev_u(3, 0.25), 1e-12);
+    for (int k : {1, 3}) {
+        EXPECT_NE(chebyshev_tn(3, k, 0.25), chebyshev_t(3, 0.25));
+        EXPECT_NE(chebyshev_un(3, k, 0.25), chebyshev_u(3, 0.25));
     }
+    EXPECT_DOUBLE_EQ(chebyshev_tn(3, 5, 0.25), 0.0);
+    EXPECT_DOUBLE_EQ(chebyshev_un(3, 5, 0.25), 0.0);
 }
 
 TEST(SpecialEdgeTest, polynomial_domain_branches) {
@@ -264,7 +273,9 @@ TEST(SpecialEdgeTest, jacobi_ratios_and_kelvin_branches) {
     expect_finite(jacobi_ns(u, k));
     expect_finite(jacobi_cd(u, k));
     expect_finite(jacobi_ds(u, k));
-    EXPECT_DOUBLE_EQ(kelvin_bei(2, 0.4), 0.0);
+    // AUDIT FIX: kelvin_bei returned the constant 0 for every nu >= 1; it is now the real
+    // Kelvin function of that order.
+    EXPECT_NE(kelvin_bei(2, 0.4), 0.0);
     EXPECT_TRUE(std::isnan(kelvin_ber(-1, 0.4)));
     EXPECT_TRUE(std::isnan(spherical_jn(-1, 0.5)));
     EXPECT_TRUE(std::isnan(anger_j(-1, 0.5)));
@@ -363,8 +374,10 @@ TEST(SpecialEdgeTest, higher_order_bessel_and_domain_guards) {
 }
 
 TEST(SpecialEdgeTest, zeta_dirichlet_and_mathieu_guards) {
-    EXPECT_TRUE(std::isnan(zeta(-0.5)));
-    EXPECT_TRUE(std::isnan(eta_dirichlet(-0.5)));
+    // AUDIT FIX: s = -0.5 is not outside zeta's or eta's domain; both are now continued there
+    // (zeta by the DLMF 25.4.2 reflection formula, eta by Borwein acceleration).
+    EXPECT_NEAR(zeta(-0.5), -0.20788622497735456, 1e-12);
+    EXPECT_NEAR(eta_dirichlet(-0.5), (1.0 - std::pow(2.0, 1.5)) * zeta(-0.5), 1e-12);
     EXPECT_TRUE(std::isnan(beta_dirichlet(-0.1)));
     EXPECT_TRUE(std::isnan(polylog(2, 1.2)));
     EXPECT_TRUE(std::isnan(mathieu_a(-1, 0.1)));
@@ -392,7 +405,9 @@ TEST(SpecialEdgeTest, elliptic_whittaker_and_kelvin_branches) {
 TEST(SpecialEdgeTest, heun_painleve_early_returns) {
     EXPECT_DOUBLE_EQ(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 1e-7), 1.0);
     EXPECT_DOUBLE_EQ(heun_c(0.1, 0.2, 0.3, 0.4, 0.5, 1e-7), 1.0);
-    EXPECT_DOUBLE_EQ(heun_d(0.1, 0.2, 0.3, 0.4, 1e-7), 1.0);
+    // AUDIT FIX: the doubly confluent Heun equation is IRREGULAR at z = 0, so it is no longer
+    // normalised there; its base point is the ordinary point z = 1.
+    EXPECT_TRUE(std::isfinite(heun_d(0.1, 0.2, 0.3, 0.4, 1e-7)));
     EXPECT_DOUBLE_EQ(heun_b(0.1, 0.2, 0.3, 0.4, 1e-7), 1.0);
     EXPECT_DOUBLE_EQ(heun_t(0.1, 0.2, 0.3, 0.4, 1e-7), 1.0);
     EXPECT_DOUBLE_EQ(painleve1(-0.1, 2.0, 0.0), 2.0);
@@ -412,8 +427,9 @@ TEST(SpecialEdgeTest, bessel_series_and_modified_branches) {
 }
 
 TEST(SpecialEdgeTest, kelvin_higher_order_and_legendre_guards) {
-    EXPECT_DOUBLE_EQ(kelvin_bei(1, 0.4), 0.0);
-    EXPECT_DOUBLE_EQ(kelvin_kei(1, 0.5), 0.0);
+    // AUDIT FIX: bei_nu and kei_nu are not identically zero for nu >= 1.
+    EXPECT_NE(kelvin_bei(1, 0.4), 0.0);
+    EXPECT_NE(kelvin_kei(1, 0.5), 0.0);
     expect_finite(kelvin_ker(1, 0.5));
     EXPECT_TRUE(std::isnan(legendre_p(-1, 0.2)));
     EXPECT_TRUE(std::isnan(legendre_p(2, 1.5)));
@@ -450,10 +466,15 @@ TEST(SpecialEdgeTest, struve_aliases_and_bessel_h_variants) {
 }
 
 TEST(SpecialEdgeTest, heun_clamp_during_integration) {
-    expect_finite(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9));
+    // AUDIT FIX: z = 0.9 lies beyond the regular singular point z = a = 0.5, so the solution
+    // normalised at the origin is not defined there; the old code jumped over the singularity.
+    EXPECT_TRUE(std::isnan(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.9)));
     expect_finite(heun_c(0.1, 0.2, 0.3, 0.4, 0.5, 0.85));
     expect_finite(heun_b(0.1, 0.2, 0.3, 0.4, 0.75));
-    expect_finite(painleve3(0.5, 0.1, 0.0, 0.1, 0.2));
+    // AUDIT FIX: PIII (DLMF 32.2.3) contains delta/w, so data starting this close to w = 0 runs
+    // into a movable pole before x = 0.5; the initial value is moved off it. (The old body
+    // integrated an equation with no delta/w term at all, so nothing could blow up.)
+    expect_finite(painleve3(0.5, 0.5, 0.0, 0.1, 0.2));
     expect_finite(painleve4(0.5, 0.1, 0.0, 0.1, 0.2));
 }
 
@@ -520,7 +541,9 @@ TEST(SpecialEdgeTest, mathieu_negative_n_and_spheroidal_m) {
 
 TEST(SpecialEdgeTest, chebyshev_indexed_k_unused_and_out_of_interval) {
     EXPECT_NEAR(chebyshev_tn(4, 0, 0.3), chebyshev_t(4, 0.3), 1e-15);
-    EXPECT_NEAR(chebyshev_un(4, -7, 0.3), chebyshev_u(4, 0.3), 1e-15);
+    // AUDIT FIX: negative k is outside the (derivative-order) domain and now returns NaN
+    // instead of silently ignoring the argument.
+    EXPECT_TRUE(std::isnan(chebyshev_un(4, -7, 0.3)));
     EXPECT_TRUE(std::isnan(chebyshev_tn(1, 5, -1.2)));
     EXPECT_TRUE(std::isnan(chebyshev_un(1, 5, 1.2)));
 }

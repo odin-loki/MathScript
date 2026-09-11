@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmark: geo hot paths (point-in-polygon, convex hull, KD-tree)
 
 #include <benchmark/benchmark.h>

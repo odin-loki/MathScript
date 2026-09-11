@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: ODE + PDE + Poly Pipeline (Wave 51)
 // Tests that chain ODE results into polynomial fitting, then feed into PDE boundary conditions.
 

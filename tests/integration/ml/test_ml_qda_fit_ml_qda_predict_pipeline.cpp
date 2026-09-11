@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -44,7 +46,7 @@ TEST(IntegrationMl,  QdaSvm) {
     EXPECT_GT(interp.state().matrices.at("svm_p")(1, 0), 0.0);
 }
 
-TEST(IntegrationMl,  JacobiDsScalar) {
+TEST(IntegrationMl, JacobiDsScalar_MlQdaFitMlQdaPredictPipeline) {
     Interpreter interp;
     expect_ok(interp, "jds = jacobi_ds(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jds"), ms::jacobi_ds(0.5, 0.5), 1e-8);

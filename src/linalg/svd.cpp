@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/linalg/linalg.hpp"
 #include "ms/cpu/lapack.hpp"
 #include "detail.hpp"
@@ -38,13 +40,11 @@ Result<SvdResult> svd(const Matrix<S, OA, Alloc>& A) {
             for (int j = 0; j < k; ++j) {
                 sing_vals(static_cast<std::size_t>(j), 0) = sigma[static_cast<std::size_t>(j)];
                 for (int i = 0; i < in; ++i) {
-                    if (im >= in) {
-                        V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
-                            VT(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
-                    } else {
-                        V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
-                            VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
-                    }
+                    // dgesvd returns V**T (k x n) for every shape, so V is its
+                    // transpose for every shape. This used to branch on im >= in,
+                    // because the tall path returned V rather than V**T.
+                    V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                        VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
                 }
             }
             return SvdResult{U, sing_vals, V};

@@ -1,0 +1,35 @@
+# Paths removed from the coverage denominator, one glob per line.
+#
+# THE RULE: an exclusion asserts that the code CANNOT be reached on a CI runner.
+# It does not mean nobody has got to it yet. "We have not written those tests"
+# is a coverage gap and must show up as one -- excluding it moves the number
+# without moving the work, and the published percentage stops describing the
+# project.
+#
+# Every entry carries the reason it cannot be reached. Each run prints how many
+# lines these hid, so the list stays visible instead of quietly growing.
+
+# --- Not our code -------------------------------------------------------------
+/usr/*                  # system headers
+*/tests/*               # the tests themselves
+*/vendor/*              # vendored third-party (googletest, xsimd)
+*/googletest/*          # vendored gtest, when it lands outside vendor/
+
+# --- Cannot execute on a CI runner --------------------------------------------
+*/src/cuda/*            # needs an NVIDIA GPU; no GPU runner exists
+*/src/gui/*             # needs a display server; MS_BUILD_GUI is off in CI
+                        # Remove this line once the offscreen harness (plan
+                        # §12.4.10) lands -- it is the thing that makes the GUI
+                        # reachable, and until then this is an honest exclusion.
+
+# --- Deliberately NOT excluded, recorded so they are not re-added -------------
+# */src/interp/matrix_calls/*   29,794 lines, 20% of src/. Reachable through
+#                               dispatch_matrix_call from any REPL line. It was
+#                               excluded, which is most of why the published
+#                               figure was not the project's coverage.
+# */src/plugin/*                1,436 lines. Build-time tool, but it compiles and
+#                               runs on a CI runner, so it is measurable. It is
+#                               also the component that enforces the rest of the
+#                               tree's safety properties, which makes it the
+#                               worst thing to have unmeasured.
+# */src/ms_bundle.cpp           5 lines. No reason to hide it.

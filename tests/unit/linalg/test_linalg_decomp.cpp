@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <vector>
 #include <gtest/gtest.h>
@@ -64,10 +66,17 @@ double frob_norm(const DMatrix& M) {
 } // namespace
 
 TEST(LinalgDecompTest, nonsymmetric_eig) {
+    // TIGHTENED: this asserted only the shape of `values`, so it passed while
+    // eig() reported {0, 0} for a rotation matrix whose spectrum is +-i.
     DMatrix A{{0, 1}, {-1, 0}};
     auto result = eig(A);
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->values.rows(), 2u);
+    ASSERT_EQ(result->values_imag.rows(), 2u);
+    EXPECT_NEAR(result->values(0, 0), 0.0, 1e-12);
+    EXPECT_NEAR(result->values(1, 0), 0.0, 1e-12);
+    EXPECT_NEAR(std::abs(result->values_imag(0, 0)), 1.0, 1e-12);
+    EXPECT_NEAR(result->values_imag(0, 0) + result->values_imag(1, 0), 0.0, 1e-12);
 }
 
 TEST(LinalgDecompTest, schur_factorization) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -5502,7 +5504,7 @@ TEST(ReplCommandsTest, quantum_entanglement_entropy_execute_no_assign) {
     Interpreter interp;
     expect_contains(interp, "quantum_entanglement_entropy([1; 0; 0; 0], 2, 2)", "0");
     expect_error_contains(interp, "quantum_entanglement_entropy([1; 0; 0; 0], 1.5, 2)",
-                          "positive integer dim_a and dim_b");
+                          "expected an integer dim_a");
 }
 
 TEST(ReplCommandsTest, quantum_schrodinger_execute_no_assign) {
@@ -5510,7 +5512,7 @@ TEST(ReplCommandsTest, quantum_schrodinger_execute_no_assign) {
     expect_contains(interp, "quantum_schrodinger([0.5, 0; 0, -0.5], [1; 0], 0, 0.1, 5)",
                     "traj =");
     expect_error_contains(interp, "quantum_schrodinger([0.5, 0; 0, -0.5], [1; 0], 0, 0.1, 1.5)",
-                          "non-negative integer n_steps");
+                          "expected an integer n_steps");
 }
 
 TEST(ReplCommandsTest, quantum_husimi_execute_no_assign) {

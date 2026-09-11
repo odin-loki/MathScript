@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -22,7 +24,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationLinalg,  ControlStepResponse) {
+TEST(IntegrationLinalg, ControlStepResponse_ControlStepResponseControl) {
     Interpreter interp;
 
     expect_ok(interp, "step = control_step_response([1], [1, 1], 5, 100)");
@@ -81,7 +83,7 @@ TEST(IntegrationLinalg,  SolveSylvester) {
     expect_contains(interp, "help", "solve_sylvester(A,B,C)");
 }
 
-TEST(IntegrationLinalg,  Minres) {
+TEST(IntegrationLinalg, Minres_ControlStepResponseControl) {
     Interpreter interp;
 
     expect_ok(interp, "A = [1, 0, 0; 0, 1, 0; 0, 0, 1]");

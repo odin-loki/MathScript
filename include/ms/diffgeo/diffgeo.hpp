@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include <array>
 #include <functional>
@@ -15,7 +17,14 @@ using MetricFn = std::function<std::vector<std::vector<double>>(const Coords&)>;
 std::vector<std::vector<double>>
     metric_tensor(MetricFn g, const Coords& x);
 
-// Inverse of metric tensor
+// Inverse of the metric tensor, by Gauss-Jordan with partial pivoting.
+//
+// @note A SINGULAR metric has no inverse, and this returns an n x n matrix of
+//       NaN rather than a fallback that could pass for a real answer. (It
+//       previously returned the identity, which downstream Christoffel and
+//       curvature code cannot tell apart from a valid inverse.) Callers that
+//       can encounter degenerate metrics should test the result with
+//       std::isnan before using it.
 std::vector<std::vector<double>>
     metric_inv(const std::vector<std::vector<double>>& g);
 

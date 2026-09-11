@@ -1,8 +1,11 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include <functional>
 #include <span>
 #include <tuple>
+#include <limits>
 #include <vector>
 
 namespace ms {
@@ -15,6 +18,10 @@ double median(std::span<const double> data);
 double min_value(std::span<const double> data);
 double max_value(std::span<const double> data);
 double mode(std::span<const double> data);
+/// @brief The p-th percentile by nearest-rank on the sorted sample.
+/// @note p is a PERCENTAGE. It is clamped to [0, 100] -- p <= 0 (and NaN) gives the
+///   minimum, p >= 100 the maximum -- rather than scaling into an out-of-range index, which
+///   is what percentile(v, 3e9) used to do.
 double percentile(std::span<const double> data, double p);
 double skewness(std::span<const double> data);
 double kurtosis(std::span<const double> data);
@@ -25,6 +32,8 @@ double rms(std::span<const double> data);
 // consistency with the normal distribution standard deviation.
 double mad(const std::vector<double>& x, bool scale = true);
 double iqr(std::span<const double> data);     // interquartile range
+/// @brief Mean after discarding `frac` of the sample from each tail. `frac` is clamped to
+///   [0, 1]; a trim that would remove everything returns the median.
 double trimmed_mean(std::span<const double> data, double frac);
 
 // Weighted mean: sum(w_i * x_i) / sum(w_i). Weights must be non-negative; negative
@@ -75,10 +84,15 @@ double ks_test(std::span<const double> x,
 // One-way ANOVA (Analysis of Variance) across >= 2 groups. Returns the F-statistic and
 // associated p-value testing the null hypothesis that all group means are equal.
 struct AnovaResult {
-    double f_stat;
-    double p_value;
-    int df_between;   // degrees of freedom between groups (k - 1)
-    int df_within;    // degrees of freedom within groups (N - k)
+    /// NaN when the test could not be computed: fewer than two non-empty groups, no
+    /// residual degrees of freedom, or a zero within-group sum of squares. These used
+    /// to leave the value-initialised 0.0 in place, so a degenerate input came back as
+    /// F = 0 with p = 0 -- which reads as "no effect, and certainly so", when p = 0
+    /// with F = 0 is not a result any F-test can produce.
+    double f_stat = std::numeric_limits<double>::quiet_NaN();
+    double p_value = std::numeric_limits<double>::quiet_NaN();
+    int df_between = 0;   // degrees of freedom between groups (k - 1)
+    int df_within = 0;    // degrees of freedom within groups (N - k)
 };
 AnovaResult one_way_anova(const std::vector<std::vector<double>>& groups);
 
@@ -156,8 +170,10 @@ LjungBoxResult ljung_box(std::span<const double> x, int max_lag);
 // the transformed values. Robust companion to ANOVA when checking the equal-variance assumption.
 // Returns the F statistic, associated p-value, and ANOVA degrees of freedom (between/within).
 struct LeveneResult {
-    double f_stat = 0.0;
-    double p_value = 0.0;
+    /// NaN when the test could not be computed; see AnovaResult, whose values these
+    /// are copied from.
+    double f_stat = std::numeric_limits<double>::quiet_NaN();
+    double p_value = std::numeric_limits<double>::quiet_NaN();
     int df_between = 0;
     int df_within = 0;
 };

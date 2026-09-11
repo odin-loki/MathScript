@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmark: Probability Distribution Functions
 // Benchmarks for norm_pdf/cdf/ppf, t_pdf/cdf, gamma_pdf, binom_pdf/cdf, pois_pdf/cdf, chi2, uniform
 

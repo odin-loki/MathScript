@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/simd/simd.hpp"
 #include "xsimd/xsimd.hpp"
 #include <cmath>

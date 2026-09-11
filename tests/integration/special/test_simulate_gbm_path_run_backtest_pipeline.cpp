@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -39,7 +41,7 @@ TEST(IntegrationSpecial,  GbmPathBacktestTail28) {
     ASSERT_EQ(interp.state().matrices.at("bt").cols(), 4u);
 }
 
-TEST(IntegrationSpecial,  JacobiSdScalar) {
+TEST(IntegrationSpecial, JacobiSdScalar_SimulateGbmPathRunBacktestPipeline) {
     Interpreter interp;
     expect_ok(interp, "jd = jacobi_sd(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jd"), ms::jacobi_sd(0.5, 0.5), 1e-8);

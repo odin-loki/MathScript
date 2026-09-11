@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Symbolic → Numeric Pipeline Integration Tests (Wave 46)
 // Tests combining symbolic differentiation with numerical verification
 // Note: SymExpr is move-only — re-build expressions for each use.

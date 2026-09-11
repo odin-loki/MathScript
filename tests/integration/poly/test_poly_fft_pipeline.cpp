@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration: Poly + FFT Spectral Analysis Pipeline (Wave 54)
 
 #define _USE_MATH_DEFINES

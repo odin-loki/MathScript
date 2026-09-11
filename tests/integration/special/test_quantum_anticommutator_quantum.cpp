@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationSpecial,  QuantumAntiTensor) {
     EXPECT_EQ(interp.state().matrices.at("tp").rows(), 4u);
 }
 
-TEST(IntegrationSpecial,  ChebyshevVScalar) {
+TEST(IntegrationSpecial, ChebyshevVScalar_QuantumAnticommutatorQuantum) {
     Interpreter interp;
     expect_ok(interp, "cv = chebyshev_v(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cv"), ms::chebyshev_v(2, 0.5), 1e-8);

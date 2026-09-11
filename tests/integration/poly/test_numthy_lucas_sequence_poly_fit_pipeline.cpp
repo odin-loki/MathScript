@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -49,7 +51,7 @@ TEST(IntegrationPoly,  NumthyPolyGraph) {
     EXPECT_EQ(interp.state().matrices.at("rr").rows(), 2u);
 }
 
-TEST(IntegrationPoly,  SpecialScalar) {
+TEST(IntegrationPoly, SpecialScalar_NumthyLucasSequencePolyFitPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "ff = special_falling_factorial(5, 2)");

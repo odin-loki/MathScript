@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Signal + Optim + Stats Pipeline Integration Tests (Wave 49)
 // Tests combining signal processing, optimization, and statistics
 

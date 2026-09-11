@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -47,7 +49,7 @@ TEST(IntegrationMl,  MlAdaboostGmmTail21) {
     EXPECT_GE(interp.state().matrices.at("gmm_p").cols(), 2u);
 }
 
-TEST(IntegrationMl,  Theta2Scalar) {
+TEST(IntegrationMl, Theta2Scalar_MlAdaboostFitMlAdaboostPredict3) {
     Interpreter interp;
     expect_ok(interp, "th2 = theta2(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th2"), ms::theta2(0.2, 0.1), 1e-8);

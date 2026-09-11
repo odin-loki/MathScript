@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -2483,13 +2485,13 @@ TEST(ReplCommandsTest, combo_unrank_combination_noassign) {
 TEST(ReplCommandsTest, combo_next_comb_noassign) {
     Interpreter interp;
     expect_contains(interp, "combo_next_comb([0; 1], 4)", "comb =");
-    expect_error_contains(interp, "combo_next_comb([0; 1], 1.5)", "non-negative integer n");
+    expect_error_contains(interp, "combo_next_comb([0; 1], 1.5)", "expected an integer n");
 }
 
 TEST(ReplCommandsTest, combo_prev_comb_noassign) {
     Interpreter interp;
     expect_contains(interp, "combo_prev_comb([0; 2], 4)", "comb =");
-    expect_error_contains(interp, "combo_prev_comb([0; 2], 1.5)", "non-negative integer n");
+    expect_error_contains(interp, "combo_prev_comb([0; 2], 1.5)", "expected an integer n");
 }
 
 TEST(ReplCommandsTest, combo_derangements_too_large_noassign) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <gtest/gtest.h>
 
@@ -133,8 +135,10 @@ TEST(SpecialSweepTest, bessel_zeros_kelvin_nu0_and_heun_grid) {
     expect_finite(kelvin_bei(0, 0.4));
     expect_finite(kelvin_kei(0, 0.6));
     expect_finite(mathieu_a(0, 0.15));
-    expect_finite(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.5));
-    expect_finite(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.999999));
+    // AUDIT FIX: z = a = 0.5 is a regular singular point of the general Heun equation and
+    // z = 0.999999 lies past it, so the solution normalised at the origin is undefined there.
+    EXPECT_TRUE(std::isnan(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.5)));
+    EXPECT_TRUE(std::isnan(heun_g(0.5, 0.1, 0.2, 0.3, 0.4, 0.5, 0.999999)));
     expect_finite(heun_b(0.1, 0.2, 0.3, 0.4, 0.5));
     expect_finite(painleve3(0.5, 0.2, 0.0, 0.1, 0.2));
     expect_finite(painleve4(0.5, 0.2, 0.0, 0.1, 0.2));

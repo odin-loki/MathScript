@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -44,7 +46,7 @@ TEST(IntegrationMl,  MlLinearRidgeTail18) {
     EXPECT_NEAR(interp.state().matrices.at("rp")(0, 0), 9.0, 0.5);
 }
 
-TEST(IntegrationMl,  JacobiCsScalar) {
+TEST(IntegrationMl, JacobiCsScalar_MlLinearFitMlLinearPredict3) {
     Interpreter interp;
     expect_ok(interp, "jcs = jacobi_cs(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("jcs"), ms::jacobi_cs(0.5, 0.5), 1e-8);

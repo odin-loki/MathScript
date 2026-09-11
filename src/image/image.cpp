@@ -1,8 +1,16 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/image/image.hpp"
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <complex>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <limits>
 #include <tuple>
 #include <vector>
 #ifndef M_PI
@@ -14,11 +22,52 @@ namespace image {
 
 // ========================== Image ==========================
 
-Image::Image(int r, int c, int ch, float fill)
-    : rows(r), cols(c), channels(ch), data(r*c*ch, fill) {}
+namespace {
 
-float& Image::at(int r, int c, int ch) { return data[(r*cols+c)*channels+ch]; }
-float  Image::at(int r, int c, int ch) const { return data[(r*cols+c)*channels+ch]; }
+/// `r * c * ch` as a count, computed in `std::size_t` rather than in `int`.
+///
+/// `data(r*c*ch, fill)` was `int` arithmetic, and `impad(img, 1000000)` asks for a
+/// 2000002 x 2000002 image: the product is 4,000,008,000,004, which is not an `int`.
+/// Signed overflow is undefined, and what it did in practice was allocate a buffer of
+/// whatever the wrap produced and then let `at()` -- also `int` arithmetic, also
+/// overflowing -- write far outside it. That is a segmentation fault reachable from one
+/// line of a REPL session.
+///
+/// In `size_t` the count is exact, so an image too large to hold fails at the
+/// allocation instead of succeeding at the wrong size. Failing there is still a
+/// process death in a tree built without exceptions, which is why the callers bound
+/// the request as well; but a death at the allocation is a resource limit, and a write
+/// outside the buffer is a memory-safety defect, and only one of those two can be left
+/// to a caller.
+std::size_t image_element_count(int r, int c, int ch) {
+    if (r <= 0 || c <= 0 || ch <= 0) {
+        return 0;
+    }
+    return static_cast<std::size_t>(r) * static_cast<std::size_t>(c) *
+           static_cast<std::size_t>(ch);
+}
+
+} // namespace
+
+Image::Image(int r, int c, int ch, float fill)
+    : rows(r > 0 ? r : 0), cols(c > 0 ? c : 0), channels(ch > 0 ? ch : 0),
+      data(image_element_count(r, c, ch), fill) {}
+
+// The index is computed in `size_t` for the reason above: in `int` it overflows on an
+// image this type can legitimately hold -- 46341 x 46341 single-channel is past INT_MAX
+// -- and an overflowed index is an out-of-bounds access rather than a wrong pixel.
+float& Image::at(int r, int c, int ch) {
+    return data[(static_cast<std::size_t>(r) * static_cast<std::size_t>(cols) +
+                 static_cast<std::size_t>(c)) *
+                    static_cast<std::size_t>(channels) +
+                static_cast<std::size_t>(ch)];
+}
+float Image::at(int r, int c, int ch) const {
+    return data[(static_cast<std::size_t>(r) * static_cast<std::size_t>(cols) +
+                 static_cast<std::size_t>(c)) *
+                    static_cast<std::size_t>(channels) +
+                static_cast<std::size_t>(ch)];
+}
 
 float bilinear_sample(const Image& img, float r, float c, int ch) {
     int r0=(int)r, c0=(int)c;
@@ -131,15 +180,17 @@ Image imresize(const Image& img, int nr, int nc) {
 
     const float* src = img.data.data();
     float* dst = out.data.data();
-    const int src_stride = src_cols * channels;
+    const std::size_t channel_count = static_cast<std::size_t>(channels);
+    const std::size_t src_stride =
+        static_cast<std::size_t>(src_cols) * channel_count;
 
     for (int r = 0; r < nr; ++r) {
         const int r0 = row_r0[static_cast<std::size_t>(r)];
         const int r1 = row_r1[static_cast<std::size_t>(r)];
         const float wr0 = row_wr0[static_cast<std::size_t>(r)];
         const float wr1 = row_wr1[static_cast<std::size_t>(r)];
-        const float* src_row0 = src + r0 * src_stride;
-        const float* src_row1 = src + r1 * src_stride;
+        const float* src_row0 = src + static_cast<std::size_t>(r0) * src_stride;
+        const float* src_row1 = src + static_cast<std::size_t>(r1) * src_stride;
 
         for (int c = 0; c < nc; ++c) {
             const int c0 = col_c0[static_cast<std::size_t>(c)];
@@ -151,9 +202,14 @@ Image imresize(const Image& img, int nr, int nc) {
             const float w10 = wr1 * wc0;
             const float w11 = wr1 * wc1;
 
-            const int off00 = c0 * channels;
-            const int off01 = c1 * channels;
-            float* dst_px = dst + (r * nc + c) * channels;
+            const std::size_t off00 = static_cast<std::size_t>(c0) * channel_count;
+            const std::size_t off01 = static_cast<std::size_t>(c1) * channel_count;
+            // In `int` this is `(r * nc + c) * channels`, which wraps negative once the
+            // output passes INT_MAX elements -- 46341 x 46341 single-channel is already
+            // past it, and that is an image this type can legitimately hold. An
+            // overflowed index is a store before the buffer, not a wrong pixel.
+            float* dst_px = dst + (static_cast<std::size_t>(r) * static_cast<std::size_t>(nc) +
+                                   static_cast<std::size_t>(c)) * channel_count;
             for (int ch = 0; ch < channels; ++ch) {
                 dst_px[ch] = w00 * src_row0[off00 + ch] + w01 * src_row0[off01 + ch]
                            + w10 * src_row1[off00 + ch] + w11 * src_row1[off01 + ch];
@@ -186,8 +242,29 @@ Image imrotate90(const Image& img) {
     return out;
 }
 
+/// Two ways this wrote outside its own buffer, and both are settled here rather than
+/// left to the caller. A caller can reasonably be asked to keep a request affordable; it
+/// cannot be asked to keep the function inside its allocation.
+///
+///   - **`img.rows + 2*pad` is `int` arithmetic.** At `pad >= (INT_MAX - 2) / 2` it
+///     overflows -- undefined behaviour, and in practice negative, which `Image`'s
+///     constructor clamps to an EMPTY image. The copy loop below is bounded by `img`'s
+///     extents rather than by `out`'s, so it ran anyway and wrote `out.at(r + pad, ...)`
+///     -- an index near 2^30 -- into a zero-length vector.
+///   - **A negative `pad`** reaches `out.at(r + pad, ...)` with a negative row and
+///     column, which `Image::at` converts to `size_t` and reads as an enormous index.
+///
+/// An input with no padded image to name gets an empty one back, which is what
+/// `hough_circles` and the rest of this file do with an argument they cannot honour.
 Image impad(const Image& img, int pad, float val) {
-    Image out(img.rows+2*pad,img.cols+2*pad,img.channels,val);
+    const long long padded_rows = static_cast<long long>(img.rows) + 2LL * pad;
+    const long long padded_cols = static_cast<long long>(img.cols) + 2LL * pad;
+    constexpr long long kMaxExtent = std::numeric_limits<int>::max();
+    if (pad < 0 || padded_rows > kMaxExtent || padded_cols > kMaxExtent) {
+        return {};
+    }
+    Image out(static_cast<int>(padded_rows), static_cast<int>(padded_cols), img.channels,
+              val);
     for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch)
         out.at(r+pad,c+pad,ch)=img.at(r,c,ch);
     return out;
@@ -998,17 +1075,37 @@ Image bilateral(const Image& img, float sigma_s, float sigma_r) {
     const int rows = img.rows;
     const int cols = img.cols;
     const int channels = img.channels;
-    const int half = std::max(1, static_cast<int>(2.f * sigma_s));
+    // The radius follows sigma_s, which is a caller's float and so is unbounded. Two
+    // things had to change.
+    //
+    // A radius past the image is not a wider filter, it is the same filter with the
+    // extra taps falling outside every pixel's neighbourhood, so clamping it to the
+    // image changes no result and bounds the work. Without the clamp, sigma_s = 1e6
+    // asks for a 4000001 x 4000001 kernel.
+    //
+    // And `ksize * ksize` was `int` arithmetic. At that size the product is 1.6e13,
+    // which is not an `int`; the overflow is undefined, and what it did was size the
+    // weight buffer from whatever the wrap produced and then index it with
+    // `dri * ksize + dci`, overflowing again -- a write outside the buffer rather than
+    // a slow filter. The clamp makes the overflow unreachable and the `size_t`
+    // arithmetic makes it impossible, and both are worth having: the first is a policy
+    // about kernels and the second is about the type.
+    const int max_half = std::max(1, std::max(rows, cols));
+    const int half = std::min(max_half, std::max(1, static_cast<int>(2.f * sigma_s)));
     const int ksize = 2 * half + 1;
 
     const float inv_2_sigma_s_sq = 1.f / (2.f * sigma_s * sigma_s);
-    std::vector<float> spatial_weights(static_cast<std::size_t>(ksize * ksize));
+    const std::size_t kernel_area =
+        static_cast<std::size_t>(ksize) * static_cast<std::size_t>(ksize);
+    std::vector<float> spatial_weights(kernel_area);
     for (int dri = 0; dri < ksize; ++dri) {
         const int dr = dri - half;
         for (int dci = 0; dci < ksize; ++dci) {
             const int dc = dci - half;
-            spatial_weights[static_cast<std::size_t>(dri * ksize + dci)] =
-                std::exp(-(dr * dr + dc * dc) * inv_2_sigma_s_sq);
+            spatial_weights[static_cast<std::size_t>(dri) *
+                                static_cast<std::size_t>(ksize) +
+                            static_cast<std::size_t>(dci)] =
+                std::exp(-static_cast<float>(dr * dr + dc * dc) * inv_2_sigma_s_sq);
         }
     }
 
@@ -1319,7 +1416,15 @@ Image threshold_otsu(const Image& img) {
         double var=wB*wF*(mB-mF)*(mB-mF);
         if (var>best){best=var;best_t=t;}
     }
-    return threshold_binary(g, best_t/255.f);
+    // best_t is the LAST bin of the background class -- the loop accumulates wB up
+    // to and including t -- so the split is "background <= best_t, foreground above".
+    // Thresholding at best_t/255 with threshold_binary's `>=` puts the whole
+    // background bin on the foreground side, and on a clean two-mode image that is
+    // every pixel: measured, a half-and-half image of 0.60 and 0.92 came back all
+    // ones, and so did 0.20 and 0.80, and 0.55 and 0.95. The threshold has to be the
+    // first FOREGROUND bin. A pixel lands in bin (int)(v*255), so bin >= best_t + 1
+    // is exactly v >= (best_t + 1)/255 and the comparison stays as it is.
+    return threshold_binary(g, static_cast<float>(best_t + 1)/255.f);
 }
 
 namespace {
@@ -1632,6 +1737,842 @@ Image slic(const Image& rgb, int num_superpixels, double compactness) {
             const int k = labels[static_cast<size_t>(r * C + c)];
             out.at(r, c, 0) = k >= 0 ? static_cast<float>(k + 1) : 0.f;
         }
+    return out;
+}
+
+// ========================== Graph-Cut Segmentation ==========================
+
+namespace {
+
+// Residual capacities at or below this count as saturated. With floating-point
+// capacities an exact-zero test would let a chain of subtractions leave
+// residuals of order 1e-17 behind and generate a long tail of near-zero
+// augmentations; the epsilon bounds the augmentation count and makes the
+// result reproducible. It also means an n-link weight below k_gc_eps (say
+// lambda*exp(-50)) is dropped at graph construction and contributes nothing to
+// the reported cut value.
+constexpr double k_gc_eps = 1e-12;
+
+// parent_[v] sentinels: v is a search-tree root (its parent is S or T), v's
+// parent link was destroyed by the last augmentation, and v is free (in
+// neither search tree).
+constexpr int k_gc_arc_terminal = -1;
+constexpr int k_gc_arc_orphan   = -2;
+constexpr int k_gc_arc_none     = -3;
+// next_[v] sentinel: v is not on the active list.
+constexpr int k_gc_no_queue = -1;
+
+// rows*cols above this would overflow the int arc index at connectivity 8
+// (up to 8 directed arcs per pixel).
+constexpr std::size_t k_gc_max_pixels = 200000000u;
+
+constexpr int    k_gc_two_means_iters = 100;
+constexpr double k_gc_two_means_tol   = 1e-12;
+constexpr int    k_gc_kmeans_iters    = 10;
+constexpr int    k_gc_max_components  = 8;
+// Variance floor for a mixture component (std >= 0.01 in [0, 1] intensity
+// units), so a component that collects identical values cannot produce an
+// infinite density; and a density floor, so -ln(p) stays <= 27.64.
+constexpr double k_gc_var_floor   = 1e-4;
+constexpr double k_gc_min_density = 1e-12;
+
+// Named widening for container subscripts: every index in this section is a
+// non-negative int by construction, and spelling the conversion out keeps the
+// signed/unsigned boundary explicit.
+inline std::size_t gc_ix(int i) { return static_cast<std::size_t>(i); }
+
+// Boykov-Kolmogorov max-flow / min-cut on a sparse graph with paired reverse
+// arcs (Boykov & Kolmogorov, PAMI 2004). Terminal (source/sink) capacities are
+// folded into one signed value per node: tr_cap_[v] > 0 is residual capacity
+// from S, tr_cap_[v] < 0 is residual capacity to T, so there are no explicit
+// terminal node objects. Arcs live in CSR form with an explicit sister array,
+// which is cache-friendly and — unlike a per-node linked list — makes the arc
+// scan order a fixed function of the input.
+//
+// Usage: add_terminal() / add_edge() for every node and pair, then finalize(),
+// solve(), and source_side() for the inclusion-minimal min-cut source set.
+class GcMaxFlow {
+public:
+    explicit GcMaxFlow(int n_nodes, int edge_hint = 0)
+        : n_(n_nodes), tr_cap_(gc_ix(n_nodes), 0.0) {
+        degree_.assign(gc_ix(n_nodes), 0);
+        edge_p_.reserve(gc_ix(edge_hint));
+        edge_q_.reserve(gc_ix(edge_hint));
+        edge_w_.reserve(gc_ix(edge_hint));
+    }
+
+    // cap_src is the S->v capacity, cap_snk the v->T capacity. min(cap_src,
+    // cap_snk) is flow that trivially saturates through v, so it goes straight
+    // into the running total and only the difference survives as residual.
+    void add_terminal(int v, double cap_src, double cap_snk) {
+        flow_ += std::min(cap_src, cap_snk);
+        tr_cap_[gc_ix(v)] += cap_src - cap_snk;
+    }
+
+    // Undirected pair with the same capacity in both directions, as a Potts
+    // term requires. Weights at or below the epsilon are dropped.
+    void add_edge(int p, int q, double w) {
+        if (!(w > k_gc_eps)) return;
+        edge_p_.push_back(p);
+        edge_q_.push_back(q);
+        edge_w_.push_back(w);
+        ++degree_[gc_ix(p)];
+        ++degree_[gc_ix(q)];
+    }
+
+    // Build the CSR arc arrays from the staged edge list, then release the
+    // staging vectors (about a quarter of peak memory on large images).
+    void finalize() {
+        first_.assign(gc_ix(n_ + 1), 0);
+        for (int v = 0; v < n_; ++v)
+            first_[gc_ix(v + 1)] = first_[gc_ix(v)] + degree_[gc_ix(v)];
+
+        const int m = static_cast<int>(edge_p_.size());
+        arc_head_.assign(gc_ix(2 * m), 0);
+        arc_cap_.assign(gc_ix(2 * m), 0.0);
+        sister_.assign(gc_ix(2 * m), 0);
+
+        std::vector<int> cursor(first_.begin(), first_.end() - 1);
+        for (int k = 0; k < m; ++k) {
+            const int p = edge_p_[gc_ix(k)];
+            const int q = edge_q_[gc_ix(k)];
+            const double w = edge_w_[gc_ix(k)];
+            const int ap = cursor[gc_ix(p)]++;
+            const int aq = cursor[gc_ix(q)]++;
+            arc_head_[gc_ix(ap)] = q;
+            arc_cap_[gc_ix(ap)] = w;
+            sister_[gc_ix(ap)] = aq;
+            arc_head_[gc_ix(aq)] = p;
+            arc_cap_[gc_ix(aq)] = w;
+            sister_[gc_ix(aq)] = ap;
+        }
+
+        std::vector<int>().swap(edge_p_);
+        std::vector<int>().swap(edge_q_);
+        std::vector<double>().swap(edge_w_);
+        std::vector<int>().swap(degree_);
+    }
+
+    // Run to completion and return the max-flow value (= the min-cut value of
+    // the graph as built). Must be called after finalize().
+    double solve() {
+        parent_.assign(gc_ix(n_), k_gc_arc_none);
+        is_sink_.assign(gc_ix(n_), 0);
+        ts_.assign(gc_ix(n_), 0);
+        dist_.assign(gc_ix(n_), 0);
+        next_.assign(gc_ix(n_), k_gc_no_queue);
+        q_first_[0] = q_last_[0] = q_first_[1] = q_last_[1] = -1;
+        orphans_.clear();
+        time_ = 0;
+
+        // Every node with a live terminal arc is a search-tree root and starts
+        // active; every other node is free.
+        for (int v = 0; v < n_; ++v) {
+            const double t = tr_cap_[gc_ix(v)];
+            if (t > k_gc_eps || t < -k_gc_eps) {
+                is_sink_[gc_ix(v)] = t > k_gc_eps ? 0 : 1;
+                parent_[gc_ix(v)] = k_gc_arc_terminal;
+                dist_[gc_ix(v)] = 1;
+                set_active(v);
+            }
+        }
+
+        int current = -1;
+        while (true) {
+            int i = current;
+            if (i >= 0) {
+                next_[gc_ix(i)] = k_gc_no_queue;
+                if (parent_[gc_ix(i)] == k_gc_arc_none) i = -1;
+            }
+            if (i < 0) {
+                i = next_active();
+                if (i < 0) break;
+            }
+
+            const int middle = grow(i);
+            ++time_;
+
+            if (middle >= 0) {
+                next_[gc_ix(i)] = i;  // keep i active across the augmentation
+                current = i;
+                augment(middle);
+                while (!orphans_.empty()) {
+                    const int o = orphans_.front();
+                    orphans_.pop_front();
+                    if (is_sink_[gc_ix(o)]) process_sink_orphan(o);
+                    else                    process_source_orphan(o);
+                }
+            } else {
+                current = -1;
+            }
+        }
+        return flow_;
+    }
+
+    // Source side of the inclusion-minimal minimum cut: the nodes reachable
+    // from S in the final residual graph. Minimum cuts form a lattice closed
+    // under intersection, so this set is exactly the intersection of every
+    // optimal labelling's source side -- independent of which maximum flow the
+    // solver happened to find, and hence reproducible.
+    std::vector<char> source_side() const {
+        std::vector<char> in_s(gc_ix(n_), 0);
+        std::vector<int> stack;
+        for (int v = 0; v < n_; ++v)
+            if (tr_cap_[gc_ix(v)] > k_gc_eps) {
+                in_s[gc_ix(v)] = 1;
+                stack.push_back(v);
+            }
+        while (!stack.empty()) {
+            const int v = stack.back();
+            stack.pop_back();
+            for (int a = first_[gc_ix(v)]; a < first_[gc_ix(v + 1)]; ++a) {
+                if (!(arc_cap_[gc_ix(a)] > k_gc_eps)) continue;
+                const int u = arc_head_[gc_ix(a)];
+                if (in_s[gc_ix(u)]) continue;
+                in_s[gc_ix(u)] = 1;
+                stack.push_back(u);
+            }
+        }
+        return in_s;
+    }
+
+private:
+    void set_active(int v) {
+        if (next_[gc_ix(v)] != k_gc_no_queue) return;  // already queued
+        if (q_last_[1] >= 0) next_[gc_ix(q_last_[1])] = v;
+        else                 q_first_[1] = v;
+        q_last_[1] = v;
+        next_[gc_ix(v)] = v;  // tail marker
+    }
+
+    // Drain queue 0, swapping queue 1 into it when it runs dry. A queued node
+    // whose parent link has since been destroyed is skipped.
+    int next_active() {
+        while (true) {
+            int i = q_first_[0];
+            if (i < 0) {
+                q_first_[0] = i = q_first_[1];
+                q_last_[0] = q_last_[1];
+                q_first_[1] = -1;
+                q_last_[1] = -1;
+                if (i < 0) return -1;
+            }
+            if (next_[gc_ix(i)] == i) { q_first_[0] = -1; q_last_[0] = -1; }
+            else                        q_first_[0] = next_[gc_ix(i)];
+            next_[gc_ix(i)] = k_gc_no_queue;
+            if (parent_[gc_ix(i)] != k_gc_arc_none) return i;
+        }
+    }
+
+    void add_orphan_front(int v) { parent_[gc_ix(v)] = k_gc_arc_orphan; orphans_.push_front(v); }
+    void add_orphan_back(int v)  { parent_[gc_ix(v)] = k_gc_arc_orphan; orphans_.push_back(v); }
+
+    // STAGE 1: grow i's search tree along arcs that still have residual
+    // capacity, adopting free neighbours and shortening the distance labels of
+    // stale ones. Returns the arc that first touches the opposite tree -- always
+    // oriented source-side -> sink-side -- or -1 if the tree could not grow.
+    int grow(int i) {
+        const int a_begin = first_[gc_ix(i)];
+        const int a_end = first_[gc_ix(i + 1)];
+        if (!is_sink_[gc_ix(i)]) {
+            for (int a = a_begin; a < a_end; ++a) {
+                if (!(arc_cap_[gc_ix(a)] > k_gc_eps)) continue;
+                const int j = arc_head_[gc_ix(a)];
+                if (parent_[gc_ix(j)] == k_gc_arc_none) {
+                    is_sink_[gc_ix(j)] = 0;
+                    adopt(j, sister_[gc_ix(a)], i);
+                    set_active(j);
+                } else if (is_sink_[gc_ix(j)]) {
+                    return a;
+                } else if (ts_[gc_ix(j)] <= ts_[gc_ix(i)] && dist_[gc_ix(j)] > dist_[gc_ix(i)]) {
+                    adopt(j, sister_[gc_ix(a)], i);
+                }
+            }
+        } else {
+            for (int a = a_begin; a < a_end; ++a) {
+                // In the sink tree flow runs j -> i, so the capacity that
+                // matters lives on the reverse arc.
+                const int s = sister_[gc_ix(a)];
+                if (!(arc_cap_[gc_ix(s)] > k_gc_eps)) continue;
+                const int j = arc_head_[gc_ix(a)];
+                if (parent_[gc_ix(j)] == k_gc_arc_none) {
+                    is_sink_[gc_ix(j)] = 1;
+                    adopt(j, s, i);
+                    set_active(j);
+                } else if (!is_sink_[gc_ix(j)]) {
+                    return s;  // flip: the returned arc must run source -> sink
+                } else if (ts_[gc_ix(j)] <= ts_[gc_ix(i)] && dist_[gc_ix(j)] > dist_[gc_ix(i)]) {
+                    adopt(j, s, i);
+                }
+            }
+        }
+        return -1;
+    }
+
+    // Hang j off i via the arc j -> i, inheriting i's timestamp.
+    void adopt(int j, int arc_to_parent, int i) {
+        parent_[gc_ix(j)] = arc_to_parent;
+        ts_[gc_ix(j)] = ts_[gc_ix(i)];
+        dist_[gc_ix(j)] = dist_[gc_ix(i)] + 1;
+    }
+
+    // STAGE 2: push the bottleneck along source-root -> middle -> sink-root and
+    // orphan every node whose parent arc saturates. parent_[v] is the arc from
+    // v to its parent, so in the source tree (where flow runs parent -> v) the
+    // usable capacity is on its sister, and in the sink tree (flow runs v ->
+    // parent) it is on the arc itself.
+    void augment(int middle) {
+        // 2a: bottleneck up the source tree.
+        double b = arc_cap_[gc_ix(middle)];
+        int i = arc_head_[gc_ix(sister_[gc_ix(middle)])];
+        while (true) {
+            const int a = parent_[gc_ix(i)];
+            if (a == k_gc_arc_terminal) break;
+            b = std::min(b, arc_cap_[gc_ix(sister_[gc_ix(a)])]);
+            i = arc_head_[gc_ix(a)];
+        }
+        b = std::min(b, tr_cap_[gc_ix(i)]);
+
+        // 2b: bottleneck down the sink tree.
+        int j = arc_head_[gc_ix(middle)];
+        while (true) {
+            const int a = parent_[gc_ix(j)];
+            if (a == k_gc_arc_terminal) break;
+            b = std::min(b, arc_cap_[gc_ix(a)]);
+            j = arc_head_[gc_ix(a)];
+        }
+        b = std::min(b, -tr_cap_[gc_ix(j)]);
+
+        arc_cap_[gc_ix(sister_[gc_ix(middle)])] += b;
+        arc_cap_[gc_ix(middle)] -= b;
+
+        i = arc_head_[gc_ix(sister_[gc_ix(middle)])];
+        while (true) {
+            const int a = parent_[gc_ix(i)];
+            if (a == k_gc_arc_terminal) break;
+            const int s = sister_[gc_ix(a)];
+            arc_cap_[gc_ix(a)] += b;
+            arc_cap_[gc_ix(s)] -= b;
+            const int nxt = arc_head_[gc_ix(a)];
+            if (!(arc_cap_[gc_ix(s)] > k_gc_eps)) add_orphan_front(i);
+            i = nxt;
+        }
+        tr_cap_[gc_ix(i)] -= b;
+        if (!(tr_cap_[gc_ix(i)] > k_gc_eps)) add_orphan_front(i);
+
+        j = arc_head_[gc_ix(middle)];
+        while (true) {
+            const int a = parent_[gc_ix(j)];
+            if (a == k_gc_arc_terminal) break;
+            const int s = sister_[gc_ix(a)];
+            arc_cap_[gc_ix(s)] += b;
+            arc_cap_[gc_ix(a)] -= b;
+            const int nxt = arc_head_[gc_ix(a)];
+            if (!(arc_cap_[gc_ix(a)] > k_gc_eps)) add_orphan_front(j);
+            j = nxt;
+        }
+        tr_cap_[gc_ix(j)] += b;
+        if (!(tr_cap_[gc_ix(j)] < -k_gc_eps)) add_orphan_front(j);
+
+        flow_ += b;
+    }
+
+    // Walk start up to its tree root, returning the hop count, or -1 if the
+    // walk hits an orphan or a free node (start is not rooted this pass).
+    // Stamps the current time onto every terminal-rooted node it reaches.
+    int origin_dist(int start) {
+        int d = 0;
+        int j = start;
+        while (true) {
+            if (ts_[gc_ix(j)] == time_) return d + dist_[gc_ix(j)];
+            const int a = parent_[gc_ix(j)];
+            ++d;
+            if (a == k_gc_arc_terminal) {
+                ts_[gc_ix(j)] = time_;
+                dist_[gc_ix(j)] = 1;
+                return d;
+            }
+            if (a == k_gc_arc_orphan || a == k_gc_arc_none) return -1;
+            j = arc_head_[gc_ix(a)];
+        }
+    }
+
+    // Stamp the freshly measured distances back down the path origin_dist()
+    // just walked. The ts_ guard is what keeps parent_[k] from ever being a
+    // sentinel here: origin_dist() stamped every node on the path first.
+    void relabel_path(int a0, int d) {
+        int k = arc_head_[gc_ix(a0)];
+        int dd = d;
+        while (ts_[gc_ix(k)] != time_) {
+            ts_[gc_ix(k)] = time_;
+            dist_[gc_ix(k)] = dd--;
+            k = arc_head_[gc_ix(parent_[gc_ix(k)])];
+        }
+    }
+
+    // STAGE 3a: re-parent a source-tree orphan onto the closest still-rooted
+    // source neighbour; failing that, free it and orphan its own children.
+    void process_source_orphan(int i) {
+        int best_arc = -1;
+        int d_min = 0;
+        for (int a0 = first_[gc_ix(i)]; a0 < first_[gc_ix(i + 1)]; ++a0) {
+            if (!(arc_cap_[gc_ix(sister_[gc_ix(a0)])] > k_gc_eps)) continue;
+            const int j = arc_head_[gc_ix(a0)];
+            if (is_sink_[gc_ix(j)]) continue;
+            const int pj = parent_[gc_ix(j)];
+            if (pj == k_gc_arc_none || pj == k_gc_arc_orphan) continue;
+            const int d = origin_dist(j);
+            if (d < 0) continue;
+            if (best_arc < 0 || d < d_min) { best_arc = a0; d_min = d; }
+            relabel_path(a0, d);
+        }
+
+        parent_[gc_ix(i)] = best_arc >= 0 ? best_arc : k_gc_arc_none;
+        if (best_arc >= 0) {
+            ts_[gc_ix(i)] = time_;
+            dist_[gc_ix(i)] = d_min + 1;
+            return;
+        }
+
+        ts_[gc_ix(i)] = 0;  // i is free now; drop its stale timestamp
+        for (int a0 = first_[gc_ix(i)]; a0 < first_[gc_ix(i + 1)]; ++a0) {
+            const int j = arc_head_[gc_ix(a0)];
+            if (is_sink_[gc_ix(j)]) continue;
+            const int pj = parent_[gc_ix(j)];
+            if (pj == k_gc_arc_none) continue;
+            if (arc_cap_[gc_ix(sister_[gc_ix(a0)])] > k_gc_eps) set_active(j);
+            if (pj != k_gc_arc_terminal && pj != k_gc_arc_orphan && arc_head_[gc_ix(pj)] == i)
+                add_orphan_back(j);
+        }
+    }
+
+    // STAGE 3b: the mirror image of 3a for the sink tree -- the residual test
+    // uses the arc itself instead of its sister, and the tree membership test
+    // flips.
+    void process_sink_orphan(int i) {
+        int best_arc = -1;
+        int d_min = 0;
+        for (int a0 = first_[gc_ix(i)]; a0 < first_[gc_ix(i + 1)]; ++a0) {
+            if (!(arc_cap_[gc_ix(a0)] > k_gc_eps)) continue;
+            const int j = arc_head_[gc_ix(a0)];
+            if (!is_sink_[gc_ix(j)]) continue;
+            const int pj = parent_[gc_ix(j)];
+            if (pj == k_gc_arc_none || pj == k_gc_arc_orphan) continue;
+            const int d = origin_dist(j);
+            if (d < 0) continue;
+            if (best_arc < 0 || d < d_min) { best_arc = a0; d_min = d; }
+            relabel_path(a0, d);
+        }
+
+        parent_[gc_ix(i)] = best_arc >= 0 ? best_arc : k_gc_arc_none;
+        if (best_arc >= 0) {
+            ts_[gc_ix(i)] = time_;
+            dist_[gc_ix(i)] = d_min + 1;
+            return;
+        }
+
+        ts_[gc_ix(i)] = 0;
+        for (int a0 = first_[gc_ix(i)]; a0 < first_[gc_ix(i + 1)]; ++a0) {
+            const int j = arc_head_[gc_ix(a0)];
+            if (!is_sink_[gc_ix(j)]) continue;
+            const int pj = parent_[gc_ix(j)];
+            if (pj == k_gc_arc_none) continue;
+            if (arc_cap_[gc_ix(a0)] > k_gc_eps) set_active(j);
+            if (pj != k_gc_arc_terminal && pj != k_gc_arc_orphan && arc_head_[gc_ix(pj)] == i)
+                add_orphan_back(j);
+        }
+    }
+
+    int n_ = 0;
+    double flow_ = 0.0;
+    std::vector<double> tr_cap_;
+    std::vector<int> degree_;
+    std::vector<int> edge_p_, edge_q_;
+    std::vector<double> edge_w_;
+    std::vector<int> first_, arc_head_, sister_;
+    std::vector<double> arc_cap_;
+    std::vector<int> parent_, ts_, dist_, next_;
+    std::vector<char> is_sink_;
+    std::deque<int> orphans_;
+    int q_first_[2] = {-1, -1};
+    int q_last_[2] = {-1, -1};
+    int time_ = 0;
+};
+
+// Flatten an image to one double per pixel. Deliberately stricter than this
+// module's usual `channels > 1 ? rgb2gray(img) : img`: rgb2gray() reads
+// channels 0, 1 and 2 unconditionally, which would run past the end of a
+// 2-channel image, so only `channels >= 3` goes through it and everything else
+// takes channel 0. Returns {} for an empty or malformed image.
+std::vector<double> gc_gray_plane(const Image& img) {
+    if (img.empty() || img.rows <= 0 || img.cols <= 0 || img.channels <= 0) return {};
+    const std::size_t n = gc_ix(img.rows) * gc_ix(img.cols);
+    if (img.data.size() < n * gc_ix(img.channels)) return {};
+
+    std::vector<double> out(n, 0.0);
+    if (img.channels >= 3) {
+        const Image g = rgb2gray(img);
+        for (std::size_t i = 0; i < n; ++i) out[i] = static_cast<double>(g.data[i]);
+    } else {
+        for (std::size_t i = 0; i < n; ++i)
+            out[i] = static_cast<double>(img.data[i * gc_ix(img.channels)]);
+    }
+    return out;
+}
+
+// Deterministic 1-D 2-means (Lloyd) split, initialised at the extremes. A
+// uniform input leaves both centres equal, which is what makes an unseeded
+// uniform image score every pixel identically.
+void gc_two_means(const std::vector<double>& v, double& mu_lo, double& mu_hi) {
+    double a = v[0], b = v[0];
+    for (const double x : v) { a = std::min(a, x); b = std::max(b, x); }
+
+    for (int it = 0; it < k_gc_two_means_iters; ++it) {
+        const double mid = 0.5 * (a + b);
+        double sa = 0.0, sb = 0.0;
+        int na = 0, nb = 0;
+        for (const double x : v) {
+            if (x <= mid) { sa += x; ++na; }
+            else          { sb += x; ++nb; }
+        }
+        const double na_mean = na > 0 ? sa / static_cast<double>(na) : a;
+        const double nb_mean = nb > 0 ? sb / static_cast<double>(nb) : b;
+        const double move = std::max(std::abs(na_mean - a), std::abs(nb_mean - b));
+        a = na_mean;
+        b = nb_mean;
+        if (move < k_gc_two_means_tol) break;
+    }
+    mu_lo = std::min(a, b);
+    mu_hi = std::max(a, b);
+}
+
+struct GcEdge { int p, q; double w; };
+
+// Contrast-sensitive Potts n-links, enumerated with forward-only offsets so
+// each undirected pair is created exactly once. Also returns the Boykov-Jolly
+// hard-constraint capacity K = 1 + max over p of the incident weight sum:
+// moving a hard-foreground pixel to the sink side saves K and costs at most
+// K - 1, so violating a seed is never optimal.
+void gc_build_edges(const std::vector<double>& I, int R, int C, double lambda, double sigma,
+                    int connectivity, std::vector<GcEdge>& edges, double& K) {
+    const double lam = lambda > 0.0 ? lambda : 0.0;
+    const int n_off = connectivity == 8 ? 4 : 2;
+    const int dr[4] = {0, 1, 1, 1};
+    const int dc[4] = {1, 0, 1, -1};
+    const double inv_dist[4] = {1.0, 1.0, 1.0 / std::sqrt(2.0), 1.0 / std::sqrt(2.0)};
+    const double denom = sigma > 0.0 ? 2.0 * sigma * sigma : 0.0;
+
+    edges.clear();
+    std::vector<double> wsum(gc_ix(R) * gc_ix(C), 0.0);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            const int p = r * C + c;
+            for (int k = 0; k < n_off; ++k) {
+                const int nr = r + dr[k], nc = c + dc[k];
+                if (nr < 0 || nr >= R || nc < 0 || nc >= C) continue;
+                const int q = nr * C + nc;
+                const double d = I[gc_ix(p)] - I[gc_ix(q)];
+                // sigma <= 0 takes the exact limit: a hard Potts term that only
+                // links neighbours of exactly equal intensity.
+                const double w = denom > 0.0
+                                     ? lam * std::exp(-(d * d) / denom) * inv_dist[k]
+                                     : (d == 0.0 ? lam * inv_dist[k] : 0.0);
+                if (!(w > k_gc_eps)) continue;
+                edges.push_back({p, q, w});
+                wsum[gc_ix(p)] += w;
+                wsum[gc_ix(q)] += w;
+            }
+        }
+
+    double max_wsum = 0.0;
+    for (const double x : wsum) max_wsum = std::max(max_wsum, x);
+    K = 1.0 + max_wsum;
+}
+
+// Shared pipeline behind graph_cut_segment() and min_cut_value(), so the two
+// entry points cannot drift apart: they must agree on the means, the hard
+// constraints, the n-links and the reparametrisation.
+struct GcSolution {
+    std::vector<char> foreground;
+    double energy = 0.0;
+    bool ok = false;
+};
+
+GcSolution gc_run(const Image& gray, const Image& fg_seeds, const Image& bg_seeds,
+                  double lambda, double sigma, int connectivity) {
+    GcSolution sol;
+    if (gray.empty() || gray.rows <= 0 || gray.cols <= 0) return sol;
+    if (gc_ix(gray.rows) * gc_ix(gray.cols) > k_gc_max_pixels) return sol;
+    if (!fg_seeds.empty() && (fg_seeds.rows != gray.rows || fg_seeds.cols != gray.cols)) return sol;
+    if (!bg_seeds.empty() && (bg_seeds.rows != gray.rows || bg_seeds.cols != gray.cols)) return sol;
+
+    const std::vector<double> I = gc_gray_plane(gray);
+    if (I.empty()) return sol;
+    const std::vector<double> F = gc_gray_plane(fg_seeds);
+    const std::vector<double> B = gc_gray_plane(bg_seeds);
+
+    const int R = gray.rows, C = gray.cols;
+    const int N = R * C;
+
+    // Seed classification; a pixel marked in both masks is foreground.
+    std::vector<char> is_fg(gc_ix(N), 0), is_bg(gc_ix(N), 0);
+    int n_fg = 0, n_bg = 0;
+    for (int i = 0; i < N; ++i) {
+        if (!F.empty() && F[gc_ix(i)] >= 0.5) { is_fg[gc_ix(i)] = 1; ++n_fg; }
+        else if (!B.empty() && B[gc_ix(i)] >= 0.5) { is_bg[gc_ix(i)] = 1; ++n_bg; }
+    }
+
+    double mu_fg = 0.0, mu_bg = 0.0;
+    if (n_fg > 0 && n_bg > 0) {
+        double sf = 0.0, sb = 0.0;
+        for (int i = 0; i < N; ++i) {
+            if (is_fg[gc_ix(i)]) sf += I[gc_ix(i)];
+            else if (is_bg[gc_ix(i)]) sb += I[gc_ix(i)];
+        }
+        mu_fg = sf / static_cast<double>(n_fg);
+        mu_bg = sb / static_cast<double>(n_bg);
+    } else if (n_fg > 0) {
+        // Only foreground seeded: the background mean is taken over everything
+        // the foreground mask does not cover.
+        double sf = 0.0, so = 0.0;
+        int n_other = 0;
+        for (int i = 0; i < N; ++i) {
+            if (is_fg[gc_ix(i)]) sf += I[gc_ix(i)];
+            else { so += I[gc_ix(i)]; ++n_other; }
+        }
+        mu_fg = sf / static_cast<double>(n_fg);
+        mu_bg = n_other > 0 ? so / static_cast<double>(n_other) : mu_fg;
+    } else if (n_bg > 0) {
+        double sb = 0.0, so = 0.0;
+        int n_other = 0;
+        for (int i = 0; i < N; ++i) {
+            if (is_bg[gc_ix(i)]) sb += I[gc_ix(i)];
+            else { so += I[gc_ix(i)]; ++n_other; }
+        }
+        mu_bg = sb / static_cast<double>(n_bg);
+        mu_fg = n_other > 0 ? so / static_cast<double>(n_other) : mu_bg;
+    } else {
+        gc_two_means(I, mu_bg, mu_fg);
+    }
+
+    std::vector<GcEdge> edges;
+    double K = 0.0;
+    gc_build_edges(I, R, C, lambda, sigma, connectivity, edges, K);
+
+    GcMaxFlow g(N, static_cast<int>(edges.size()));
+
+    // Reparametrise so both terminal capacities are non-negative and one of
+    // them is zero: subtracting m = min(D_fg, D_bg) from both shifts E by the
+    // constant offset for every labelling, so the argmin is unchanged. An arc
+    // S->p is severed when p lands on the sink side, so its capacity is the
+    // price of calling p background, i.e. D_bg.
+    double offset = 0.0;
+    for (int i = 0; i < N; ++i) {
+        double d_fg = 0.0, d_bg = 0.0;
+        if (is_fg[gc_ix(i)]) { d_fg = 0.0; d_bg = K; }
+        else if (is_bg[gc_ix(i)]) { d_fg = K; d_bg = 0.0; }
+        else {
+            const double x = I[gc_ix(i)];
+            d_fg = (x - mu_fg) * (x - mu_fg);
+            d_bg = (x - mu_bg) * (x - mu_bg);
+        }
+        const double m = std::min(d_fg, d_bg);
+        offset += m;
+        g.add_terminal(i, d_bg - m, d_fg - m);
+    }
+    for (const GcEdge& e : edges) g.add_edge(e.p, e.q, e.w);
+
+    g.finalize();
+    const double flow = g.solve();
+
+    sol.foreground = g.source_side();
+    sol.energy = offset + flow;
+    sol.ok = true;
+    return sol;
+}
+
+// A 1-D Gaussian mixture over intensities, fitted by hard assignment.
+struct GcMixture {
+    std::vector<double> pi, mu, var;
+
+    double density(double x) const {
+        double p = 0.0;
+        for (std::size_t j = 0; j < pi.size(); ++j) {
+            if (pi[j] <= 0.0) continue;  // component collected no pixels
+            const double d = x - mu[j];
+            p += pi[j] * std::exp(-(d * d) / (2.0 * var[j])) / std::sqrt(2.0 * M_PI * var[j]);
+        }
+        return p;
+    }
+};
+
+// Deterministic 1-D mixture fit: Lloyd k-means seeded at the sorted sample's
+// (j + 0.5)/K quantiles, then Gaussian moments per cluster. No random
+// restarts, so repeated GrabCut calls give bit-identical results.
+GcMixture gc_fit_mixture(std::vector<double> vals, int n_components) {
+    GcMixture mix;
+    if (vals.empty()) return mix;
+
+    std::sort(vals.begin(), vals.end());
+    const int n = static_cast<int>(vals.size());
+    int K = std::min(std::max(n_components, 1), k_gc_max_components);
+    K = std::min(K, n);
+
+    std::vector<double> mu(gc_ix(K), 0.0);
+    for (int j = 0; j < K; ++j) {
+        const long long q = (2LL * j + 1) * static_cast<long long>(n) / (2LL * K);
+        const int idx = std::min(std::max(static_cast<int>(q), 0), n - 1);
+        mu[gc_ix(j)] = vals[gc_ix(idx)];
+    }
+
+    std::vector<int> assign(gc_ix(n), -1);
+    for (int it = 0; it < k_gc_kmeans_iters; ++it) {
+        bool changed = false;
+        for (int i = 0; i < n; ++i) {
+            int best = 0;
+            double best_d = std::abs(vals[gc_ix(i)] - mu[0]);
+            for (int j = 1; j < K; ++j) {
+                const double d = std::abs(vals[gc_ix(i)] - mu[gc_ix(j)]);
+                if (d < best_d) { best_d = d; best = j; }  // ties keep the lowest index
+            }
+            if (assign[gc_ix(i)] != best) { assign[gc_ix(i)] = best; changed = true; }
+        }
+        std::vector<double> sum(gc_ix(K), 0.0);
+        std::vector<int> count(gc_ix(K), 0);
+        for (int i = 0; i < n; ++i) {
+            const int j = assign[gc_ix(i)];
+            sum[gc_ix(j)] += vals[gc_ix(i)];
+            ++count[gc_ix(j)];
+        }
+        for (int j = 0; j < K; ++j)
+            if (count[gc_ix(j)] > 0)
+                mu[gc_ix(j)] = sum[gc_ix(j)] / static_cast<double>(count[gc_ix(j)]);
+        if (!changed) break;
+    }
+
+    std::vector<double> sq(gc_ix(K), 0.0);
+    std::vector<int> count(gc_ix(K), 0);
+    for (int i = 0; i < n; ++i) {
+        const int j = assign[gc_ix(i)];
+        const double d = vals[gc_ix(i)] - mu[gc_ix(j)];
+        sq[gc_ix(j)] += d * d;
+        ++count[gc_ix(j)];
+    }
+
+    mix.pi.assign(gc_ix(K), 0.0);
+    mix.mu = mu;
+    mix.var.assign(gc_ix(K), k_gc_var_floor);
+    for (int j = 0; j < K; ++j) {
+        if (count[gc_ix(j)] <= 0) continue;
+        const double cnt = static_cast<double>(count[gc_ix(j)]);
+        mix.pi[gc_ix(j)] = cnt / static_cast<double>(n);
+        mix.var[gc_ix(j)] = std::max(sq[gc_ix(j)] / cnt, k_gc_var_floor);
+    }
+    return mix;
+}
+
+} // namespace
+
+Image graph_cut_segment(const Image& gray, const Image& fg_seeds, const Image& bg_seeds,
+                        double lambda, double sigma, int connectivity) {
+    const GcSolution sol = gc_run(gray, fg_seeds, bg_seeds, lambda, sigma, connectivity);
+    if (!sol.ok) return Image{};
+
+    Image out(gray.rows, gray.cols, 1);
+    for (std::size_t i = 0; i < out.data.size(); ++i)
+        out.data[i] = sol.foreground[i] ? 1.f : 0.f;
+    return out;
+}
+
+Image graph_cut_segment(const Image& gray, double lambda, double sigma, int connectivity) {
+    return graph_cut_segment(gray, Image{}, Image{}, lambda, sigma, connectivity);
+}
+
+double min_cut_value(const Image& gray, const Image& fg_seeds, const Image& bg_seeds,
+                     double lambda, double sigma, int connectivity) {
+    const GcSolution sol = gc_run(gray, fg_seeds, bg_seeds, lambda, sigma, connectivity);
+    return sol.ok ? sol.energy : 0.0;
+}
+
+double min_cut_value(const Image& gray, double lambda, double sigma, int connectivity) {
+    return min_cut_value(gray, Image{}, Image{}, lambda, sigma, connectivity);
+}
+
+Image grabcut_segment(const Image& gray, int r0, int c0, int r1, int c1, int iterations,
+                      int n_components, double lambda, double sigma, int connectivity) {
+    if (gray.empty() || gray.rows <= 0 || gray.cols <= 0) return Image{};
+    if (gc_ix(gray.rows) * gc_ix(gray.cols) > k_gc_max_pixels) return Image{};
+
+    const std::vector<double> I = gc_gray_plane(gray);
+    if (I.empty()) return Image{};
+
+    const int R = gray.rows, C = gray.cols;
+    const int N = R * C;
+
+    // Half-open rectangle clamped to the image, matching imcrop().
+    r0 = std::max(0, r0);
+    c0 = std::max(0, c0);
+    r1 = std::min(R, r1);
+    c1 = std::min(C, c1);
+
+    Image out(R, C, 1);
+    if (r1 <= r0 || c1 <= c0) return out;  // empty rectangle: all background
+
+    std::vector<char> inside(gc_ix(N), 0);
+    for (int r = r0; r < r1; ++r)
+        for (int c = c0; c < c1; ++c) inside[gc_ix(r * C + c)] = 1;
+
+    // The intensities never change, so the n-links and K are built once and
+    // reused for every pass.
+    std::vector<GcEdge> edges;
+    double K = 0.0;
+    gc_build_edges(I, R, C, lambda, sigma, connectivity, edges, K);
+
+    std::vector<char> lab(inside);
+    const int iters = std::max(1, iterations);
+    for (int it = 0; it < iters; ++it) {
+        std::vector<double> vals_fg, vals_bg;
+        vals_fg.reserve(gc_ix(N));
+        vals_bg.reserve(gc_ix(N));
+        for (int i = 0; i < N; ++i) {
+            if (lab[gc_ix(i)]) vals_fg.push_back(I[gc_ix(i)]);
+            else               vals_bg.push_back(I[gc_ix(i)]);
+        }
+        if (vals_fg.empty() || vals_bg.empty()) break;  // no model left to fit
+
+        const GcMixture mix_fg = gc_fit_mixture(vals_fg, n_components);
+        const GcMixture mix_bg = gc_fit_mixture(vals_bg, n_components);
+
+        GcMaxFlow g(N, static_cast<int>(edges.size()));
+        for (int i = 0; i < N; ++i) {
+            double d_fg = 0.0, d_bg = 0.0;
+            if (!inside[gc_ix(i)]) {
+                d_fg = K;  // hard background outside the rectangle
+                d_bg = 0.0;
+            } else {
+                const double x = I[gc_ix(i)];
+                d_fg = -std::log(std::max(mix_fg.density(x), k_gc_min_density));
+                d_bg = -std::log(std::max(mix_bg.density(x), k_gc_min_density));
+            }
+            const double m = std::min(d_fg, d_bg);
+            g.add_terminal(i, d_bg - m, d_fg - m);
+        }
+        for (const GcEdge& e : edges) g.add_edge(e.p, e.q, e.w);
+
+        g.finalize();
+        (void)g.solve();  // only the cut is wanted here, not its value
+        const std::vector<char> s = g.source_side();
+
+        bool changed = false;
+        for (int i = 0; i < N; ++i) {
+            const char next_lab = (inside[gc_ix(i)] && s[gc_ix(i)]) ? 1 : 0;
+            if (next_lab != lab[gc_ix(i)]) changed = true;
+            lab[gc_ix(i)] = next_lab;
+        }
+        if (!changed) break;  // converged
+    }
+
+    for (int i = 0; i < N; ++i) out.data[gc_ix(i)] = lab[gc_ix(i)] ? 1.f : 0.f;
     return out;
 }
 
@@ -2043,6 +2984,1064 @@ int count_components(const Image& bw) {
     int mx=-1;
     for (auto& row:labels) for (int v:row) mx=std::max(mx,v);
     return mx+1;
+}
+
+// ========================== Local Features (FAST / ORB / SIFT) ==========================
+
+namespace {
+
+// Grayscale view used by every feature detector below. Unlike the module's
+// usual `img.channels > 1 ? rgb2gray(img) : img` idiom this is safe for
+// 2-channel images (rgb2gray would read channel 2 out of bounds).
+Image feature_gray(const Image& img) {
+    if (img.empty() || img.rows <= 0 || img.cols <= 0 || img.channels <= 0) {
+        return Image{};
+    }
+    if (img.channels == 1) {
+        return img;
+    }
+    if (img.channels >= 3) {
+        return rgb2gray(img);
+    }
+    Image g(img.rows, img.cols, 1);
+    for (int r = 0; r < img.rows; ++r) {
+        for (int c = 0; c < img.cols; ++c) {
+            g.at(r, c, 0) = img.at(r, c, 0);
+        }
+    }
+    return g;
+}
+
+// ---------------------------------- FAST-9 ----------------------------------
+
+constexpr int k_fast_ring     = 16;  // pixels on the Bresenham circle
+constexpr int k_fast_arc      = 9;   // FAST-9: minimum contiguous arc length
+constexpr int k_fast_border   = 3;   // circle radius
+
+// The 16 circle offsets as {dcol, drow}. Index 0 is the pixel directly above
+// the centre and the ring proceeds clockwise on screen, so antipodal pairs are
+// (k, k + 8) and all index arithmetic is done modulo 16.
+constexpr int k_fast_circle[k_fast_ring][2] = {
+    { 0, -3}, { 1, -3}, { 2, -2}, { 3, -1},
+    { 3,  0}, { 3,  1}, { 2,  2}, { 1,  3},
+    { 0,  3}, {-1,  3}, {-2,  2}, {-3,  1},
+    {-3,  0}, {-3, -1}, {-2, -2}, {-1, -3}
+};
+
+// Length of the longest circular run of `true` in f. `start_out` receives the
+// smallest start index achieving that length, which is well defined: a proper
+// sub-run can never tie its parent run's length, so the smallest achieving
+// start is always a genuine run start (or 0 when all 16 entries are true).
+int fast_longest_run(const std::array<bool, k_fast_ring>& f, int& start_out) {
+    int best = 0;
+    start_out = 0;
+    for (int s = 0; s < k_fast_ring; ++s) {
+        int n = 0;
+        while (n < k_fast_ring && f[static_cast<std::size_t>((s + n) & 15)]) {
+            ++n;
+        }
+        if (n > best) {
+            best = n;
+            start_out = s;
+        }
+    }
+    return best;
+}
+
+// Shared FAST-9 core. `g` must be single channel. `border` is the number of
+// untestable frame pixels; ORB passes its larger descriptor-patch border so
+// that no keypoint it keeps can sit closer than 16 px to an edge. Corners come
+// back in raster order.
+std::vector<KeyPoint> fast_corners_impl(const Image& g, float threshold,
+                                        int border, bool nonmax) {
+    std::vector<KeyPoint> out;
+    if (g.empty() || g.rows <= 0 || g.cols <= 0 || g.channels < 1) {
+        return out;
+    }
+    const int b = std::max(border, k_fast_border);
+    if (g.rows < 2 * b + 1 || g.cols < 2 * b + 1) {
+        return out;
+    }
+    const float t = std::max(threshold, 0.f);
+
+    // Pass 1: arc score for every testable pixel, 0 where no arc reaches 9.
+    Image score(g.rows, g.cols, 1, 0.f);
+    for (int r = b; r < g.rows - b; ++r) {
+        for (int c = b; c < g.cols - b; ++c) {
+            const float ip = g.at(r, c, 0);
+            std::array<float, k_fast_ring> v{};
+            std::array<bool, k_fast_ring> bright{};
+            std::array<bool, k_fast_ring> dark{};
+            for (int k = 0; k < k_fast_ring; ++k) {
+                const std::size_t uk = static_cast<std::size_t>(k);
+                const float pv = g.at(r + k_fast_circle[uk][1], c + k_fast_circle[uk][0], 0);
+                v[uk] = pv;
+                bright[uk] = (pv - ip) > t;
+                dark[uk] = (ip - pv) > t;
+            }
+            int sb = 0;
+            int sd = 0;
+            const int lb = fast_longest_run(bright, sb);
+            const int ld = fast_longest_run(dark, sd);
+            float vb = 0.f;
+            float vd = 0.f;
+            if (lb >= k_fast_arc) {
+                for (int n = 0; n < lb; ++n) {
+                    const std::size_t k = static_cast<std::size_t>((sb + n) & 15);
+                    vb += (v[k] - ip) - t;
+                }
+            }
+            if (ld >= k_fast_arc) {
+                for (int n = 0; n < ld; ++n) {
+                    const std::size_t k = static_cast<std::size_t>((sd + n) & 15);
+                    vd += (ip - v[k]) - t;
+                }
+            }
+            score.at(r, c, 0) = std::max(vb, vd);
+        }
+    }
+
+    // Pass 2: collect in raster order, optionally keeping 3x3 maxima only.
+    for (int r = b; r < g.rows - b; ++r) {
+        for (int c = b; c < g.cols - b; ++c) {
+            const float v = score.at(r, c, 0);
+            if (v <= 0.f) {
+                continue;
+            }
+            if (nonmax) {
+                bool keep = true;
+                for (int dr = -1; dr <= 1 && keep; ++dr) {
+                    for (int dc = -1; dc <= 1 && keep; ++dc) {
+                        if (dr == 0 && dc == 0) {
+                            continue;
+                        }
+                        const int nr = r + dr;
+                        const int nc = c + dc;
+                        const bool inside = nr >= 0 && nr < g.rows && nc >= 0 && nc < g.cols;
+                        const float vn = inside ? score.at(nr, nc, 0) : 0.f;
+                        if (vn > v) {
+                            keep = false;
+                        } else if (vn == v && (nr < r || (nr == r && nc < c))) {
+                            keep = false;  // earlier in raster order wins the tie
+                        }
+                    }
+                }
+                if (!keep) {
+                    continue;
+                }
+            }
+            out.push_back(KeyPoint{static_cast<float>(c), static_cast<float>(r), v});
+        }
+    }
+    return out;
+}
+
+// ----------------------------------- ORB ------------------------------------
+
+constexpr int    k_orb_patch_half      = 15;   // 31x31 orientation patch
+constexpr int    k_orb_border          = 16;   // patch half + 1
+constexpr int    k_orb_min_side        = 2 * k_orb_border + 1;  // 33
+constexpr int    k_orb_max_levels      = 16;
+constexpr int    k_orb_pairs           = 256;
+constexpr float  k_orb_desc_blur_sigma = 1.0f;  // -> 7-tap kernel, ORB's 7x7
+constexpr double k_orb_pyr_blur        = 0.5;   // anti-alias sigma coefficient
+constexpr double k_orb_pattern_sigma   = 6.2;   // = 31 / 5 (Calonder G-II)
+constexpr std::uint64_t k_orb_pattern_seed = 0x9E3779B97F4A7C15ull;
+
+// Row extents of the radius-15 disc: k_orb_umax[|dy|] = floor(sqrt(225 - dy*dy)).
+// The patch therefore holds 31 + 2 * sum(2*u + 1) = 709 pixels.
+constexpr int k_orb_umax[16] = {15, 14, 14, 14, 14, 14, 13, 13, 12, 12, 11, 10, 9, 7, 5, 0};
+
+// SplitMix64: a 64-bit integer PRNG with no platform-dependent state. Used only
+// to build the rBRIEF sampling pattern, and only through operations that are
+// exact in IEEE-754 double, so the table is bit-identical everywhere.
+struct SplitMix64 {
+    std::uint64_t state = 0;
+
+    std::uint64_t next() {
+        state += 0x9E3779B97F4A7C15ull;
+        std::uint64_t z = state;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return z ^ (z >> 31);
+    }
+    // Uniform in the open interval (0, 1): 53 mantissa bits, exactly representable.
+    double next_unit() {
+        return (static_cast<double>(next() >> 11) + 0.5) * (1.0 / 9007199254740992.0);
+    }
+    // Irwin-Hall(12) - 6: mean 0, variance 1, support [-6, 6]. Box-Muller is
+    // deliberately avoided because libm's log/cos are not bit-portable.
+    double next_gauss() {
+        double s = 0.0;
+        for (int i = 0; i < 12; ++i) {
+            s += next_unit();
+        }
+        return s - 6.0;
+    }
+};
+
+// Sort key for FAST corners within one pyramid level: strongest first, then
+// raster order, so truncating to the level's budget is reproducible.
+bool orb_level_stronger(const KeyPoint& a, const KeyPoint& b) {
+    if (a.response != b.response) {
+        return a.response > b.response;
+    }
+    if (a.y != b.y) {
+        return a.y < b.y;
+    }
+    return a.x < b.x;
+}
+
+// Total order over emitted features: strongest first, ties by octave then
+// raster order. Used by both ORB and SIFT so the output is fully reproducible.
+bool feature_stronger(const FeatureKeyPoint& a, const FeatureKeyPoint& b) {
+    if (a.response != b.response) {
+        return a.response > b.response;
+    }
+    if (a.octave != b.octave) {
+        return a.octave < b.octave;
+    }
+    if (a.y != b.y) {
+        return a.y < b.y;
+    }
+    if (a.x != b.x) {
+        return a.x < b.x;
+    }
+    if (a.scale != b.scale) {
+        return a.scale < b.scale;
+    }
+    return a.orientation < b.orientation;
+}
+
+// Intensity-centroid orientation over the 31x31 disc, on the unblurred level.
+// The caller guarantees the patch is fully inside the image (ORB's detector
+// border is 16 = patch half + 1). atan2(+0, +0) is +0, so a perfectly
+// symmetric patch yields orientation exactly 0.
+double orb_patch_orientation(const Image& level, int r, int c) {
+    double m10 = 0.0;
+    double m01 = 0.0;
+    for (int dy = -k_orb_patch_half; dy <= k_orb_patch_half; ++dy) {
+        const int u = k_orb_umax[static_cast<std::size_t>(std::abs(dy))];
+        for (int dx = -u; dx <= u; ++dx) {
+            const double v = static_cast<double>(level.at(r + dy, c + dx, 0));
+            m10 += static_cast<double>(dx) * v;
+            m01 += static_cast<double>(dy) * v;
+        }
+    }
+    return std::atan2(m01, m10);
+}
+
+// Steered BRIEF against the fixed 256-pair pattern, read from a blurred copy
+// of the level. Rotation can push a sample out to radius 15*sqrt(2) ~= 21.2,
+// i.e. up to ~6 px past the detector border, so samples are clamped to the
+// image (replicate, consistent with the rest of this module).
+OrbDescriptor orb_descriptor(const Image& blurred, int r, int c, double theta) {
+    const double ct = std::cos(theta);
+    const double st = std::sin(theta);
+    const std::array<std::array<int, 4>, 256>& pat = orb_sampling_pattern();
+    OrbDescriptor desc{};
+    for (int j = 0; j < k_orb_pairs; ++j) {
+        const std::array<int, 4>& q = pat[static_cast<std::size_t>(j)];
+        const double q0 = static_cast<double>(q[0]);
+        const double q1 = static_cast<double>(q[1]);
+        const double q2 = static_cast<double>(q[2]);
+        const double q3 = static_cast<double>(q[3]);
+        const int x1 = static_cast<int>(std::lround(ct * q0 - st * q1));
+        const int y1 = static_cast<int>(std::lround(st * q0 + ct * q1));
+        const int x2 = static_cast<int>(std::lround(ct * q2 - st * q3));
+        const int y2 = static_cast<int>(std::lround(st * q2 + ct * q3));
+        const int r1 = std::clamp(r + y1, 0, blurred.rows - 1);
+        const int c1 = std::clamp(c + x1, 0, blurred.cols - 1);
+        const int r2 = std::clamp(r + y2, 0, blurred.rows - 1);
+        const int c2 = std::clamp(c + x2, 0, blurred.cols - 1);
+        if (blurred.at(r1, c1, 0) < blurred.at(r2, c2, 0)) {
+            const std::size_t byte = static_cast<std::size_t>(j >> 3);
+            desc[byte] = static_cast<std::uint8_t>(desc[byte] | (1u << (j & 7)));
+        }
+    }
+    return desc;
+}
+
+// ----------------------------- descriptor matching ---------------------------
+
+template <typename Desc, typename DistFn>
+std::vector<DescriptorMatch> match_descriptors_impl(const std::vector<Desc>& query,
+                                                    const std::vector<Desc>& train,
+                                                    float ratio_threshold,
+                                                    bool cross_check,
+                                                    DistFn dist) {
+    std::vector<DescriptorMatch> out;
+    if (query.empty() || train.empty()) {
+        return out;
+    }
+    const float inf = std::numeric_limits<float>::infinity();
+    for (std::size_t i = 0; i < query.size(); ++i) {
+        float d1 = inf;
+        float d2 = inf;
+        std::size_t j1 = 0;
+        bool found = false;
+        for (std::size_t j = 0; j < train.size(); ++j) {
+            const float d = dist(query[i], train[j]);
+            if (d < d1) {
+                d2 = d1;
+                d1 = d;
+                j1 = j;
+                found = true;
+            } else if (d < d2) {
+                d2 = d;
+            }
+        }
+        if (!found) {
+            continue;
+        }
+        // Lowe's ratio test; skipped when there is no second neighbour at all.
+        if (train.size() >= 2u && !(d1 < ratio_threshold * d2)) {
+            continue;
+        }
+        if (cross_check) {
+            float best = inf;
+            std::size_t bi = 0;
+            bool rev = false;
+            for (std::size_t q = 0; q < query.size(); ++q) {
+                const float d = dist(query[q], train[j1]);
+                if (d < best) {
+                    best = d;
+                    bi = q;
+                    rev = true;
+                }
+            }
+            if (!rev || bi != i) {
+                continue;
+            }
+        }
+        DescriptorMatch m;
+        m.query_index = static_cast<int>(i);
+        m.train_index = static_cast<int>(j1);
+        m.distance = d1;
+        out.push_back(m);
+    }
+    return out;
+}
+
+// ----------------------------------- SIFT ------------------------------------
+
+constexpr int    k_sift_border          = 5;     // extrema search margin
+constexpr int    k_sift_max_interp      = 5;     // refinement iterations
+constexpr int    k_sift_min_side        = 16;
+constexpr int    k_sift_max_octaves     = 8;
+constexpr double k_sift_init_sigma      = 0.5;   // assumed blur of the input
+constexpr int    k_sift_ori_bins        = 36;
+constexpr double k_sift_ori_sig_fctr    = 1.5;
+constexpr double k_sift_ori_radius      = 4.5;   // = 3 * k_sift_ori_sig_fctr
+constexpr double k_sift_ori_peak_ratio  = 0.8;
+constexpr int    k_sift_descr_width     = 4;     // d
+constexpr int    k_sift_descr_hist_bins = 8;     // n
+constexpr double k_sift_descr_scl_fctr  = 3.0;
+constexpr float  k_sift_descr_mag_thr   = 0.2f;
+constexpr double k_sift_det_eps         = 1e-12;
+
+// First and second differences of the DoG stack at one sample, in double.
+struct SiftDeriv {
+    double dx = 0.0, dy = 0.0, ds = 0.0;
+    double dxx = 0.0, dyy = 0.0, dss = 0.0;
+    double dxy = 0.0, dxs = 0.0, dys = 0.0;
+};
+
+SiftDeriv sift_derivatives(const Image& a, const Image& b, const Image& c, int lr, int lc) {
+    SiftDeriv d;
+    const double v = static_cast<double>(b.at(lr, lc, 0));
+    d.dx = (static_cast<double>(b.at(lr, lc + 1, 0)) - static_cast<double>(b.at(lr, lc - 1, 0))) * 0.5;
+    d.dy = (static_cast<double>(b.at(lr + 1, lc, 0)) - static_cast<double>(b.at(lr - 1, lc, 0))) * 0.5;
+    d.ds = (static_cast<double>(c.at(lr, lc, 0)) - static_cast<double>(a.at(lr, lc, 0))) * 0.5;
+    const double v2 = 2.0 * v;
+    d.dxx = static_cast<double>(b.at(lr, lc + 1, 0)) + static_cast<double>(b.at(lr, lc - 1, 0)) - v2;
+    d.dyy = static_cast<double>(b.at(lr + 1, lc, 0)) + static_cast<double>(b.at(lr - 1, lc, 0)) - v2;
+    d.dss = static_cast<double>(c.at(lr, lc, 0)) + static_cast<double>(a.at(lr, lc, 0)) - v2;
+    d.dxy = (static_cast<double>(b.at(lr + 1, lc + 1, 0)) - static_cast<double>(b.at(lr + 1, lc - 1, 0))
+           - static_cast<double>(b.at(lr - 1, lc + 1, 0)) + static_cast<double>(b.at(lr - 1, lc - 1, 0))) * 0.25;
+    d.dxs = (static_cast<double>(c.at(lr, lc + 1, 0)) - static_cast<double>(c.at(lr, lc - 1, 0))
+           - static_cast<double>(a.at(lr, lc + 1, 0)) + static_cast<double>(a.at(lr, lc - 1, 0))) * 0.25;
+    d.dys = (static_cast<double>(c.at(lr + 1, lc, 0)) - static_cast<double>(c.at(lr - 1, lc, 0))
+           - static_cast<double>(a.at(lr + 1, lc, 0)) + static_cast<double>(a.at(lr - 1, lc, 0))) * 0.25;
+    return d;
+}
+
+// Lowe's iterative sub-pixel / sub-scale refinement plus the low-contrast and
+// edge-response rejections. On success (lr, lc, li) hold the integer sample the
+// fit converged on and (xc, xr, xi) the fractional offsets from it.
+bool sift_adjust_extremum(const std::vector<Image>& dogs, int layers, int& li, int& lr, int& lc,
+                          double contrast_threshold, double edge_threshold,
+                          double& xc, double& xr, double& xi, double& contr) {
+    xc = 0.0;
+    xr = 0.0;
+    xi = 0.0;
+    contr = 0.0;
+    for (int iter = 0; iter < k_sift_max_interp; ++iter) {
+        const Image& a = dogs[static_cast<std::size_t>(li - 1)];
+        const Image& b = dogs[static_cast<std::size_t>(li)];
+        const Image& c = dogs[static_cast<std::size_t>(li + 1)];
+        const SiftDeriv d = sift_derivatives(a, b, c, lr, lc);
+
+        const double det = d.dxx * (d.dyy * d.dss - d.dys * d.dys)
+                         - d.dxy * (d.dxy * d.dss - d.dys * d.dxs)
+                         + d.dxs * (d.dxy * d.dys - d.dyy * d.dxs);
+        if (std::abs(det) < k_sift_det_eps) {
+            return false;  // singular Hessian: a ridge, a plateau or a step edge
+        }
+        const double x0 = (d.dx * (d.dyy * d.dss - d.dys * d.dys)
+                         - d.dxy * (d.dy * d.dss - d.dys * d.ds)
+                         + d.dxs * (d.dy * d.dys - d.dyy * d.ds)) / det;
+        const double x1 = (d.dxx * (d.dy * d.dss - d.ds * d.dys)
+                         - d.dx * (d.dxy * d.dss - d.dys * d.dxs)
+                         + d.dxs * (d.dxy * d.ds - d.dy * d.dxs)) / det;
+        const double x2 = (d.dxx * (d.dyy * d.ds - d.dy * d.dys)
+                         - d.dxy * (d.dxy * d.ds - d.dy * d.dxs)
+                         + d.dx * (d.dxy * d.dys - d.dyy * d.dxs)) / det;
+        xc = -x0;
+        xr = -x1;
+        xi = -x2;
+
+        if (std::abs(xc) < 0.5 && std::abs(xr) < 0.5 && std::abs(xi) < 0.5) {
+            const double t = d.dx * xc + d.dy * xr + d.ds * xi;
+            contr = static_cast<double>(b.at(lr, lc, 0)) + t * 0.5;
+            if (std::abs(contr) * static_cast<double>(layers) < contrast_threshold) {
+                return false;
+            }
+            const double tr = d.dxx + d.dyy;
+            const double det2 = d.dxx * d.dyy - d.dxy * d.dxy;
+            if (det2 <= 0.0) {
+                return false;  // saddle: the two principal curvatures disagree in sign
+            }
+            if (tr * tr * edge_threshold >= (edge_threshold + 1.0) * (edge_threshold + 1.0) * det2) {
+                return false;  // edge-like: curvature ratio above the limit
+            }
+            return true;
+        }
+        if (std::abs(xc) > 1e6 || std::abs(xr) > 1e6 || std::abs(xi) > 1e6) {
+            return false;
+        }
+        lc += static_cast<int>(std::lround(xc));
+        lr += static_cast<int>(std::lround(xr));
+        li += static_cast<int>(std::lround(xi));
+        if (li < 1 || li > layers) {
+            return false;
+        }
+        if (lc < k_sift_border || lc >= b.cols - k_sift_border) {
+            return false;
+        }
+        if (lr < k_sift_border || lr >= b.rows - k_sift_border) {
+            return false;
+        }
+    }
+    return false;  // never converged
+}
+
+// 36-bin gradient orientation histogram over a square window, Gaussian
+// weighted with sigma = 1.5 * scl_octv, then circularly smoothed with
+// [1 4 6 4 1] / 16 (Lowe's window; the square support is what OpenCV uses too).
+void sift_orientation_hist(const Image& g, int lr, int lc, double scl_octv,
+                           std::array<double, k_sift_ori_bins>& smoothed) {
+    std::array<double, k_sift_ori_bins> hist{};
+    const int radius = static_cast<int>(std::lround(k_sift_ori_radius * scl_octv));
+    const double sigma_w = k_sift_ori_sig_fctr * scl_octv;
+    const double exp_scl = -1.0 / (2.0 * sigma_w * sigma_w);
+    const double two_pi = 2.0 * M_PI;
+    for (int dy = -radius; dy <= radius; ++dy) {
+        const int y = lr + dy;
+        if (y <= 0 || y >= g.rows - 1) {
+            continue;
+        }
+        for (int dx = -radius; dx <= radius; ++dx) {
+            const int x = lc + dx;
+            if (x <= 0 || x >= g.cols - 1) {
+                continue;
+            }
+            const double gx = static_cast<double>(g.at(y, x + 1, 0)) - static_cast<double>(g.at(y, x - 1, 0));
+            const double gy = static_cast<double>(g.at(y + 1, x, 0)) - static_cast<double>(g.at(y - 1, x, 0));
+            const double w = std::exp(static_cast<double>(dx * dx + dy * dy) * exp_scl);
+            const double mag = std::sqrt(gx * gx + gy * gy);
+            double ori = std::atan2(gy, gx);
+            if (ori < 0.0) {
+                ori += two_pi;
+            }
+            int bin = static_cast<int>(std::lround(ori * static_cast<double>(k_sift_ori_bins) / two_pi))
+                    % k_sift_ori_bins;
+            if (bin < 0) {
+                bin += k_sift_ori_bins;
+            }
+            hist[static_cast<std::size_t>(bin)] += w * mag;
+        }
+    }
+    for (int j = 0; j < k_sift_ori_bins; ++j) {
+        const std::size_t j0 = static_cast<std::size_t>(j);
+        const std::size_t jm2 = static_cast<std::size_t>((j + k_sift_ori_bins - 2) % k_sift_ori_bins);
+        const std::size_t jm1 = static_cast<std::size_t>((j + k_sift_ori_bins - 1) % k_sift_ori_bins);
+        const std::size_t jp1 = static_cast<std::size_t>((j + 1) % k_sift_ori_bins);
+        const std::size_t jp2 = static_cast<std::size_t>((j + 2) % k_sift_ori_bins);
+        smoothed[j0] = (hist[jm2] + hist[jp2]) * (1.0 / 16.0)
+                     + (hist[jm1] + hist[jp1]) * (4.0 / 16.0)
+                     + hist[j0] * (6.0 / 16.0);
+    }
+}
+
+// 4x4x8 trilinearly-interpolated gradient histogram descriptor, L2-normalised,
+// clipped at 0.2 and re-normalised (Lowe section 6.1).
+SiftDescriptor sift_descriptor(const Image& g, int pr, int pc, double scl_octv, double ori) {
+    const int d = k_sift_descr_width;
+    const int n = k_sift_descr_hist_bins;
+    const double cs = std::cos(ori);
+    const double sn = std::sin(ori);
+    const double bins_per_rad = static_cast<double>(n) / (2.0 * M_PI);
+    const double exp_scl = -1.0 / (static_cast<double>(d) * static_cast<double>(d) * 0.5);
+    const double hist_width = k_sift_descr_scl_fctr * scl_octv;
+    int radius = static_cast<int>(std::lround(hist_width * 1.4142135623730951 * (d + 1) * 0.5));
+    const double diag = std::sqrt(static_cast<double>(g.rows) * static_cast<double>(g.rows)
+                                + static_cast<double>(g.cols) * static_cast<double>(g.cols));
+    radius = std::min(radius, static_cast<int>(diag));
+
+    std::array<double, (k_sift_descr_width + 2) * (k_sift_descr_width + 2) * (k_sift_descr_hist_bins + 2)> hist{};
+
+    for (int i = -radius; i <= radius; ++i) {
+        for (int j = -radius; j <= radius; ++j) {
+            // Rotate the sample into the feature's own frame and express it in
+            // units of one spatial bin.
+            const double c_rot = (static_cast<double>(j) * cs + static_cast<double>(i) * sn) / hist_width;
+            const double r_rot = (-static_cast<double>(j) * sn + static_cast<double>(i) * cs) / hist_width;
+            double rbin = r_rot + static_cast<double>(d) / 2.0 - 0.5;
+            double cbin = c_rot + static_cast<double>(d) / 2.0 - 0.5;
+            const int rr = pr + i;
+            const int cc = pc + j;
+            if (!(rbin > -1.0 && rbin < static_cast<double>(d) && cbin > -1.0 && cbin < static_cast<double>(d))) {
+                continue;
+            }
+            if (!(rr > 0 && rr < g.rows - 1 && cc > 0 && cc < g.cols - 1)) {
+                continue;
+            }
+            const double gx = static_cast<double>(g.at(rr, cc + 1, 0)) - static_cast<double>(g.at(rr, cc - 1, 0));
+            const double gy = static_cast<double>(g.at(rr + 1, cc, 0)) - static_cast<double>(g.at(rr - 1, cc, 0));
+            const double mag = std::sqrt(gx * gx + gy * gy)
+                             * std::exp((c_rot * c_rot + r_rot * r_rot) * exp_scl);
+            double obin = (std::atan2(gy, gx) - ori) * bins_per_rad;
+
+            const int r0 = static_cast<int>(std::floor(rbin));
+            const int c0 = static_cast<int>(std::floor(cbin));
+            int o0 = static_cast<int>(std::floor(obin));
+            rbin -= static_cast<double>(r0);
+            cbin -= static_cast<double>(c0);
+            obin -= static_cast<double>(o0);
+            o0 = ((o0 % n) + n) % n;
+
+            const double v_r1 = mag * rbin;
+            const double v_r0 = mag - v_r1;
+            const double v_11 = v_r1 * cbin;
+            const double v_10 = v_r1 - v_11;
+            const double v_01 = v_r0 * cbin;
+            const double v_00 = v_r0 - v_01;
+            const double a111 = v_11 * obin;
+            const double a110 = v_11 - a111;
+            const double a101 = v_10 * obin;
+            const double a100 = v_10 - a101;
+            const double a011 = v_01 * obin;
+            const double a010 = v_01 - a011;
+            const double a001 = v_00 * obin;
+            const double a000 = v_00 - a001;
+
+            const std::size_t idx = static_cast<std::size_t>(((r0 + 1) * (d + 2) + (c0 + 1)) * (n + 2) + o0);
+            hist[idx] += a000;
+            hist[idx + 1] += a001;
+            hist[idx + static_cast<std::size_t>(n + 2)] += a010;
+            hist[idx + static_cast<std::size_t>(n + 3)] += a011;
+            hist[idx + static_cast<std::size_t>((d + 2) * (n + 2))] += a100;
+            hist[idx + static_cast<std::size_t>((d + 2) * (n + 2) + 1)] += a101;
+            hist[idx + static_cast<std::size_t>((d + 3) * (n + 2))] += a110;
+            hist[idx + static_cast<std::size_t>((d + 3) * (n + 2) + 1)] += a111;
+        }
+    }
+
+    SiftDescriptor dst{};
+    for (int i = 0; i < d; ++i) {
+        for (int j = 0; j < d; ++j) {
+            const std::size_t idx = static_cast<std::size_t>(((i + 1) * (d + 2) + (j + 1)) * (n + 2));
+            // Fold the circular orientation wrap-around back into bins 0 and 1.
+            hist[idx] += hist[idx + static_cast<std::size_t>(n)];
+            hist[idx + 1] += hist[idx + static_cast<std::size_t>(n + 1)];
+            for (int k = 0; k < n; ++k) {
+                dst[static_cast<std::size_t>((i * d + j) * n + k)] =
+                    static_cast<float>(hist[idx + static_cast<std::size_t>(k)]);
+            }
+        }
+    }
+
+    double nrm = 0.0;
+    for (const float v : dst) {
+        nrm += static_cast<double>(v) * static_cast<double>(v);
+    }
+    nrm = std::sqrt(nrm);
+    if (nrm < 1e-12) {
+        dst.fill(0.f);
+        return dst;
+    }
+    const float inv = static_cast<float>(1.0 / nrm);
+    for (float& v : dst) {
+        v = std::min(v * inv, k_sift_descr_mag_thr);
+    }
+    nrm = 0.0;
+    for (const float v : dst) {
+        nrm += static_cast<double>(v) * static_cast<double>(v);
+    }
+    nrm = std::sqrt(nrm);
+    if (nrm < 1e-12) {
+        dst.fill(0.f);
+        return dst;
+    }
+    const float inv2 = static_cast<float>(1.0 / nrm);
+    for (float& v : dst) {
+        v *= inv2;
+    }
+    return dst;
+}
+
+}  // namespace
+
+std::vector<KeyPoint> fast_corners(const Image& img, float threshold, bool nonmax_suppression) {
+    const Image g = feature_gray(img);
+    return fast_corners_impl(g, threshold, k_fast_border, nonmax_suppression);
+}
+
+const std::array<std::array<int, 4>, 256>& orb_sampling_pattern() {
+    // Magic static: thread-safe, order-independent, no global constructor and
+    // no dynamic allocation beyond the table itself.
+    static const std::array<std::array<int, 4>, 256> pattern = [] {
+        std::array<std::array<int, 4>, 256> p{};
+        SplitMix64 rng{k_orb_pattern_seed};
+        for (std::size_t j = 0; j < p.size(); ++j) {
+            std::array<int, 4> q{0, 0, 1, 1};
+            // All four coordinates are drawn before the test, so the PRNG
+            // consumption is a fixed 48 next() calls per attempt regardless of
+            // which coordinate went out of range. Measured: 9 redraws in total
+            // across the whole table, so the bound is never approached.
+            for (int attempt = 0; attempt < 1000; ++attempt) {
+                std::array<int, 4> t{};
+                bool ok = true;
+                for (int k = 0; k < 4; ++k) {
+                    const long v = std::lround(k_orb_pattern_sigma * rng.next_gauss());
+                    if (v < -k_orb_patch_half || v > k_orb_patch_half) {
+                        ok = false;
+                    }
+                    t[static_cast<std::size_t>(k)] = static_cast<int>(v);
+                }
+                if (ok && !(t[0] == t[2] && t[1] == t[3])) {
+                    q = t;
+                    break;
+                }
+            }
+            p[j] = q;
+        }
+        return p;
+    }();
+    return pattern;
+}
+
+OrbFeatures orb_detect_and_compute(const Image& img, int max_features, float fast_threshold,
+                                   int n_levels, float scale_factor) {
+    OrbFeatures out;
+    if (max_features <= 0) {
+        return out;
+    }
+    const Image g = feature_gray(img);
+    if (g.empty() || g.rows < k_orb_min_side || g.cols < k_orb_min_side) {
+        return out;
+    }
+    const int levels = std::clamp(n_levels, 1, k_orb_max_levels);
+    const double sf = std::clamp(static_cast<double>(scale_factor), 1.01, 4.0);
+
+    // Pyramid. Every level is resampled from level 0 rather than from its
+    // predecessor, so interpolation error does not accumulate and the
+    // level -> base mapping stays exactly (r * s, c * s).
+    std::vector<Image> pyr;
+    std::vector<double> pyr_scale;
+    for (int i = 0; i < levels; ++i) {
+        const double s = std::pow(sf, static_cast<double>(i));
+        const int rows_i = 1 + static_cast<int>(std::floor(static_cast<double>(g.rows - 1) / s));
+        const int cols_i = 1 + static_cast<int>(std::floor(static_cast<double>(g.cols - 1) / s));
+        if (rows_i < k_orb_min_side || cols_i < k_orb_min_side) {
+            break;
+        }
+        if (i == 0) {
+            pyr.push_back(g);
+        } else {
+            const double sigma_i = k_orb_pyr_blur * std::sqrt(s * s - 1.0);
+            const Image blurred = (sigma_i > 1e-3) ? imgaussfilt(g, static_cast<float>(sigma_i)) : g;
+            Image level(rows_i, cols_i, 1);
+            const float max_r = static_cast<float>(g.rows - 1);
+            const float max_c = static_cast<float>(g.cols - 1);
+            for (int r = 0; r < rows_i; ++r) {
+                const float sr = std::min(static_cast<float>(static_cast<double>(r) * s), max_r);
+                for (int c = 0; c < cols_i; ++c) {
+                    const float sc = std::min(static_cast<float>(static_cast<double>(c) * s), max_c);
+                    level.at(r, c, 0) = bilinear_sample(blurred, sr, sc, 0);
+                }
+            }
+            pyr.push_back(std::move(level));
+        }
+        pyr_scale.push_back(s);
+    }
+    if (pyr.empty()) {
+        return out;
+    }
+
+    // Feature budget per level: geometric in 1 / scale_factor, so coarse levels
+    // are not starved by the much denser fine ones. The last level absorbs the
+    // rounding remainder.
+    const std::size_t n_lv = pyr.size();
+    std::vector<int> budget(n_lv, 0);
+    const double f = 1.0 / sf;
+    double denom = 0.0;
+    for (std::size_t i = 0; i < n_lv; ++i) {
+        denom += std::pow(f, static_cast<double>(i));
+    }
+    int assigned = 0;
+    for (std::size_t i = 0; i + 1 < n_lv; ++i) {
+        const double share = static_cast<double>(max_features) * std::pow(f, static_cast<double>(i)) / denom;
+        const int n_i = std::max(0, static_cast<int>(std::lround(share)));
+        budget[i] = n_i;
+        assigned += n_i;
+    }
+    budget[n_lv - 1] = std::max(0, max_features - assigned);
+
+    for (std::size_t i = 0; i < n_lv; ++i) {
+        if (budget[i] <= 0) {
+            continue;
+        }
+        const Image& level = pyr[i];
+        std::vector<KeyPoint> corners = fast_corners_impl(level, fast_threshold, k_orb_border, true);
+        if (corners.empty()) {
+            continue;
+        }
+        std::stable_sort(corners.begin(), corners.end(), orb_level_stronger);
+        if (static_cast<int>(corners.size()) > budget[i]) {
+            corners.resize(static_cast<std::size_t>(budget[i]));
+        }
+        // ORB smooths with a 7x7 kernel before sampling the BRIEF pairs so a
+        // bit is not decided by a single noisy pixel; once per level, not once
+        // per keypoint.
+        const Image blurred = imgaussfilt(level, k_orb_desc_blur_sigma);
+        const double s = pyr_scale[i];
+        for (const KeyPoint& kp : corners) {
+            const int r = static_cast<int>(kp.y);
+            const int c = static_cast<int>(kp.x);
+            const double theta = orb_patch_orientation(level, r, c);
+            FeatureKeyPoint fk;
+            fk.x = static_cast<float>(static_cast<double>(c) * s);
+            fk.y = static_cast<float>(static_cast<double>(r) * s);
+            fk.scale = static_cast<float>(s);
+            fk.orientation = static_cast<float>(theta);
+            fk.response = kp.response;
+            fk.octave = static_cast<int>(i);
+            out.keypoints.push_back(fk);
+            out.descriptors.push_back(orb_descriptor(blurred, r, c, theta));
+        }
+    }
+
+    // Total order over the merged levels, then the global cap.
+    std::vector<std::size_t> order(out.keypoints.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&out](std::size_t a, std::size_t b) {
+        return feature_stronger(out.keypoints[a], out.keypoints[b]);
+    });
+    std::vector<FeatureKeyPoint> kps;
+    std::vector<OrbDescriptor> descs;
+    const std::size_t cap = std::min(order.size(), static_cast<std::size_t>(max_features));
+    kps.reserve(cap);
+    descs.reserve(cap);
+    for (std::size_t i = 0; i < cap; ++i) {
+        kps.push_back(out.keypoints[order[i]]);
+        descs.push_back(out.descriptors[order[i]]);
+    }
+    out.keypoints = std::move(kps);
+    out.descriptors = std::move(descs);
+    return out;
+}
+
+SiftFeatures sift_detect_and_compute(const Image& img, int max_features, int n_octave_layers,
+                                     float contrast_threshold, float edge_threshold, float sigma) {
+    SiftFeatures out;
+    const Image g = feature_gray(img);
+    if (g.empty()) {
+        return out;
+    }
+    const int min_side = std::min(g.rows, g.cols);
+    if (min_side < k_sift_min_side) {
+        return out;
+    }
+    const int layers = std::clamp(n_octave_layers, 1, 8);
+    const double sig0 = std::max(static_cast<double>(sigma), 0.01);
+    const double contrast = static_cast<double>(contrast_threshold);
+    const double edge = static_cast<double>(edge_threshold);
+    const int n_oct_max = std::clamp(
+        static_cast<int>(std::floor(std::log2(static_cast<double>(min_side)))) - 2,
+        1, k_sift_max_octaves);
+
+    // Incremental blurs: layer i of every octave is layer i-1 blurred by
+    // sig[i], so that layer i carries an absolute blur of sig0 * 2^(i/layers).
+    const int n_layers = layers + 3;
+    const double kf = std::pow(2.0, 1.0 / static_cast<double>(layers));
+    std::vector<double> sig(static_cast<std::size_t>(n_layers), 0.0);
+    sig[0] = sig0;
+    for (int i = 1; i < n_layers; ++i) {
+        const double prev = sig0 * std::pow(kf, static_cast<double>(i - 1));
+        const double cur = sig0 * std::pow(kf, static_cast<double>(i));
+        sig[static_cast<std::size_t>(i)] = std::sqrt(std::max(cur * cur - prev * prev, 1e-8));
+    }
+
+    // The input is assumed to already carry k_sift_init_sigma of blur, so only
+    // the difference is applied when building the base of octave 0.
+    const double sig_diff = std::sqrt(std::max(sig0 * sig0 - k_sift_init_sigma * k_sift_init_sigma, 0.01));
+
+    std::vector<std::vector<Image>> gpyr;
+    std::vector<std::vector<Image>> dpyr;
+    for (int o = 0; o < n_oct_max; ++o) {
+        std::vector<Image> gl;
+        gl.reserve(static_cast<std::size_t>(n_layers));
+        if (o == 0) {
+            gl.push_back(imgaussfilt(g, static_cast<float>(sig_diff)));
+        } else {
+            const Image& prev = gpyr[static_cast<std::size_t>(o - 1)][static_cast<std::size_t>(layers)];
+            const int rows_o = std::max(1, prev.rows / 2);
+            const int cols_o = std::max(1, prev.cols / 2);
+            if (rows_o < 2 * k_sift_border + 2 || cols_o < 2 * k_sift_border + 2) {
+                break;  // nothing detectable below this size
+            }
+            Image dn(rows_o, cols_o, 1);
+            for (int r = 0; r < rows_o; ++r) {
+                for (int c = 0; c < cols_o; ++c) {
+                    dn.at(r, c, 0) = prev.at(2 * r, 2 * c, 0);
+                }
+            }
+            gl.push_back(std::move(dn));
+        }
+        for (int i = 1; i < n_layers; ++i) {
+            Image blurred = imgaussfilt(gl[static_cast<std::size_t>(i - 1)],
+                                        static_cast<float>(sig[static_cast<std::size_t>(i)]));
+            gl.push_back(std::move(blurred));
+        }
+        std::vector<Image> dl;
+        dl.reserve(static_cast<std::size_t>(n_layers - 1));
+        for (int i = 0; i + 1 < n_layers; ++i) {
+            const Image& a = gl[static_cast<std::size_t>(i)];
+            const Image& b = gl[static_cast<std::size_t>(i + 1)];
+            Image diff(a.rows, a.cols, 1);
+            for (std::size_t p = 0; p < diff.data.size(); ++p) {
+                diff.data[p] = b.data[p] - a.data[p];
+            }
+            dl.push_back(std::move(diff));
+        }
+        gpyr.push_back(std::move(gl));
+        dpyr.push_back(std::move(dl));
+    }
+    const int n_octaves = static_cast<int>(dpyr.size());
+
+    // Extrema of the DoG stack, refined, oriented and described.
+    std::vector<FeatureKeyPoint> raw_kps;
+    std::vector<SiftDescriptor> raw_descs;
+    const double prefilter = 0.5 * contrast / static_cast<double>(layers);
+    std::array<double, k_sift_ori_bins> smoothed{};
+    for (int o = 0; o < n_octaves; ++o) {
+        const std::vector<Image>& dogs = dpyr[static_cast<std::size_t>(o)];
+        const std::vector<Image>& gauss = gpyr[static_cast<std::size_t>(o)];
+        for (int i = 1; i <= layers; ++i) {
+            const Image& dc = dogs[static_cast<std::size_t>(i)];
+            for (int r = k_sift_border; r < dc.rows - k_sift_border; ++r) {
+                for (int c = k_sift_border; c < dc.cols - k_sift_border; ++c) {
+                    const double val = static_cast<double>(dc.at(r, c, 0));
+                    if (std::abs(val) <= prefilter) {
+                        continue;
+                    }
+                    // Plateau-tolerant 3x3x3 test (>= / <=); the duplicates a
+                    // plateau produces are removed after refinement.
+                    bool is_max = val > 0.0;
+                    bool is_min = val < 0.0;
+                    for (int dl = -1; dl <= 1 && (is_max || is_min); ++dl) {
+                        const Image& nd = dogs[static_cast<std::size_t>(i + dl)];
+                        for (int dr = -1; dr <= 1 && (is_max || is_min); ++dr) {
+                            for (int dc2 = -1; dc2 <= 1; ++dc2) {
+                                if (dl == 0 && dr == 0 && dc2 == 0) {
+                                    continue;
+                                }
+                                const double nv = static_cast<double>(nd.at(r + dr, c + dc2, 0));
+                                if (is_max && val < nv) {
+                                    is_max = false;
+                                }
+                                if (is_min && val > nv) {
+                                    is_min = false;
+                                }
+                            }
+                        }
+                    }
+                    if (!is_max && !is_min) {
+                        continue;
+                    }
+                    int li = i;
+                    int lr = r;
+                    int lc = c;
+                    double xc = 0.0;
+                    double xr = 0.0;
+                    double xi = 0.0;
+                    double contr = 0.0;
+                    if (!sift_adjust_extremum(dogs, layers, li, lr, lc, contrast, edge,
+                                              xc, xr, xi, contr)) {
+                        continue;
+                    }
+                    const double pw = static_cast<double>(1 << o);
+                    const double scl_octv = sig0 * std::pow(2.0, (static_cast<double>(li) + xi)
+                                                                  / static_cast<double>(layers));
+                    const double bx = (static_cast<double>(lc) + xc) * pw;
+                    const double by = (static_cast<double>(lr) + xr) * pw;
+
+                    const Image& gimg = gauss[static_cast<std::size_t>(li)];
+                    sift_orientation_hist(gimg, lr, lc, scl_octv, smoothed);
+                    double max_val = 0.0;
+                    for (const double v : smoothed) {
+                        max_val = std::max(max_val, v);
+                    }
+
+                    FeatureKeyPoint fk;
+                    fk.x = static_cast<float>(bx);
+                    fk.y = static_cast<float>(by);
+                    fk.scale = static_cast<float>(scl_octv * pw);
+                    fk.response = static_cast<float>(std::abs(contr));
+                    fk.octave = o;
+
+                    const int pr = static_cast<int>(std::lround(static_cast<double>(lr) + xr));
+                    const int pc = static_cast<int>(std::lround(static_cast<double>(lc) + xc));
+                    if (max_val <= 0.0) {
+                        // Flat neighbourhood: no dominant direction exists.
+                        fk.orientation = 0.f;
+                        raw_kps.push_back(fk);
+                        raw_descs.push_back(sift_descriptor(gimg, pr, pc, scl_octv, 0.0));
+                        continue;
+                    }
+                    const double peak_thr = k_sift_ori_peak_ratio * max_val;
+                    for (int j = 0; j < k_sift_ori_bins; ++j) {
+                        const double l = smoothed[static_cast<std::size_t>(
+                            (j + k_sift_ori_bins - 1) % k_sift_ori_bins)];
+                        const double rgt = smoothed[static_cast<std::size_t>((j + 1) % k_sift_ori_bins)];
+                        const double cur = smoothed[static_cast<std::size_t>(j)];
+                        if (!(cur > l && cur > rgt && cur >= peak_thr)) {
+                            continue;
+                        }
+                        const double den = l - 2.0 * cur + rgt;
+                        double bin_hat = (std::abs(den) < 1e-12)
+                                             ? static_cast<double>(j)
+                                             : static_cast<double>(j) + 0.5 * (l - rgt) / den;
+                        if (bin_hat < 0.0) {
+                            bin_hat += static_cast<double>(k_sift_ori_bins);
+                        }
+                        if (bin_hat >= static_cast<double>(k_sift_ori_bins)) {
+                            bin_hat -= static_cast<double>(k_sift_ori_bins);
+                        }
+                        double angle = bin_hat * (2.0 * M_PI / static_cast<double>(k_sift_ori_bins));
+                        if (angle > M_PI) {
+                            angle -= 2.0 * M_PI;
+                        }
+                        fk.orientation = static_cast<float>(angle);
+                        raw_kps.push_back(fk);
+                        raw_descs.push_back(sift_descriptor(gimg, pr, pc, scl_octv, angle));
+                    }
+                }
+            }
+        }
+    }
+
+    // Total order, then plateau-duplicate suppression in that order so the
+    // strongest representative of each cluster is the one kept.
+    std::vector<std::size_t> order(raw_kps.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::stable_sort(order.begin(), order.end(), [&raw_kps](std::size_t a, std::size_t b) {
+        return feature_stronger(raw_kps[a], raw_kps[b]);
+    });
+
+    for (const std::size_t z : order) {
+        const FeatureKeyPoint& a = raw_kps[z];
+        bool dup = false;
+        for (const FeatureKeyPoint& b : out.keypoints) {
+            if (b.octave != a.octave) {
+                continue;
+            }
+            const double pw = static_cast<double>(1 << a.octave);
+            if (std::abs(static_cast<double>(a.x - b.x)) / pw >= 0.5) {
+                continue;
+            }
+            if (std::abs(static_cast<double>(a.y - b.y)) / pw >= 0.5) {
+                continue;
+            }
+            if (a.scale <= 0.f || b.scale <= 0.f) {
+                continue;
+            }
+            if (std::abs(std::log(static_cast<double>(a.scale) / static_cast<double>(b.scale))) >= 0.05) {
+                continue;
+            }
+            double da = static_cast<double>(a.orientation) - static_cast<double>(b.orientation);
+            while (da > M_PI) {
+                da -= 2.0 * M_PI;
+            }
+            while (da <= -M_PI) {
+                da += 2.0 * M_PI;
+            }
+            if (std::abs(da) < 5.0 * M_PI / 180.0) {
+                dup = true;
+                break;
+            }
+        }
+        if (dup) {
+            continue;
+        }
+        out.keypoints.push_back(a);
+        out.descriptors.push_back(raw_descs[z]);
+        if (max_features > 0 && static_cast<int>(out.keypoints.size()) >= max_features) {
+            break;
+        }
+    }
+    return out;
+}
+
+int hamming_distance(const OrbDescriptor& a, const OrbDescriptor& b) {
+    int d = 0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        d += std::popcount(static_cast<std::uint8_t>(a[i] ^ b[i]));
+    }
+    return d;
+}
+
+float l2_distance(const SiftDescriptor& a, const SiftDescriptor& b) {
+    double s = 0.0;
+    for (std::size_t i = 0; i < a.size(); ++i) {
+        const double d = static_cast<double>(a[i]) - static_cast<double>(b[i]);
+        s += d * d;
+    }
+    return static_cast<float>(std::sqrt(s));
+}
+
+std::vector<DescriptorMatch> match_descriptors(const std::vector<OrbDescriptor>& query,
+                                               const std::vector<OrbDescriptor>& train,
+                                               float ratio_threshold, bool cross_check) {
+    return match_descriptors_impl(query, train, ratio_threshold, cross_check,
+                                  [](const OrbDescriptor& a, const OrbDescriptor& b) {
+                                      return static_cast<float>(hamming_distance(a, b));
+                                  });
+}
+
+std::vector<DescriptorMatch> match_descriptors(const std::vector<SiftDescriptor>& query,
+                                               const std::vector<SiftDescriptor>& train,
+                                               float ratio_threshold, bool cross_check) {
+    return match_descriptors_impl(query, train, ratio_threshold, cross_check,
+                                  [](const SiftDescriptor& a, const SiftDescriptor& b) {
+                                      return l2_distance(a, b);
+                                  });
 }
 
 } // namespace image

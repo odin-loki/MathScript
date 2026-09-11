@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
 #include "ms/distributed/dist_matrix.hpp"
 #include "ms/distributed/mpi_context.hpp"

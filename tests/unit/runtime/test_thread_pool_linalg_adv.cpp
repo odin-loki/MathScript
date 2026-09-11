@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Thread Pool and Additional Coverage Tests
 
 #include <gtest/gtest.h>
@@ -6,6 +8,7 @@
 #include <numeric>
 #include <cmath>
 #include <atomic>
+#include <algorithm>
 
 #include "ms/runtime/thread_pool.hpp"
 #include "ms/linalg/linalg.hpp"
@@ -25,15 +28,27 @@ TEST(ThreadPool, Instance_NotNull) {
     SUCCEED();  // just checking it doesn't crash
 }
 
-TEST(ThreadPool, Size_NonNegative) {
-    auto& pool = ThreadPool::instance();
-    EXPECT_GE(pool.size(), 0u);
+TEST(ThreadPool, Size_ReportsConfiguredConcurrency) {
+    // TIGHTENED: the previous assertion was EXPECT_GE(pool.size(), 0u), which is
+    // vacuously true for an unsigned value and passed while size() was hard-wired
+    // to 0. size() must now report the concurrency window initialize() set.
+    ThreadPool pool;
+    ThreadPoolConfig cfg;
+    cfg.max_workers = 3;
+    pool.configure(cfg);
+    pool.initialize(3);
+    EXPECT_EQ(pool.size(), 3u);
+
+    auto& shared = ThreadPool::instance();
+    shared.initialize();
+    EXPECT_GT(shared.size(), 0u);
 }
 
-TEST(ThreadPool, Initialize_DoesNotCrash) {
+TEST(ThreadPool, Initialize_SetsConcurrencyWindow) {
+    // TIGHTENED: was a bare SUCCEED() that an empty initialize() body passed.
     auto& pool = ThreadPool::instance();
     pool.initialize(2);
-    SUCCEED();
+    EXPECT_EQ(pool.size(), std::min<std::size_t>(2u, pool.config().max_workers));
 }
 
 TEST(ThreadPool, Submit_SimpleTask) {
@@ -64,10 +79,26 @@ TEST(ThreadPool, Submit_WithCapture) {
     EXPECT_EQ(future.get(), 101);
 }
 
-TEST(ThreadPool, Wait_DoesNotCrash) {
+TEST(ThreadPool, Wait_RetiresOutstandingWork) {
+    // TIGHTENED: was a bare "does not crash" that an empty wait() body passed.
     auto& pool = ThreadPool::instance();
-    pool.initialize(2);
+    pool.initialize(4);
+    std::atomic<int> done{0};
+    std::vector<std::future<void>> futures;
+    for (int i = 0; i < 12; ++i) {
+        futures.push_back(pool.submit([&done]() {
+            for (int spin = 0; spin < 100000; ++spin) {
+                std::atomic_signal_fence(std::memory_order_seq_cst);
+            }
+            done.fetch_add(1, std::memory_order_relaxed);
+        }));
+    }
     pool.wait();
+    EXPECT_EQ(done.load(), 12);
+    EXPECT_EQ(pool.in_flight(), 0u);
+    for (auto& f : futures) {
+        f.get();
+    }
 }
 
 TEST(ThreadPool, Parallel_Sum) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  TransposeFunmTail27) {
     EXPECT_NEAR(interp.state().matrices.at("S")(0, 0), std::exp(1.0), 1e-6);
 }
 
-TEST(IntegrationSpecial,  LegendreQScalar) {
+TEST(IntegrationSpecial, LegendreQScalar_MlMatTransposeEyePipeline) {
     Interpreter interp;
     expect_ok(interp, "lq = legendre_q(1, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("lq"), ms::legendre_q(1, 0.5), 1e-8);

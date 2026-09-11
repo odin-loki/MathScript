@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/graph/graph.hpp"
 #include <algorithm>
 #include <cmath>
@@ -799,6 +801,42 @@ TEST(GraphShortestPath, AStarPrefersCheaperRoute) {
     ASSERT_TRUE(path.has_value());
     ASSERT_EQ(path.value().size(), 3u);
     EXPECT_EQ(path.value()[1], 1);
+}
+
+TEST(GraphShortestPath, AStarKeepsTheFirstOfSeveralEqualCostRoutes) {
+    // Every existing A* test has one cheapest route, so the relaxation could be
+    // "strictly better" or "no worse" and answer them identically. A grid of unit
+    // edges has a great many equal-cost routes -- C(6,3) = 20 of them across a 4x4
+    // -- and which one comes back is decided entirely by that comparison: with
+    // "no worse", a later equal-cost discovery overwrites the parent and the path
+    // flips to the other side of the grid.
+    //
+    // The contract is that the FIRST route to reach a vertex at the best cost
+    // keeps it, which makes the answer independent of how many equal-cost routes
+    // the queue happens to explore afterwards.
+    const int side = 4;
+    Graph G(side * side, false);
+    for (int r = 0; r < side; ++r) {
+        for (int c = 0; c < side; ++c) {
+            if (c + 1 < side) G.add_edge(r * side + c, r * side + c + 1, 1.0);
+            if (r + 1 < side) G.add_edge(r * side + c, (r + 1) * side + c, 1.0);
+        }
+    }
+    const std::vector<double> zero_heuristic(static_cast<std::size_t>(side * side), 0.0);
+    const auto path = astar(G, 0, side * side - 1, zero_heuristic);
+    ASSERT_TRUE(path.has_value());
+    const std::vector<int> expected{0, 1, 2, 3, 7, 11, 15};
+    EXPECT_EQ(path.value(), expected);
+
+    // Whichever route is returned, it has to be a real one of the right length:
+    // six unit steps from a corner to the opposite corner of a 4x4 grid.
+    ASSERT_EQ(path.value().size(), 7u);
+    for (std::size_t i = 0; i + 1 < path.value().size(); ++i) {
+        const int a = path.value()[i], b = path.value()[i + 1];
+        const int dr = std::abs(a / side - b / side);
+        const int dc = std::abs(a % side - b % side);
+        EXPECT_EQ(dr + dc, 1) << "step " << i << " is not an edge of the grid";
+    }
 }
 
 // ---- Bellman-Ford (negative weights) ----

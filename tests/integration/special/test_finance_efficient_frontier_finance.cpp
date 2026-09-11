@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationSpecial,  EfficientFrontierSharpeTail28) {
     ASSERT_GT(interp.state().matrices.count("w_ms"), 0u);
 }
 
-TEST(IntegrationSpecial,  BesselHScalar) {
+TEST(IntegrationSpecial, BesselHScalar_FinanceEfficientFrontierFinance) {
     Interpreter interp;
     expect_ok(interp, "bh = bessel_h(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bh"), ms::bessel_h(0, 1.0), 1e-8);

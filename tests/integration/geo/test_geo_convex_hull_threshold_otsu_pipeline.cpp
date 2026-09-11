@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -38,7 +40,7 @@ TEST(IntegrationGeo,  ConvexHullOtsuTail31) {
     ASSERT_GT(interp.state().matrices.count("T"), 0u);
 }
 
-TEST(IntegrationGeo,  ProbChi2CdfScalar) {
+TEST(IntegrationGeo, ProbChi2CdfScalar_GeoConvexHullThresholdOtsuPipeline) {
     Interpreter interp;
     expect_ok(interp, "cc = prob_chi2_cdf(1, 2)");
     EXPECT_NEAR(interp.state().scalars.at("cc"), ms::chi2_cdf(1, 2), 1e-8);

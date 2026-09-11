@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <string>
@@ -21,7 +23,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationGeo,  MpiBcastIdentityAssignment) {
+TEST(IntegrationGeo, MpiBcastIdentityAssignment_MpiBcastGeoPointInAabbPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "bx = mpi_bcast(3.5)");

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced SVD Tests (Wave 47)
 // Tests for SVD properties: U/V orthogonality, sigma ordering, Frobenius norm
 // Note: SvdResult.S is a column vector of singular values (S(i,0)).

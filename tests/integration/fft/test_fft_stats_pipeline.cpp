@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Test: FFT + Stats frequency analysis pipeline (Wave 52)
 
 #define _USE_MATH_DEFINES

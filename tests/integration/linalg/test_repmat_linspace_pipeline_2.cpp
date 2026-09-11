@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -62,7 +64,7 @@ TEST(IntegrationLinalg,  RepmatLinspaceRgb2grayRgb2hsvTail21) {
     EXPECT_NEAR(hsv(1, 0), 1.0 / 3.0, 1e-6);
 }
 
-TEST(IntegrationLinalg,  ProbExpCdfScalar) {
+TEST(IntegrationLinalg, ProbExpCdfScalar_RepmatLinspacePipeline2) {
     Interpreter interp;
     expect_ok(interp, "ec = prob_exp_cdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("ec"), ms::exp_cdf(1, 1), 1e-8);

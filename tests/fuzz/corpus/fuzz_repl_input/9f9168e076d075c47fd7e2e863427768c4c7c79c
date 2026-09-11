@@ -1,0 +1,2 @@
+vmnsion
+hm = stats_harmonic_mean([1; 2; 3; 4])

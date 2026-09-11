@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -3312,14 +3314,14 @@ TEST(ReplCommandsTest, cfd_advection2d_noassign) {
     Interpreter interp;
     expect_contains(interp, "cfd_advection2d(8, 8, 1, 0, 0.1, 0.01)", "u =");
     expect_error_contains(interp, "cfd_advection2d(1.5, 8, 1, 0, 0.1, 0.01)",
-                          "non-negative integer nx and ny");
+                          "non-negative integer nx");
 }
 
 TEST(ReplCommandsTest, cfd_advection1d_senary_noassign) {
     Interpreter interp;
     expect_contains(interp, "cfd_advection1d(8, 1, 0.5, 0.01, 0, 0)", "u =");
     expect_error_contains(interp, "cfd_advection1d(1.5, 1, 0.5, 0.01, 0, 0)",
-                          "expected non-negative integer nx");
+                          "expected an integer nx");
 }
 
 TEST(ReplCommandsTest, cfd_advection1d_senary_parse_fail_noassign) {

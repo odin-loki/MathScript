@@ -1,0 +1,18 @@
+MathScript
+Copyright (C) 2026 Odin Loch
+
+Odin Loch retains full copyright in this work.
+
+The public tree is licensed under the GNU Affero General Public License,
+version 3 or later; see LICENSE. An additional permission under GPLv3 section 7,
+covering linking against the proprietary NVIDIA CUDA libraries, is in
+LICENSE.exceptions and applies to the files that name it.
+
+Because copyright is held by one person rather than assigned to a foundation,
+commercial licences on other terms can be granted for the same code; see
+COMMERCIAL-LICENCE.md. That arrangement depends on sole ownership, so any
+outside contribution needs a signed contributor licence agreement before it is
+merged -- a patch accepted without one cannot afterwards be relicensed.
+
+Third-party components carry their own terms and are inventoried in
+THIRD_PARTY.md. Nothing in this file alters them.

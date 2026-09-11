@@ -1,15 +1,15 @@
-# MathScript unsafe baseline — one reviewed site per line (file:line:match)
+# MathScript unsafe baseline — one reviewed site per line (file:line:match).
+# The line number locates the site for a reviewer; identity is file+match,
+# so an edit that only shifts a site does not read as a new one.
 # Regenerate: bash scripts/unsafe_delta.sh --write-baseline [REPORT_PATH]
-# Matches approved_sites: 38 in UNSAFE_REVIEW.md
-include/ms/unsafe/unsafe.hpp:1:// MathScript [[ms::unsafe]] attribute macro (master plan §7.4)
-src/crypto/crypto.cpp:1083:    return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
+# Source report: build/unsafe_report.txt
+src/crypto/crypto.cpp:1120:    return {reinterpret_cast<const uint8_t*>(s.data()), s.size()};
 src/cuda/fft.cpp:145:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
 src/cuda/fft.cpp:146:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
 src/cuda/fft.cpp:85:        reinterpret_cast<cufftDoubleComplex*>(d_in.data),
 src/cuda/fft.cpp:86:        reinterpret_cast<cufftDoubleComplex*>(d_out.data),
 src/frameworks/axiom/axiom.cpp:217:    GPNode* point_a = const_cast<GPNode*>(nodes_a[random_int(rng, 0, static_cast<int>(nodes_a.size()))]);
-src/frameworks/axiom/axiom.cpp:245:    GPNode* target = const_cast<GPNode*>(nodes[random_int(rng, 0, static_cast<int>(nodes.size()))]);
-src/interp/repl_engine_internal.cpp:18270:        reinterpret_cast<const uint8_t*>(item.data()), item.size());
+src/interp/repl_engine_internal.cpp:18635:        reinterpret_cast<const uint8_t*>(item.data()), item.size());
 src/plugin/rules/cast_rules.cpp:14:        "[ms-profile] C-style cast is prohibited outside [[ms::unsafe]]. "
 src/plugin/rules/cast_rules.cpp:15:        "Use static_cast, const_cast, or reinterpret_cast instead.");
 src/plugin/rules/cast_rules.cpp:16:    diag_const_cast_ = diag.getCustomDiagID(
@@ -35,7 +35,4 @@ src/plugin/rules/memory_rules.cpp:37:        "[ms-profile] owning raw pointer me
 src/plugin/rules/memory_rules.cpp:41:        "[ms-profile] raw std::thread construction is prohibited outside [[ms::unsafe]]. "
 src/plugin/rules/memory_rules.cpp:45:        "[ms-profile] manual mutex.lock()/try_lock() is prohibited outside [[ms::unsafe]]. "
 src/plugin/rules/memory_rules.cpp:49:        "[ms-profile] 'std::thread::detach' is prohibited outside [[ms::unsafe]].");
-src/plugin/unsafe_registry.cpp:1:// MathScript Unsafe Registry - collects [[ms::unsafe]] / MS_UNSAFE audit sites
-src/plugin/unsafe_registry.hpp:1:// MathScript Unsafe Registry - Tracks [[ms::unsafe]] annotation sites
-src/plugin/unsafe_registry.hpp:41:// Called by UNSAFE_SITE() macro at compile time (non-plugin builds).
 src/plugin/unsafe_registry.hpp:47:#define UNSAFE_SITE(reason) ms::plugin::record_unsafe_annotation(__FILE__, __LINE__, reason)

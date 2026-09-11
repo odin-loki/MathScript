@@ -1,0 +1,1 @@
+cellmemory_new(cm,â2, 4, [0.1, 1, 10])

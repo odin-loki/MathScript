@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Tests: tril, triu, diag construction/extraction (Wave 55)
 
 #include <gtest/gtest.h>

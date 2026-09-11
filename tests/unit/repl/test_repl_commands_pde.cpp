@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -3678,7 +3680,7 @@ TEST(ReplCommandsTest, pde_reaction_diffusion_1d_execute_no_assign) {
     expect_ok(interp, "u0r = linspace(0.4, 0.4, 21)");
     expect_contains(interp, "pde_reaction_diffusion_1d(u0r, 0.05, 2.0, 0.1, 0.01, 30)", "u =");
     expect_error_contains(interp, "pde_reaction_diffusion_1d(u0r, 0.05, 2.0, 0.1, 0.01, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_wave_2d_execute_no_assign) {
@@ -3687,7 +3689,7 @@ TEST(ReplCommandsTest, pde_wave_2d_execute_no_assign) {
     expect_ok(interp, "v0w = zeros(7, 7)");
     expect_contains(interp, "pde_wave_2d(u0w, v0w, 1.0, 0.1, 0.1, 0.02, 8)", "u =");
     expect_error_contains(interp, "pde_wave_2d(u0w, v0w, 1.0, 0.1, 0.1, 0.02, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_heat_1d_execute_no_assign) {
@@ -3695,7 +3697,7 @@ TEST(ReplCommandsTest, pde_heat_1d_execute_no_assign) {
     expect_ok(interp, "x0 = [0; 1; 0]");
     expect_contains(interp, "pde_heat_1d(x0, 0.1, 0.1, 0.01, 5)", "u =");
     expect_error_contains(interp, "pde_heat_1d(x0, 0.1, 0.1, 0.01, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_heat_1d_cn_execute_no_assign) {
@@ -3703,14 +3705,14 @@ TEST(ReplCommandsTest, pde_heat_1d_cn_execute_no_assign) {
     expect_ok(interp, "x1 = [0; 0.5; 1; 0.5; 0]");
     expect_contains(interp, "pde_heat_1d_cn(x1, 0.1, 0.1, 0.1, 10)", "u =");
     expect_error_contains(interp, "pde_heat_1d_cn(x1, 0.1, 0.1, 0.1, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_advection_1d_execute_no_assign) {
     Interpreter interp;
     expect_contains(interp, "pde_advection_1d([0; 1; 0], 1, 0.1, 0.01, 10)", "u =");
     expect_error_contains(interp, "pde_advection_1d([0; 1; 0], 1, 0.1, 0.01, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_advection_1d_lax_wendroff_execute_no_assign) {
@@ -3718,7 +3720,7 @@ TEST(ReplCommandsTest, pde_advection_1d_lax_wendroff_execute_no_assign) {
     expect_ok(interp, "u0a = [1; 0; 0; 0; 0; 0; 0; 0; 0; 0]");
     expect_contains(interp, "pde_advection_1d_lax_wendroff(u0a, 1.0, 0.1, 0.05, 4)", "u =");
     expect_error_contains(interp, "pde_advection_1d_lax_wendroff(u0a, 1.0, 0.1, 0.05, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_poisson_2d_execute_no_assign) {
@@ -3726,7 +3728,7 @@ TEST(ReplCommandsTest, pde_poisson_2d_execute_no_assign) {
     expect_ok(interp, "f0 = zeros(4, 4)");
     expect_contains(interp, "pde_poisson_2d(f0, 0.1, 0.1, 50, 1e-8)", "u =");
     expect_error_contains(interp, "pde_poisson_2d(f0, 0.1, 0.1, 1.5, 1e-8)",
-                          "non-negative integer max_iterations");
+                          "expected an integer max_iter");
 }
 
 TEST(ReplCommandsTest, pde_burgers_1d_execute_no_assign) {
@@ -3734,7 +3736,7 @@ TEST(ReplCommandsTest, pde_burgers_1d_execute_no_assign) {
     expect_ok(interp, "u0b = linspace(0, 0, 11)");
     expect_contains(interp, "pde_burgers_1d(u0b, 0.01, 0.1, 0.001, 20)", "u =");
     expect_error_contains(interp, "pde_burgers_1d(u0b, 0.01, 0.1, 0.001, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_heat_2d_execute_no_assign) {
@@ -3742,7 +3744,7 @@ TEST(ReplCommandsTest, pde_heat_2d_execute_no_assign) {
     expect_ok(interp, "u2 = zeros(5, 5)");
     expect_contains(interp, "pde_heat_2d(u2, 0.1, 0.1, 0.1, 0.01, 8)", "u =");
     expect_error_contains(interp, "pde_heat_2d(u2, 0.1, 0.1, 0.1, 0.01, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_heat_2d_cn_adi_execute_no_assign) {
@@ -3750,7 +3752,7 @@ TEST(ReplCommandsTest, pde_heat_2d_cn_adi_execute_no_assign) {
     expect_ok(interp, "u0 = [0, 0, 0, 0, 0; 0, 0, 0, 0, 0; 0, 0, 10, 0, 0; 0, 0, 0, 0, 0; 0, 0, 0, 0, 0]");
     expect_contains(interp, "pde_heat_2d_cn_adi(u0, 0.05, 0.1, 0.1, 0.5, 10)", "u =");
     expect_error_contains(interp, "pde_heat_2d_cn_adi(u0, 0.05, 0.1, 0.1, 0.5, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }
 
 TEST(ReplCommandsTest, pde_wave_1d_execute_no_assign) {
@@ -3759,5 +3761,5 @@ TEST(ReplCommandsTest, pde_wave_1d_execute_no_assign) {
     expect_ok(interp, "v0 = zeros(4, 1)");
     expect_contains(interp, "pde_wave_1d(u0, v0, 1, 0.1, 0.1, 5)", "u =");
     expect_error_contains(interp, "pde_wave_1d(u0, v0, 1, 0.1, 0.1, 1.5)",
-                          "non-negative integer steps");
+                          "expected an integer steps");
 }

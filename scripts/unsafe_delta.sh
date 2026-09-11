@@ -54,6 +54,16 @@ normalize_sites() {
         | sort -u
 }
 
+# The line number in a baseline row is there so a reviewer can find the site; it
+# is NOT part of the site's identity. Editing anything above a reviewed site
+# shifts it, and comparing on the raw row then reports a site that has not
+# changed as new -- which it did three times in one afternoon, once for a
+# comment and twice for an added include. Identity is the file plus the matched
+# text, and multiplicity still counts, so a genuinely added cast is still caught.
+strip_line_numbers() {
+    sed -E 's#^([^:]+):[0-9]+:#\1:#'
+}
+
 count_sites() {
     normalize_sites "$1" | wc -l | tr -d ' '
 }
@@ -72,7 +82,9 @@ if [[ "${WRITE_BASELINE}" -eq 1 ]]; then
     fi
     mkdir -p "$(dirname "${BASELINE}")"
     {
-        echo "# MathScript unsafe baseline — one reviewed site per line (file:line:match)"
+        echo "# MathScript unsafe baseline — one reviewed site per line (file:line:match)."
+        echo "# The line number locates the site for a reviewer; identity is file+match,"
+        echo "# so an edit that only shifts a site does not read as a new one."
         echo "# Regenerate: bash scripts/unsafe_delta.sh --write-baseline [REPORT_PATH]"
         echo "# Source report: ${CURRENT}"
         normalize_sites "${CURRENT}"
@@ -93,34 +105,19 @@ if [[ ! -f "${CURRENT}" ]]; then
 fi
 
 if [[ -f "${BASELINE}" ]]; then
-    mapfile -t baseline_sites < <(grep -Ev '^\s*#' "${BASELINE}" | grep -E '^(src|include)/' | sort -u)
-    mapfile -t current_sites < <(normalize_sites "${CURRENT}")
+    _ud_base="$(mktemp)"
+    _ud_cur="$(mktemp)"
+    trap 'rm -f "${_ud_base}" "${_ud_cur}"' EXIT
 
-    declare -A baseline_set=()
-    for site in "${baseline_sites[@]}"; do
-        baseline_set["${site}"]=1
-    done
+    grep -Ev '^\s*#' "${BASELINE}" | grep -E '^(src|include)/' \
+        | strip_line_numbers | sort > "${_ud_base}"
+    normalize_sites "${CURRENT}" | strip_line_numbers | sort > "${_ud_cur}"
 
-    new_sites=()
-    for site in "${current_sites[@]}"; do
-        if [[ -z "${baseline_set[${site}]+x}" ]]; then
-            new_sites+=("${site}")
-        fi
-    done
-
-    removed=()
-    declare -A current_set=()
-    for site in "${current_sites[@]}"; do
-        current_set["${site}"]=1
-    done
-    for site in "${baseline_sites[@]}"; do
-        if [[ -z "${current_set[${site}]+x}" ]]; then
-            removed+=("${site}")
-        fi
-    done
+    mapfile -t new_sites < <(comm -13 "${_ud_base}" "${_ud_cur}")
+    mapfile -t removed < <(comm -23 "${_ud_base}" "${_ud_cur}")
 
     if [[ ${#new_sites[@]} -eq 0 ]]; then
-        echo "Unsafe delta check OK (${#current_sites[@]} sites, baseline ${#baseline_sites[@]})"
+        echo "Unsafe delta check OK ($(wc -l < "${_ud_cur}" | tr -d " ") sites, baseline $(wc -l < "${_ud_base}" | tr -d " "))"
         if [[ ${#removed[@]} -gt 0 ]]; then
             echo "NOTE: ${#removed[@]} baseline site(s) no longer present (review table may need cleanup)"
             printf '  %s\n' "${removed[@]}"

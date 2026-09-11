@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Extended DLMF special-function reference tests
 // Cross-checks zeta, eta, polylog, clausen, and debye against independent
 // series/quadrature computations computed inline in this file.
@@ -78,8 +80,13 @@ TEST(SpecialDlmfExtended, Zeta_PoleAtOne) {
     EXPECT_TRUE(std::isinf(zeta(1.0)));
 }
 
-TEST(SpecialDlmfExtended, Zeta_InvalidDomain) {
-    EXPECT_TRUE(std::isnan(zeta(-0.5)));
+TEST(SpecialDlmfExtended, Zeta_NegativeArgumentContinuation) {
+    // AUDIT FIX: the old name and assertion encoded a stub -- s = -0.5 is inside zeta's
+    // documented domain. DLMF 25.4.2 continues it there, and the trivial zeros are exact.
+    EXPECT_NEAR(zeta(-0.5), -0.20788622497735456, 1e-12);
+    EXPECT_NEAR(zeta(0.0), -0.5, 1e-13);
+    EXPECT_NEAR(zeta(-1.0), -1.0 / 12.0, 1e-13);
+    EXPECT_DOUBLE_EQ(zeta(-2.0), 0.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -106,8 +113,10 @@ TEST(SpecialDlmfExtended, EtaDirichlet_AlternatingSeries) {
     EXPECT_NEAR(eta_dirichlet(3.0), ref, 1e-9);
 }
 
-TEST(SpecialDlmfExtended, EtaDirichlet_InvalidDomain) {
-    EXPECT_TRUE(std::isnan(eta_dirichlet(-0.1)));
+TEST(SpecialDlmfExtended, EtaDirichlet_NegativeArgumentContinuation) {
+    // AUDIT FIX: eta is entire; the old assertion pinned the previous NaN stub.
+    EXPECT_NEAR(eta_dirichlet(-0.1), (1.0 - std::pow(2.0, 1.1)) * zeta(-0.1), 1e-11);
+    EXPECT_NEAR(eta_dirichlet(-1.0), 0.25, 1e-12);
 }
 
 // ---------------------------------------------------------------------------

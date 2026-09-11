@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Tensor, Load Balancer, and NUMA Allocator Unit Tests
 
 #include <gtest/gtest.h>
@@ -101,5 +103,5 @@ TEST(LoadBalancerTest, Backend_Is_Valid) {
     EXPECT_TRUE(d.backend == Backend::CPU || d.backend == Backend::CUDA);
 }
 
-// Note: NumaTopology/NumaAllocator are declared but not implemented
-// in the current build — skip those tests to avoid linker errors.
+// NumaTopology/NumaAllocator are now implemented (header-only, sysfs-backed on
+// Linux); their tests live in tests/unit/core/test_numa_allocator.cpp.

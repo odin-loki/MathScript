@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Stats Edge Case Tests (Wave 46)
 // Tests for extreme inputs: single element, constant, repeated, large variance
 

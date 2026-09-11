@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -43,7 +45,7 @@ TEST(IntegrationControl,  KalmanCtrbTail14) {
     EXPECT_GT(interp.state().matrices.at("Co").rows(), 0u);
 }
 
-TEST(IntegrationControl,  StruveKScalar) {
+TEST(IntegrationControl, StruveKScalar_ControlKalmanPredictControl3) {
     Interpreter interp;
     expect_ok(interp, "sk = struve_k(1, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("sk"), ms::struve_k(1, 1.0), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -36,6 +38,19 @@ TEST(ReplCommandsTest, graph_diameter) {
     expect_ok(interp, "Achain = [0, 1, 0, 0; 0, 0, 1, 0; 0, 0, 0, 1; 0, 0, 0, 0]");
     expect_ok(interp, "diam = graph_diameter(Achain)");
     EXPECT_NEAR(interp.state().scalars.at("diam"), 3.0, 1e-9);
+
+    // A graph in two pieces has no finite diameter. It used to skip the unreachable
+    // pairs and report the diameter of the larger piece -- a real number for a quantity
+    // that is not finite, with nothing to say the graph was disconnected.
+    expect_ok(interp, "Adisc = [0, 1, 0, 0; 1, 0, 0, 0; 0, 0, 0, 1; 0, 0, 1, 0]");
+    expect_error_contains(interp, "graph_diameter(Adisc)", "disconnected");
+    expect_error_contains(interp, "graph_radius(Adisc)", "disconnected");
+    // The radius of a graph is never greater than its diameter, so the two have to be
+    // read off the same graph: they used to disagree about whether the input was
+    // directed.
+    expect_ok(interp, "rad2 = graph_radius(Achain)");
+    expect_ok(interp, "diam2 = graph_diameter(Achain)");
+    EXPECT_LE(interp.state().scalars.at("rad2"), interp.state().scalars.at("diam2"));
 }
 
 TEST(ReplCommandsTest, graph_spectral) {
@@ -5220,7 +5235,7 @@ TEST(ReplCommandsTest, graph_astar_execute_no_assign) {
     expect_ok(interp, "h = [3; 2; 1; 0]");
     expect_contains(interp, "graph_astar(A, 0, 3, h)", "path =");
     expect_error_contains(interp, "graph_astar(A, 0.5, 3, h)",
-                          "integer source and target");
+                          "expected an integer source");
 }
 
 TEST(ReplCommandsTest, graph_max_flow_execute_no_assign) {
@@ -5244,7 +5259,7 @@ TEST(ReplCommandsTest, graph_bfs_execute_no_assign) {
     expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
     expect_contains(interp, "graph_bfs(A, 0)", "order =");
     expect_error_contains(interp, "graph_bfs(A, 1.5)",
-                          "non-negative integer source");
+                          "expected an integer source");
 }
 
 TEST(ReplCommandsTest, graph_katz_centrality_noassign) {
@@ -5526,7 +5541,7 @@ TEST(ReplCommandsTest, graph_dfs_execute_no_assign) {
     expect_ok(interp, "A = [0, 1, 0; 0, 0, 2; 0, 0, 0]");
     expect_contains(interp, "graph_dfs(A, 0)", "order =");
     expect_error_contains(interp, "graph_dfs(A, 1.5)",
-                          "non-negative integer source");
+                          "expected an integer source");
     expect_error_contains(interp, "graph_dfs(A, -1)",
                           "non-negative integer source");
 }

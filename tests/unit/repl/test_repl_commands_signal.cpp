@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -5417,9 +5419,9 @@ TEST(ReplCommandsTest, signal_firwin_execute_errors) {
     expect_contains(interp, "signal_firwin(11, 0.3, 1)", "b =");
     expect_contains(interp, "signal_firwin(11, 0.3, 2)", "b =");
 
-    expect_error_contains(interp, "signal_firwin(1.5, 0.3)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin(1.5, 0.3)", "expected an integer n_taps");
     expect_error_contains(interp, "signal_firwin(0, 0.3)", "expected integer n_taps >= 1");
-    expect_error_contains(interp, "signal_firwin(1.5, 0.3, 1)", "expected integer n_taps >= 1");
+    expect_error_contains(interp, "signal_firwin(1.5, 0.3, 1)", "expected an integer n_taps");
     expect_error_contains(interp, "signal_firwin(abc, 0.3)",
                           "expected signal_firwin(n_taps, cutoff[, window])");
     expect_error_contains(interp, "signal_firwin(11, xyz)",
@@ -5437,7 +5439,7 @@ TEST(ReplCommandsTest, signal_firwin_highpass_execute_errors) {
     expect_contains(interp, "signal_firwin_highpass(11, 0.3, 1)", "b =");
 
     expect_error_contains(interp, "signal_firwin_highpass(1.5, 0.3)",
-                          "expected integer n_taps >= 1");
+                          "expected an integer n_taps");
     expect_error_contains(interp, "signal_firwin_highpass(0, 0.3, 1)",
                           "expected integer n_taps >= 1");
     expect_error_contains(interp, "signal_firwin_highpass(abc, 0.3)",
@@ -5501,7 +5503,7 @@ TEST(ReplCommandsTest, signal_czt_execute_errors) {
     expect_error_contains(interp, "signal_czt([1; 2; 3; 4], 0, 0, -1, 1, 0)",
                           "expected positive integer m");
     expect_error_contains(interp, "signal_czt([1; 2; 3; 4], 1.5, 0, -1, 1, 0)",
-                          "expected positive integer m");
+                          "expected an integer m");
     expect_error_contains(interp, "signal_czt([1; 2; 3; 4], notnum, 0, -1, 1, 0)",
                           "expected signal_czt(x, m, w_re, w_im, a_re, a_im)");
     expect_error_contains(interp, "Z = signal_czt(missing, 4, 0, -1, 1, 0)", "unknown matrix");
@@ -5515,7 +5517,7 @@ TEST(ReplCommandsTest, signal_czt_zoom_execute_errors) {
     expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, 0, 4.0)",
                           "expected positive integer m");
     expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, 1.5, 4.0)",
-                          "expected positive integer m");
+                          "expected an integer m");
     expect_error_contains(interp, "signal_czt_zoom([1; 2; 3; 4], 0.0, 0.5, notnum, 4.0)",
                           "expected signal_czt_zoom(x, f_start, f_stop, m, fs)");
     expect_error_contains(interp, "zoom = signal_czt_zoom(missing, 0.0, 0.5, 8, 4.0)",
@@ -5531,7 +5533,7 @@ TEST(ReplCommandsTest, signal_cheby1_execute_errors) {
     expect_error_contains(interp, "signal_cheby1(0, 1.0, 0.25, 2.0)",
                           "expected integer order >= 1");
     expect_error_contains(interp, "signal_cheby1(1.5, 1.0, 0.25, 2.0)",
-                          "expected integer order >= 1");
+                          "expected an integer order");
     expect_error_contains(interp, "signal_cheby1(notnum, 1.0, 0.25, 2.0)",
                           "expected signal_cheby1(order, rp_db, cutoff, fs[, type])");
     expect_error_contains(interp, "ba = signal_cheby1(0, 1.0, 0.25, 2.0)",
@@ -5583,7 +5585,7 @@ TEST(ReplCommandsTest, signal_moving_average_execute_errors) {
     expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 0)",
                           "expected positive integer window");
     expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 1.5)",
-                          "expected positive integer window");
+                          "expected an integer window");
     expect_error_contains(interp, "ma = signal_moving_average(missing, 3)", "unknown matrix");
     expect_error_contains(interp, "ma = signal_moving_average([5; 5; 5; 5], 0)",
                           "expected positive integer window");
@@ -5640,7 +5642,7 @@ TEST(ReplCommandsTest, signal_firwin_highpass_noassign) {
 TEST(ReplCommandsTest, signal_cheby2_noassign) {
     Interpreter interp;
     expect_contains(interp, "signal_cheby2(2, 40.0, 0.25, 2.0)", "ba =");
-    expect_error_contains(interp, "signal_cheby2(1.5, 40.0, 0.25, 2.0)", "integer order >= 1");
+    expect_error_contains(interp, "signal_cheby2(1.5, 40.0, 0.25, 2.0)", "expected an integer order");
 }
 
 TEST(ReplCommandsTest, signal_cheby2_type_noassign) {
@@ -5655,7 +5657,7 @@ TEST(ReplCommandsTest, signal_welch_psd_noassign) {
     expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0; 1; 0; -1; 0]");
     expect_contains(interp, "signal_welch_psd(x, 8.0, 8)", "psd =");
     expect_error_contains(interp, "signal_welch_psd(missing, 8.0, 8)", "unknown matrix");
-    expect_error_contains(interp, "signal_welch_psd(x, 8.0, 1.5)", "positive integer nperseg");
+    expect_error_contains(interp, "signal_welch_psd(x, 8.0, 1.5)", "expected an integer nperseg");
 }
 
 TEST(ReplCommandsTest, signal_savgol_noassign) {
@@ -5725,7 +5727,7 @@ TEST(ReplCommandsTest, signal_conv2_noassign) {
     Interpreter interp;
     expect_ok(interp, "A = [1, 2; 3, 4]");
     expect_ok(interp, "K = [1, 0; 0, 1]");
-    expect_contains(interp, "signal_conv2(A, K)", "C =");
+    expect_contains(interp, "signal_conv2(A, K)", "_ =");
     expect_error_contains(interp, "signal_conv2(missing, K)", "unknown matrix");
 }
 
@@ -5816,7 +5818,7 @@ TEST(ReplCommandsTest, signal_coherence_noassign) {
     expect_ok(interp, "x = [1; 0; -1; 0; 1; 0; -1; 0]");
     expect_contains(interp, "signal_coherence(x, x, 8.0, 8)", "coherence =");
     expect_error_contains(interp, "signal_coherence(x, x, 8.0, 1.5)",
-                          "expected positive integer nperseg");
+                          "expected an integer nperseg");
     expect_error_contains(interp, "signal_coherence(x, x, notnum, 8)",
                           "expected signal_coherence(x, y, fs, nperseg)");
 }

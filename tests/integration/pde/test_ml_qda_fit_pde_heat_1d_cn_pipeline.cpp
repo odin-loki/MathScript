@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -52,7 +54,7 @@ TEST(IntegrationPde,  MlQdaFit) {
     expect_contains(interp, "help", "ml_qda_fit(");
 }
 
-TEST(IntegrationPde,  PdeHeat1dCn) {
+TEST(IntegrationPde, PdeHeat1dCn_MlQdaFitPdeHeat1dCnPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "x0 = [0; 0.5; 1; 0.5; 0]");
@@ -98,7 +100,7 @@ TEST(IntegrationPde,  PdeReactionDiffusion1d) {
     expect_contains(interp, "help", "pde_reaction_diffusion_1d(");
 }
 
-TEST(IntegrationPde,  Brentq) {
+TEST(IntegrationPde, Brentq_MlQdaFitPdeHeat1dCnPipeline) {
     Interpreter interp;
 
     // (x-2)(x+1) has root x=2 on [0, 5]
@@ -106,7 +108,7 @@ TEST(IntegrationPde,  Brentq) {
     expect_contains(interp, "help", "brentq(");
 }
 
-TEST(IntegrationPde,  ArithmeticEncodeVec) {
+TEST(IntegrationPde, ArithmeticEncodeVec_MlQdaFitPdeHeat1dCnPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "M = [97; 98; 99; 97; 97; 98]");
@@ -116,7 +118,7 @@ TEST(IntegrationPde,  ArithmeticEncodeVec) {
     expect_contains(interp, "help", "arithmetic_encode_vec(");
 }
 
-TEST(IntegrationPde,  FemPoisson1d) {
+TEST(IntegrationPde, FemPoisson1d_MlQdaFitPdeHeat1dCnPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "u1 = fem_poisson1d(8)");

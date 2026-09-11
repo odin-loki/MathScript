@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/cfd/cfd.hpp"
 
 #include <algorithm>
@@ -9,17 +11,36 @@ namespace cfd {
 
 namespace {
 
-double face_velocity(std::span<const double> v, std::size_t left_cell, std::size_t n) {
+// Velocity at face `face_idx`, which separates cell face_idx-1 from cell face_idx.
+//
+// The boundary condition matters. Under periodicity face 0 and face n are the
+// SAME face -- between cell n-1 and cell 0 -- so their velocities must agree or
+// the telescoping flux sum leaves a residual and the scheme stops conserving
+// mass. Previously face 0 clamped its left cell to 0 and got 0.5*(v[0]+v[1])
+// (the velocity of face 1) while face n fell through to the one-sided v[n-1];
+// the mismatch injected u_up * (v[n-1] - 0.5*(v[0]+v[1])) of mass every step.
+// With u = {0,0,0,1}, v = {0.5,0.4,0.3,0.2}, dx = 0.2, dt = 0.05 the integrated
+// mass grew from 0.2000 to 0.2566 over five periodic steps -- a 28% gain from a
+// scheme whose whole point is conservation.
+double face_velocity(std::span<const double> v, int face_idx, std::size_t n,
+                     BoundaryCondition bc) {
     if (v.size() == 1) {
         return v[0];
     }
-    if (v.size() != n) {
+    if (v.size() != n || n == 0) {
         return 0.0;
     }
-    if (left_cell + 1 < n) {
-        return 0.5 * (v[left_cell] + v[left_cell + 1]);
+    const int ni = static_cast<int>(n);
+    if (bc == BoundaryCondition::Periodic) {
+        const int left = ((face_idx - 1) % ni + ni) % ni;
+        const int right = (face_idx % ni + ni) % ni;
+        return 0.5 * (v[static_cast<std::size_t>(left)] + v[static_cast<std::size_t>(right)]);
     }
-    return v[n - 1];
+    // Non-periodic: clamp to the domain. Faces 0 and n carry no flux for
+    // ZeroFlux (handled by the caller), so this is the interior average.
+    const int left = std::clamp(face_idx - 1, 0, ni - 1);
+    const int right = std::clamp(face_idx, 0, ni - 1);
+    return 0.5 * (v[static_cast<std::size_t>(left)] + v[static_cast<std::size_t>(right)]);
 }
 
 double sample_cell(std::span<const double> u, int idx, BoundaryCondition bc) {
@@ -51,9 +72,7 @@ double upwind_face_flux(
         return 0.0;
     }
 
-    const std::size_t left_cell =
-        face_idx <= 0 ? 0 : static_cast<std::size_t>(face_idx - 1);
-    const double vf = face_velocity(v, left_cell, n);
+    const double vf = face_velocity(v, face_idx, n, bc);
     const double u_up =
         (vf >= 0.0) ? sample_cell(u, face_idx - 1, bc) : sample_cell(u, face_idx, bc);
     return vf * u_up;
@@ -130,23 +149,33 @@ double cell_component(
     return field[j * nx + i];
 }
 
+// Same periodic-face reasoning as the 1D face_velocity above: under periodicity
+// face 0 and face nx are the same face, between column nx-1 and column 0.
 double face_velocity_x(
     std::span<const double> vx,
     std::size_t nx,
     std::size_t ny,
-    std::size_t left_cell,
-    std::size_t j) {
+    int face_i,
+    std::size_t j,
+    BoundaryCondition bc_x) {
     if (vx.size() == 1) {
         return vx[0];
     }
-    if (vx.size() != nx * ny) {
+    if (vx.size() != nx * ny || nx == 0) {
         return 0.0;
     }
-    if (left_cell + 1 < nx) {
-        return 0.5 * (cell_component(vx, nx, ny, left_cell, j)
-                      + cell_component(vx, nx, ny, left_cell + 1, j));
+    const int n = static_cast<int>(nx);
+    int left = face_i - 1;
+    int right = face_i;
+    if (bc_x == BoundaryCondition::Periodic) {
+        left = ((left % n) + n) % n;
+        right = ((right % n) + n) % n;
+    } else {
+        left = std::clamp(left, 0, n - 1);
+        right = std::clamp(right, 0, n - 1);
     }
-    return cell_component(vx, nx, ny, nx - 1, j);
+    return 0.5 * (cell_component(vx, nx, ny, static_cast<std::size_t>(left), j)
+                  + cell_component(vx, nx, ny, static_cast<std::size_t>(right), j));
 }
 
 double face_velocity_y(
@@ -154,18 +183,26 @@ double face_velocity_y(
     std::size_t nx,
     std::size_t ny,
     std::size_t i,
-    std::size_t lower_cell) {
+    int face_j,
+    BoundaryCondition bc_y) {
     if (vy.size() == 1) {
         return vy[0];
     }
-    if (vy.size() != nx * ny) {
+    if (vy.size() != nx * ny || ny == 0) {
         return 0.0;
     }
-    if (lower_cell + 1 < ny) {
-        return 0.5 * (cell_component(vy, nx, ny, i, lower_cell)
-                      + cell_component(vy, nx, ny, i, lower_cell + 1));
+    const int n = static_cast<int>(ny);
+    int lower = face_j - 1;
+    int upper = face_j;
+    if (bc_y == BoundaryCondition::Periodic) {
+        lower = ((lower % n) + n) % n;
+        upper = ((upper % n) + n) % n;
+    } else {
+        lower = std::clamp(lower, 0, n - 1);
+        upper = std::clamp(upper, 0, n - 1);
     }
-    return cell_component(vy, nx, ny, i, ny - 1);
+    return 0.5 * (cell_component(vy, nx, ny, i, static_cast<std::size_t>(lower))
+                  + cell_component(vy, nx, ny, i, static_cast<std::size_t>(upper)));
 }
 
 double sample_cell_2d(
@@ -216,9 +253,8 @@ double upwind_x_face_flux(
         return 0.0;
     }
 
-    const std::size_t left_cell =
-        face_i <= 0 ? 0 : static_cast<std::size_t>(face_i - 1);
-    const double vxf = face_velocity_x(vx, nx, ny, left_cell, static_cast<std::size_t>(face_j));
+    const double vxf =
+        face_velocity_x(vx, nx, ny, face_i, static_cast<std::size_t>(face_j), bc_x);
     const double u_up = (vxf >= 0.0)
         ? sample_cell_2d(u, face_i - 1, face_j, bc_x, bc_y)
         : sample_cell_2d(u, face_i, face_j, bc_x, bc_y);
@@ -239,9 +275,8 @@ double upwind_y_face_flux(
         return 0.0;
     }
 
-    const std::size_t lower_cell =
-        face_j <= 0 ? 0 : static_cast<std::size_t>(face_j - 1);
-    const double vyf = face_velocity_y(vy, nx, ny, static_cast<std::size_t>(face_i), lower_cell);
+    const double vyf =
+        face_velocity_y(vy, nx, ny, static_cast<std::size_t>(face_i), face_j, bc_y);
     const double u_up = (vyf >= 0.0)
         ? sample_cell_2d(u, face_i, face_j - 1, bc_x, bc_y)
         : sample_cell_2d(u, face_i, face_j, bc_x, bc_y);
@@ -353,20 +388,31 @@ double face_velocity_x_3d(
     std::size_t nx,
     std::size_t ny,
     std::size_t nz,
-    std::size_t left_cell,
+    int face_i,
     std::size_t j,
-    std::size_t k) {
+    std::size_t k,
+    BoundaryCondition bc_x) {
     if (vx.size() == 1) {
         return vx[0];
     }
-    if (vx.size() != nx * ny * nz) {
+    if (vx.size() != nx * ny * nz || nx == 0) {
         return 0.0;
     }
-    if (left_cell + 1 < nx) {
-        return 0.5 * (cell_component_3d(vx, nx, ny, nz, left_cell, j, k)
-                      + cell_component_3d(vx, nx, ny, nz, left_cell + 1, j, k));
+    // Periodic face 0 and face nx are the same face; see face_velocity above.
+    const int n = static_cast<int>(nx);
+    int left = face_i - 1;
+    int right = face_i;
+    if (bc_x == BoundaryCondition::Periodic) {
+        left = ((left % n) + n) % n;
+        right = ((right % n) + n) % n;
+    } else {
+        left = std::clamp(left, 0, n - 1);
+        right = std::clamp(right, 0, n - 1);
     }
-    return cell_component_3d(vx, nx, ny, nz, nx - 1, j, k);
+    const std::size_t l = static_cast<std::size_t>(left);
+    const std::size_t r = static_cast<std::size_t>(right);
+    return 0.5 * (cell_component_3d(vx, nx, ny, nz, l, j, k)
+                  + cell_component_3d(vx, nx, ny, nz, r, j, k));
 }
 
 double face_velocity_y_3d(
@@ -375,19 +421,30 @@ double face_velocity_y_3d(
     std::size_t ny,
     std::size_t nz,
     std::size_t i,
-    std::size_t lower_cell,
-    std::size_t k) {
+    int face_j,
+    std::size_t k,
+    BoundaryCondition bc_y) {
     if (vy.size() == 1) {
         return vy[0];
     }
-    if (vy.size() != nx * ny * nz) {
+    if (vy.size() != nx * ny * nz || ny == 0) {
         return 0.0;
     }
-    if (lower_cell + 1 < ny) {
-        return 0.5 * (cell_component_3d(vy, nx, ny, nz, i, lower_cell, k)
-                      + cell_component_3d(vy, nx, ny, nz, i, lower_cell + 1, k));
+    // Periodic face 0 and face ny are the same face; see face_velocity above.
+    const int n = static_cast<int>(ny);
+    int left = face_j - 1;
+    int right = face_j;
+    if (bc_y == BoundaryCondition::Periodic) {
+        left = ((left % n) + n) % n;
+        right = ((right % n) + n) % n;
+    } else {
+        left = std::clamp(left, 0, n - 1);
+        right = std::clamp(right, 0, n - 1);
     }
-    return cell_component_3d(vy, nx, ny, nz, i, ny - 1, k);
+    const std::size_t l = static_cast<std::size_t>(left);
+    const std::size_t r = static_cast<std::size_t>(right);
+    return 0.5 * (cell_component_3d(vy, nx, ny, nz, i, l, k)
+                  + cell_component_3d(vy, nx, ny, nz, i, r, k));
 }
 
 double face_velocity_z_3d(
@@ -397,18 +454,29 @@ double face_velocity_z_3d(
     std::size_t nz,
     std::size_t i,
     std::size_t j,
-    std::size_t lower_cell) {
+    int face_k,
+    BoundaryCondition bc_z) {
     if (vz.size() == 1) {
         return vz[0];
     }
-    if (vz.size() != nx * ny * nz) {
+    if (vz.size() != nx * ny * nz || nz == 0) {
         return 0.0;
     }
-    if (lower_cell + 1 < nz) {
-        return 0.5 * (cell_component_3d(vz, nx, ny, nz, i, j, lower_cell)
-                      + cell_component_3d(vz, nx, ny, nz, i, j, lower_cell + 1));
+    // Periodic face 0 and face nz are the same face; see face_velocity above.
+    const int n = static_cast<int>(nz);
+    int left = face_k - 1;
+    int right = face_k;
+    if (bc_z == BoundaryCondition::Periodic) {
+        left = ((left % n) + n) % n;
+        right = ((right % n) + n) % n;
+    } else {
+        left = std::clamp(left, 0, n - 1);
+        right = std::clamp(right, 0, n - 1);
     }
-    return cell_component_3d(vz, nx, ny, nz, i, j, nz - 1);
+    const std::size_t l = static_cast<std::size_t>(left);
+    const std::size_t r = static_cast<std::size_t>(right);
+    return 0.5 * (cell_component_3d(vz, nx, ny, nz, i, j, l)
+                  + cell_component_3d(vz, nx, ny, nz, i, j, r));
 }
 
 double sample_cell_3d(
@@ -475,10 +543,9 @@ double upwind_x_face_flux_3d(
         return 0.0;
     }
 
-    const std::size_t left_cell =
-        face_i <= 0 ? 0 : static_cast<std::size_t>(face_i - 1);
     const double vxf = face_velocity_x_3d(
-        vx, nx, ny, nz, left_cell, static_cast<std::size_t>(face_j), static_cast<std::size_t>(face_k));
+        vx, nx, ny, nz, face_i, static_cast<std::size_t>(face_j),
+        static_cast<std::size_t>(face_k), bc_x);
     const double u_up = (vxf >= 0.0)
         ? sample_cell_3d(u, face_i - 1, face_j, face_k, bc_x, bc_y, bc_z)
         : sample_cell_3d(u, face_i, face_j, face_k, bc_x, bc_y, bc_z);
@@ -502,10 +569,9 @@ double upwind_y_face_flux_3d(
         return 0.0;
     }
 
-    const std::size_t lower_cell =
-        face_j <= 0 ? 0 : static_cast<std::size_t>(face_j - 1);
     const double vyf = face_velocity_y_3d(
-        vy, nx, ny, nz, static_cast<std::size_t>(face_i), lower_cell, static_cast<std::size_t>(face_k));
+        vy, nx, ny, nz, static_cast<std::size_t>(face_i), face_j,
+        static_cast<std::size_t>(face_k), bc_y);
     const double u_up = (vyf >= 0.0)
         ? sample_cell_3d(u, face_i, face_j - 1, face_k, bc_x, bc_y, bc_z)
         : sample_cell_3d(u, face_i, face_j, face_k, bc_x, bc_y, bc_z);
@@ -529,10 +595,9 @@ double upwind_z_face_flux_3d(
         return 0.0;
     }
 
-    const std::size_t lower_cell =
-        face_k <= 0 ? 0 : static_cast<std::size_t>(face_k - 1);
     const double vzf = face_velocity_z_3d(
-        vz, nx, ny, nz, static_cast<std::size_t>(face_i), static_cast<std::size_t>(face_j), lower_cell);
+        vz, nx, ny, nz, static_cast<std::size_t>(face_i),
+        static_cast<std::size_t>(face_j), face_k, bc_z);
     const double u_up = (vzf >= 0.0)
         ? sample_cell_3d(u, face_i, face_j, face_k - 1, bc_x, bc_y, bc_z)
         : sample_cell_3d(u, face_i, face_j, face_k, bc_x, bc_y, bc_z);

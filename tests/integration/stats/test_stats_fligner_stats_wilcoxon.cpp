@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationStats,  FlignerWilcoxonTail31) {
     ASSERT_GT(interp.state().matrices.count("ws"), 0u);
 }
 
-TEST(IntegrationStats,  ProbRayleighCdfScalar) {
+TEST(IntegrationStats, ProbRayleighCdfScalar_StatsFlignerStatsWilcoxon) {
     Interpreter interp;
     expect_ok(interp, "rc = prob_rayleigh_cdf(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("rc"), ms::rayleigh_cdf(1, 1), 1e-8);

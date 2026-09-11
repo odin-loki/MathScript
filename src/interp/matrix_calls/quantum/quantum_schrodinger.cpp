@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "matrix_call.hpp"
 #include "repl_engine_internal.hpp"
 
@@ -6,38 +8,15 @@ namespace ms::interp {
 Result<Matrix<double>> handle_quantum_schrodinger(Interpreter& interp, const MatrixCallAssign& assign) {
     using namespace detail;
     MatrixCallCtx ctx(interp);
-    auto resolve_operand = [&ctx](const std::string& text) { return ctx.resolve_operand(text); };
-    auto parse_scalar_arg = [&ctx](const std::string& arg_text, const char* fn) -> Result<double> {
-        double value = 0.0;
-        if (parse_number(arg_text, value)) return value;
-        auto expr = eval_scalar_expr(ctx.state(), arg_text);
-        if (!expr) {
-            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
-        }
-        return *expr;
-    };
-    auto parse_positive_size_arg = [](double value, const char* fn, const char* label) -> Result<std::size_t> {
-        const int i = static_cast<int>(value);
-        if (i < 1 || value != static_cast<double>(i)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<std::size_t>(i);
-    };
-    auto parse_uint64_arg = [](double value, const char* fn, const char* label) -> Result<uint64_t> {
-        if (value < 0.0 || value != std::floor(value)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<uint64_t>(value);
-    };
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
     if (assign.callee == "quantum_schrodinger" && assign.args.size() == 5) {
-        auto H_m = resolve_operand(assign.args[0]);
+        auto H_m = ctx.resolve_operand(assign.args[0]);
         if (!H_m) {
             return std::unexpected(H_m.error());
         }
-        auto psi0_m = resolve_operand(assign.args[1]);
+        auto psi0_m = ctx.resolve_operand(assign.args[1]);
         if (!psi0_m) {
             return std::unexpected(psi0_m.error());
         }
@@ -50,11 +29,17 @@ Result<Matrix<double>> handle_quantum_schrodinger(Interpreter& interp, const Mat
                 "quantum_schrodinger",
                 "expected quantum_schrodinger(H, psi0, t0, t1, n_steps)"});
         }
-        const int n_steps = static_cast<int>(n_steps_d);
-        if (n_steps < 0 || n_steps_d != n_steps) {
-            return std::unexpected(DomainError{
-                "quantum_schrodinger", "expected non-negative integer n_steps"});
+        // The propagator is applied n_steps times to an H-sized state, so the cost is
+        // their product. quantum_schrodinger_final(eye(8), ones(8,1), 0, 1, 1e7) ran for
+        // 15.7 s, and quantum_schrodinger spent 24 s computing a trajectory before
+        // rejecting it as too large to print.
+        WorkBudget budget(assign.callee, 25.0);
+        budget.charge(H_m->rows() * H_m->cols());
+        auto n_steps_arg = budget.take("n_steps", n_steps_d);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
+        const int n_steps = *n_steps_arg;
         result = eval_quantum_schrodinger_matrix(*H_m, *psi0_m, t0, t1, n_steps);
     }
 

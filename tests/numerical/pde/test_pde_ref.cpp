@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript PDE Numerical Reference Tests
 // Tests pde_heat_1d for known analytical solutions of the heat equation
 

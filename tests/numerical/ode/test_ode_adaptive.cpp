@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: Adaptive ODE solver tests (RK45, RK23, midpoint, Heun, Adams-Bashforth2, vector)
 #define _USE_MATH_DEFINES
 #include "ms/ode/ode.hpp"

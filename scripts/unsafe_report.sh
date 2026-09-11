@@ -10,6 +10,13 @@ OUT="${1:-${ROOT}/build/unsafe_report.txt}"
 
 mkdir -p "$(dirname "${OUT}")"
 
+# A line whose first non-blank characters are a comment marker is prose, not an
+# unsafe site: explaining in a comment why a function avoids const_cast is the
+# opposite of using one, and counting those made the gate fail for documenting
+# itself. The negative lookahead skips whole-line comments only, so a real cast
+# with a trailing comment still counts.
+PATTERN='^(?!\s*(//|\*|/\*)).*(reinterpret_cast|const_cast|\[\[ms::unsafe|UNSAFE_SITE\()'
+
 scan_dir() {
     local label="$1"
     local dir="$2"
@@ -17,8 +24,7 @@ scan_dir() {
         return
     fi
     echo "=== ${label} ==="
-    rg -n --glob '*.cpp' --glob '*.hpp' \
-        'reinterpret_cast|const_cast|\[\[ms::unsafe|UNSAFE_SITE\(' "${dir}" || true
+    rg -nP --glob '*.cpp' --glob '*.hpp' "${PATTERN}" "${dir}" || true
     echo
 }
 
@@ -30,7 +36,7 @@ scan_dir() {
     scan_dir "include" "${ROOT}/include"
 } | tee "${OUT}"
 
-TOTAL="$(rg -c 'reinterpret_cast|const_cast|\[\[ms::unsafe|UNSAFE_SITE\(' \
+TOTAL="$(rg -cP "${PATTERN}" \
     --glob '*.cpp' --glob '*.hpp' "${ROOT}/src" "${ROOT}/include" 2>/dev/null \
     | awk -F: '{sum += $2} END {print sum + 0}')"
 

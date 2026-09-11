@@ -1,0 +1,2 @@
+error: resolve: 'A' is a matrix, not a scalar; matrices have no operator arithmetic -- use matmul(A, B) and the mat_* accessors
+error: resolve: 'A' is a matrix, not a scalar; matrices have no operator arithmetic -- use matmul(A, B) and the mat_* accessors

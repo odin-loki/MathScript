@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include <cstdint>
 #include <string>
@@ -15,15 +17,18 @@ inline constexpr int kMaxEnumAlphabetK = 6;
 
 // --- Factorials ---
 uint64_t factorial(uint32_t n);             // n!
-uint64_t double_factorial(uint32_t n);      // n!!
-uint64_t subfactorial(uint32_t n);          // D(n) — derangements count
+uint64_t double_factorial(uint32_t n);      // n!!; n > 33 returns UINT64_MAX
+uint64_t subfactorial(uint32_t n);          // D(n) — derangements count; n > 20 returns UINT64_MAX
 
 // --- Counting ---
-uint64_t binomial(uint32_t n, uint32_t k);  // C(n,k)
-uint64_t multinomial(uint32_t n, const std::vector<uint32_t>& ks);
-uint64_t permutations(uint32_t n, uint32_t k);   // P(n,k) = n!/(n-k)!
+// Each returns UINT64_MAX when the exact answer does not fit in 64 bits, the same
+// overflow sentinel the factorials use. Callers that show the number to a user must
+// test for it: it is 18446744073709551615, which reads as an answer.
+uint64_t binomial(uint32_t n, uint32_t k);  // C(n,k); 0 when k > n
+uint64_t multinomial(uint32_t n, const std::vector<uint32_t>& ks);  // 0 when sum(ks) != n
+uint64_t permutations(uint32_t n, uint32_t k);   // P(n,k) = n!/(n-k)!; 0 when k > n
 uint64_t combinations(uint32_t n, uint32_t k);   // alias for binomial
-uint64_t combinations_with_rep(uint32_t n, uint32_t k);  // C(n+k-1, k)
+uint64_t combinations_with_rep(uint32_t n, uint32_t k);  // C(n+k-1, k); 1 when k = 0
 
 // --- Enumeration ---
 // next/prev permutation: modifies in-place, returns false at end/start
@@ -34,6 +39,11 @@ bool next_comb(std::vector<int>& v, int n);
 bool prev_comb(std::vector<int>& v, int n);
 
 // Ranking / unranking
+/// @brief Lexicographic rank of `v` among the permutations of 0..v.size()-1.
+/// @note `v` must BE such a permutation. Anything else -- an out-of-range entry or a
+///   repeat -- has no rank and returns 0; it used to index the internal used-marker
+///   vector with the entry and read past it.
+/// @note More than 20 elements returns UINT64_MAX: 21! exceeds the range of the rank.
 uint64_t rank_permutation(const std::vector<int>& v);
 std::vector<int> unrank_permutation(int n, uint64_t rank);
 uint64_t rank_combination(const std::vector<int>& v, int n);
@@ -47,32 +57,38 @@ std::vector<std::vector<int>> all_subsets(int n);
 std::vector<std::vector<int>> all_compositions(int n, int max_parts = -1);
 // Generate all integer partitions of n (non-increasing order)
 std::vector<std::vector<int>> all_partitions(int n);
-// Generate all integer partitions of n into exactly k positive parts (non-increasing order)
+// Generate all integer partitions of n into exactly k positive parts (non-increasing order).
+// Bounded by kMaxEnumPartitionN like all_partitions: the enumeration is over every such
+// partition, and combo_restricted_partitions(442, 5) exhausted memory before this cap.
 std::vector<std::vector<int>> restricted_partitions(int n, int k);
 
 // Derangements of 0..n-1
 std::vector<std::vector<int>> derangements(int n);
 
-// Catalan number C_n = C(2n,n)/(n+1)
+// Catalan number C_n = C(2n,n)/(n+1). n > 36 returns UINT64_MAX (not representable).
 uint64_t catalan_num(uint32_t n);
 
-// Stirling numbers
+// Stirling numbers. n beyond the last representable value returns UINT64_MAX (21 for the
+// first kind, 26 for the second), which also bounds the O(n*k) table they build.
 uint64_t stirling1(uint32_t n, uint32_t k);  // unsigned, first kind |s(n,k)|
 uint64_t stirling2(uint32_t n, uint32_t k);  // second kind S(n,k)
 
-// Eulerian numbers A(n,k): permutations of {1..n} with exactly k ascents
+// Eulerian numbers A(n,k): permutations of {1..n} with exactly k ascents.
+// n > 21 returns UINT64_MAX (not representable).
 uint64_t eulerian_number(uint32_t n, uint32_t k);
 
-// Bell numbers B_n
+// Bell numbers B_n. n > 25 returns UINT64_MAX: B_26 does not fit, and the Bell triangle
+// this builds is O(n^2) work and O(n) memory, so a large n was also unbounded work.
 uint64_t bell_num(uint32_t n);
 
-// Motzkin numbers M_n
+// Motzkin numbers M_n. n > 45 returns UINT64_MAX (not representable, and O(n^2) to reach).
 uint64_t motzkin_num(uint32_t n);
 
 // Set partitions of {0..n-1} (enumeration analogue of bell_num)
 std::vector<std::vector<std::vector<int>>> set_partitions(int n);
 
-// Involution count I(n): permutations that are their own inverse
+// Involution count I(n): permutations that are their own inverse.
+// n > 31 returns UINT64_MAX (not representable).
 uint64_t involutions(uint32_t n);
 
 // All Dyck paths of semilength n (balanced '(' ')' strings; count = catalan_num(n))

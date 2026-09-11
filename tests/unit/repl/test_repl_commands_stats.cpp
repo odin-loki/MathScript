@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -84,7 +86,7 @@ TEST(ReplCommandsTest, stats_stddev) {
     expect_ok(interp, "sd = stats_stddev([1; 2; 3; 4; 5])");
     EXPECT_NEAR(interp.state().scalars.at("sd"), std::sqrt(2.5), 1e-9);
 
-    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.581139");
 }
 
 TEST(ReplCommandsTest, stats_skewness) {
@@ -4671,7 +4673,7 @@ TEST(ReplCommandsTest, stats_bootstrap_mean_errors) {
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 0, 1)",
                           "expected positive integer n_boot");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 1.5, 1)",
-                          "expected positive integer n_boot");
+                          "expected an integer n_boot");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], notnum, 1)",
                           "expected stats_bootstrap_mean(x[, n_boot[, seed]])");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 20, -1)",
@@ -4712,7 +4714,7 @@ TEST(ReplCommandsTest, stats_var_noassign) {
 
 TEST(ReplCommandsTest, stats_stddev_noassign) {
     Interpreter interp;
-    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.58114");
+    expect_contains(interp, "stats_stddev([1; 2; 3; 4; 5])", "1.581139");
     expect_error_contains(interp, "stats_stddev(no_such_matrix)", "unknown matrix");
 }
 

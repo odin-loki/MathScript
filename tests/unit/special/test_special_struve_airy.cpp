@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Struve / Airy / Special Function Tests (Wave 50)
 // Tests for Struve, Airy, Kelvin, Anger, Weber, Bessel zeros functions
 

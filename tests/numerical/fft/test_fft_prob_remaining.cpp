@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Remaining FFT and Probability Coverage
 // Covers: ifft2 (uncovered), gamma_cdf (low coverage), additional prob checks
 

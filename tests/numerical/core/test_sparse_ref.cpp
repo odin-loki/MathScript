@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Sparse Matrix Numerical Reference Tests
 // Covers Sparse construction, nnz, to_dense, spmv operations
 

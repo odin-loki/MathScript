@@ -8,7 +8,7 @@ add_executable(mathscript-repl repl.cpp)
 target_link_libraries(mathscript-repl PRIVATE mathscript ms_interp)
 
 add_executable(mathscript-server mathscript_server.cpp)
-target_link_libraries(mathscript-server PRIVATE ms_distributed)
+target_link_libraries(mathscript-server PRIVATE mathscript ms_interp)
 target_include_directories(mathscript-server PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
 target_include_directories(mathscript-repl PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_BINARY_DIR}/include)
 

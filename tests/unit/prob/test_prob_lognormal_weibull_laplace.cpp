@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Lognormal, Weibull, Laplace Distribution Tests
 // PDF/CDF/PPF trios for lognormal, Weibull, and Laplace distributions.
 

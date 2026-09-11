@@ -1,0 +1,1 @@
+pvar = finance_portfolio_variance([0.5;.09])

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationSpecial,  PoissonAdv1d) {
     EXPECT_EQ(interp.state().matrices.at("adv").rows(), 3u);
 }
 
-TEST(IntegrationSpecial,  JacobiScScalar) {
+TEST(IntegrationSpecial, JacobiScScalar_OnesPdePoisson1dPipeline) {
     Interpreter interp;
     expect_ok(interp, "js = jacobi_sc(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("js"), ms::jacobi_sc(0.5, 0.5), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: REPL symbolic bindings pipeline
 
 #include <gtest/gtest.h>
@@ -53,10 +55,21 @@ TEST(SymbolicReplPipeline, SymbolicBindingsPipeline) {
     EXPECT_NE(integ->find("x"), std::string::npos);
     expect_error(interp, "sym_integrate(\"x^2\")");
 
-    // sym_integrate unsupported form returns deriv sentinel string
-    const auto unsupported = run(interp, "sym_integrate(\"sin(2*x)\", \"x\")");
-    ASSERT_TRUE(unsupported.has_value());
-    EXPECT_NE(unsupported->find("d/d"), std::string::npos);
+    // sin(2*x) integrates now, to -cos(2*x)/2. This assertion used to require it to
+    // fail, with a comment saying the failure was a gap in the table rather than a
+    // property of the input.
+    const auto linear_arg = run(interp, "sym_integrate(\"sin(2*x)\", \"x\")");
+    ASSERT_TRUE(linear_arg.has_value());
+    EXPECT_NE(linear_arg->find("cos"), std::string::npos);
+
+    // An expression sym_integrate genuinely cannot handle is reported rather than
+    // answered. It used to return the unsupported sentinel -- sym_deriv(expr, var) --
+    // which printed as "d/dx(...)", and this test pinned that string.
+    //
+    // The sentinel is not inert: sym_eval evaluates a Deriv node by differentiating
+    // it, so integrate-then-evaluate returned the derivative's value where the
+    // integral was asked for, with nothing reporting a failure anywhere.
+    expect_error(interp, "sym_integrate(\"exp(x^2)\", \"x\")");
 
     // sym_eval: numeric evaluation
     const auto eval = run(interp, "sym_eval(\"x^2+1\", \"x=3\")");

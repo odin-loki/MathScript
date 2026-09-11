@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include "ms/core/matrix.hpp"
+#include "ms/linalg/linalg.hpp"
 #include <cmath>
 #include <limits>
 #include <vector>
@@ -89,6 +92,13 @@ bool is_symmetric(const Matrix<S, OA, Alloc>& A, S tol = S(1e-10)) {
     }
     return true;
 }
+
+/// @brief Real Schur decomposition A = Q*T*Q^T of a square double matrix.
+///        T is quasi-upper-triangular: 1x1 blocks carry real eigenvalues and
+///        2x2 blocks carry complex-conjugate pairs. Q is orthogonal.
+///        Defined in decompositions.cpp; shared with eig.cpp / matrix_funcs.cpp.
+/// @return ConvergenceFail if the shifted QR iteration exhausts its budget.
+Result<SchurResult> real_schur(const Matrix<double>& A);
 
 template<typename S, StorageOrder OA, template<typename> class Alloc>
 S dot_col(const Matrix<S, OA, Alloc>& A, size_t j, size_t k) {

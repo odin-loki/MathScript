@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: LDL Decomposition and eig_sym Tests (Wave 48)
 // Tests for ldl (LDL^T for symmetric matrices) and eig_sym
 

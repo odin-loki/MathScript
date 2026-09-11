@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Signal Processing Tests (Wave 43)
 // Tests for butterworth, lowpass, highpass, bandpass, window functions
 

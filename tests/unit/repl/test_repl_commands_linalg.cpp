@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -257,13 +259,24 @@ TEST(ReplCommandsTest, linalg_funm_precond) {
     EXPECT_NEAR(interp.state().matrices.at("Pd")(0, 0), 0.25, 1e-12);
     EXPECT_NEAR(interp.state().matrices.at("Pd")(1, 0), 0.5, 1e-12);
 
+    // Real SSOR: M = (D/w + L) * (D/w)^-1 * (D/w + U), which is only diagonal when A is.
+    // For A = [4, 1; 1, 3] and w = 1.2:  D/w = diag(10/3, 5/2), so
+    //   (D/w + L)(D/w)^-1 = [1, 0; 3/10, 1]  and  M = [10/3, 1; 1, 14/5].
     expect_ok(interp, "M = [4, 1; 1, 3]");
     expect_ok(interp, "Ps = precond_ssor(M, 1.2)");
     ASSERT_EQ(interp.state().matrices.at("Ps").rows(), 2u);
     ASSERT_EQ(interp.state().matrices.at("Ps").cols(), 2u);
     EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 0), 4.0 / 1.2, 1e-12);
-    EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 3.0 / 1.2, 1e-12);
-    EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 0.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 1), 2.8, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(0, 1), 1.0, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Ps")(1, 0), 1.0, 1e-12);
+
+    // A diagonal A still yields a diagonal M, matching the pre-SSOR expectation.
+    expect_ok(interp, "Md = [4, 0; 0, 3]");
+    expect_ok(interp, "Psd = precond_ssor(Md, 1.2)");
+    EXPECT_NEAR(interp.state().matrices.at("Psd")(0, 0), 4.0 / 1.2, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Psd")(1, 1), 3.0 / 1.2, 1e-12);
+    EXPECT_NEAR(interp.state().matrices.at("Psd")(0, 1), 0.0, 1e-12);
 }
 
 TEST(ReplCommandsTest, pde_sparse_control) {

@@ -1,0 +1,1991 @@
+# Engineering plan — execution status
+
+Status of every item in [`ENGINEERING_PLAN.md`](ENGINEERING_PLAN.md), which is kept
+verbatim as the dated audit it was.
+
+Three conventions here, because the distinction is the whole point of the document:
+
+- **Done** — implemented, and a test or a check in CI fails if it regresses.
+- **Open** — not done. No partial credit, no "mostly".
+- **Held** — deliberately not done, with the reason stated. Two items are one-way
+  doors that are the repository owner's to open, not a contributor's.
+
+---
+
+## Where the plan was wrong
+
+Worth stating first, because these were found by measuring rather than by reading,
+and each one changed what the work had to be.
+
+### §3 "Work already completed" had not been applied to this tree
+
+The plan opens by describing coverage tooling, a prologue hoist and a generated
+test suite as finished. None of it was present: no `extract_manifest.py`, no
+`gen_matrix_call_tests.py`, no `hoist_prologue.py`, no `coverage_exclusions.txt`,
+no `tests/unit/matrix_calls/`. The plan was written against a tree where that work
+existed; the published repository is not that tree.
+
+The consequence was not cosmetic. Without `coverage_exclusions.txt`, 37,738 lines —
+25% of `src/` — sat outside the coverage denominator. **The 92.0% figure that had
+been reported repeatedly was measured over 75% of the tree.** That is the single
+most misleading number the project has published, and it was produced honestly by a
+tool asked the wrong question.
+
+### §6.2's defects 2 and 3 are unreachable
+
+The plan lists three defects in the Miller-Rabin implementation. The first is real
+and is fixed. The second (`std::abs` overflow on `INT64_MIN`) and third (a modulo by
+zero) cannot occur: `if (nll <= 2) nll = 3;` executes before either, which
+constrains the value past the point where those paths exist.
+
+This is not an argument from reading the code. Both ESBMC and CBMC were run against
+harnesses that assert each condition, and both report the properties unreachable.
+The harnesses are in [`../verification/`](../verification) and run in CI.
+
+### §6.5's diagnosis was wrong
+
+The plan attributes `--allow-multiple-definition` to rival implementations of the
+same symbol. It was not that. Every archive reached the link line twice, and all 20
+duplicate symbols were byte-identical. The fix was to build the bundle from
+`$<TARGET_OBJECTS:>` rather than to reconcile competing definitions — a different
+change with a different risk profile from the one the plan describes.
+
+### Counts have moved since the audit
+
+The plan counts 478 matrix-call handlers and 29 integration domains. The tree now
+has 485 and 31. Every generated figure in this document comes from the tree, not
+from the plan.
+
+---
+
+## §3 — Work the plan recorded as complete
+
+| Item | Status | Where |
+|---|---|---|
+| 3.1 Coverage tooling made honest | Done | `scripts/coverage_report.sh`, `scripts/coverage_exclusions.txt` |
+| 3.2 Duplicated handler prologue hoisted | Done | `scripts/hoist_prologue.py`, `MatrixCallCtx` in `src/interp/matrix_call.hpp` |
+| 3.3 Generated dispatch tests | Done | `scripts/extract_manifest.py`, `scripts/gen_matrix_call_tests.py` |
+
+Only paths that *cannot* execute on a CI runner are excluded from coverage, and each
+run prints how many lines the exclusions hid. A number that hides its own denominator
+is how the 92.0% happened.
+
+### What the generated suite found on its first run
+
+1,373 of 1,377 passed immediately. The four failures were all real, and none was a
+bug.
+
+`mat_row`, `mat_col`, `mat_reshape` and `mat_submatrix` guard their arity with an
+early return that names the signature they expected —
+`DomainError{"mat_row", "expected mat_row(A, i)"}` — where the other 481 handlers
+leave the pre-initialised `DomainError{"assign", "unsupported matrix call"}` in
+place. The four give the *better* diagnostic. What failed was the generator's
+assumption that one message covered every handler.
+
+The fix was to stop assuming. `extract_manifest.py` now reads each handler's
+rejection error out of its own guard, and the generated test asserts that specific
+contract. A test that asserted the convention would have passed on all 485 and
+noticed nothing if a handler changed its rejection message; this one notices.
+
+---
+
+## §4 — Legal and commercial
+
+| Item | Status | Where |
+|---|---|---|
+| 4.1 AGPL-3.0, `COPYRIGHT`, SPDX headers, CUDA §7 exception | Done | `LICENSE`, `COPYRIGHT`, `LICENSE.exceptions`, `scripts/add_spdx.py` |
+| 4.2 Rename off "MathScript" | **Declined** | see below |
+| 4.3 Export-control position | Done | `docs/EXPORT_CONTROL.md` |
+| 4.4 `SECURITY.md` and SBOM | Done | `SECURITY.md`, `sbom.cdx.json`, `scripts/gen_sbom.py` |
+| 4.5 Commit authorship | **Declined** | see below |
+
+SPDX headers are on all 1,735 source files; the 18 translation units that link the
+NVIDIA libraries additionally name `LICENSE.exceptions`, because a file that
+participates in that link should say so rather than leaving the grant discoverable
+only from the repository root. `vendor/` is untouched: it is not ours to mark.
+`scripts/add_spdx.py --check` fails CI if a file lands without one.
+
+### The two decisions
+
+Both were one-way doors, both belonged to the repository owner rather than to a
+contributor, and both have now been decided. Neither was ever blocked on work.
+
+**§4.2, the rename — declined. The project keeps the name MathScript.**
+
+The plan's finding stands on its facts: National Instruments ships a MathScript
+alongside LabVIEW, so the name is not distinctive in this field. Keeping it is an
+accepted risk rather than a refutation of the finding, and the risk is not constant —
+it is small for a personal repository and grows if the project is ever sold, packaged
+commercially under that name, or put forward as a mark. Recorded here so a later
+reader does not mistake the absence of a rename for the absence of the question.
+
+**§4.5, the authorship rewrite — declined.**
+
+`git filter-repo --mailmap` and a force push would have rewritten all 1,440 commit
+SHAs, breaking every existing clone and every link to a commit. The owner's judgement
+is that the benefit does not justify that, which is a reasonable reading: the
+repository is not disputed and the history is not load-bearing evidence of anything.
+
+One thing worth separating out, because it is not what was declined: a checked-in
+`.mailmap` maps author identities for `git log`, `git shortlog` and GitHub's own
+display **without rewriting a single commit**. It is additive and reversible. It
+addresses the presentation half of §4.5's concern and none of the provenance half. It
+has not been added — this is a note, not a plan.
+
+## §5 — False and stale claims
+
+**Done.** The structural fix was to stop maintaining the numbers by hand.
+`scripts/gen_status.py` reads them from build artefacts — `ctest -N` for the suite
+count, `coverage-summary.txt` for the percentages, the benchmark baseline for its
+entry count, `ci.yml` for the thresholds actually enforced — and writes
+[`STATUS.md`](STATUS.md). Anything it cannot read is written as "not measured"
+rather than carried forward, because a number that is absent is honest and a stale
+one is not.
+
+`STATUS.md` shows the measured coverage and the CI gate in separate columns on
+purpose. The README once claimed CI enforced 90% while `ci.yml` set 80%, and nothing
+in the repository reconciled them.
+
+## §6 — Correctness defects
+
+| Item | Status | Note |
+|---|---|---|
+| 6.1 CPUID without OSXSAVE/XGETBV (SIGILL) | Done | `src/simd/isa.cpp` |
+| 6.2 Miller-Rabin for large inputs | Done | defect 1 fixed; 2 and 3 proved unreachable |
+| 6.3 `crypto::random_bytes` not a CSPRNG | Done | OS CSPRNG on every platform |
+| 6.4 AES is table-driven (cache timing) | Done | masked full-table scan; 26x slower, `docs/PERFORMANCE.md` |
+| 6.5 `--allow-multiple-definition` | Done | bundle built from `$<TARGET_OBJECTS:>` |
+| 6.6 Sole handler without an arity guard | Done | `izaac_vrf_keygen.cpp` |
+| 6.7 Undocumented fixed RNG seeds | Done | `docs/API.md`, "Randomness and the seeding contract" |
+| 6.8 Sentinel returns in the symbolic API | Partly | leak fixed and detection made recursive; the `Result<T>` API is still §10 |
+
+**6.1** is the item the plan ranks highest, and it is worth being precise about what
+it was. CPUID reports what the silicon implements; it does not report whether the OS
+has enabled the extended register state. A hypervisor, a sandbox, or a kernel booted
+with `noxsave` leaves AVX-512 masked off on a CPU that advertises it, and dispatching
+on the CPUID bit alone then selects a kernel whose first instruction faults. The
+failure is SIGILL inside `dgemm`, decided by the deployment environment rather than by
+anything the caller passed in. The fix reads `CPUID.1:ECX.OSXSAVE` and then
+`XGETBV(0)`, requiring `XCR0 & 0x6` for YMM state and `XCR0 & 0xE6` for ZMM. FMA is
+gated with AVX, not separately: it operates on YMM and needs the same agreement even
+though its CPUID bit sits apart.
+
+A related hazard was found while doing §9 and fixed: `src/simd/isa.cpp` was being
+compiled with `-mavx2 -mfma`, which permits the compiler to place an AVX instruction
+inside the routine whose entire job is to determine whether AVX instructions will
+fault. Today's object contains none, so the defect was latent rather than active —
+but it depended on a compiler's choice. `isa.cpp` now builds at baseline ISA and only
+`vector_ops.cpp` gets the wide flags.
+
+**6.6** looks like a style nit and is not. `izaac_vrf_keygen.cpp` guarded its arity
+with `assign.args.empty()` where the other 484 handlers use an explicit
+`assign.args.size() == N`. The two are identical to the compiler. They are not
+identical to `extract_manifest.py`, which reads every guard as a predicate over the
+argument count — so that one handler parsed as "depends on something other than the
+count", dropped out of the manifest, and would have dropped out of the generated
+tests, with nothing failing. The parser found it independently, which is the
+strongest evidence available that the parser is reading the guards correctly.
+
+### A size argument sized an allocation, and the guard in front of it was not one
+
+One idiom, in 178 REPL commands:
+
+    const int n_i = static_cast<int>(n_d);
+    if (n_i < 0 || n_d != n_i) { /* reject */ }
+    ... eval_something(static_cast<std::size_t>(n_i)) ...
+
+Three things go wrong with a size argument before any work starts. It catches none of
+them.
+
+**The cast IS the check.** `static_cast<int>` of a double outside `int`'s range is
+undefined behaviour, not a wrap, so by the time the guard reads `n_i` there is no value
+there to test. On x86-64 the conversion happens to produce `INT_MIN`, so `n_i < 0`
+rejected `fem_poisson1d(1e18)` — by accident, in a way that reads exactly like a guard
+and is not one. The range has to be decided on the double.
+
+**A count that fits is not a count that is affordable.** `fem_poisson1d(100000000)` is a
+perfectly ordinary `int` and asks for 800 MB.
+
+**A cap on each extent alone is not a cap on the allocation**, because what is allocated
+is the *product*. `imresize(A, 100000, 100000)` names two extents that each look like a
+resolution and together are ten billion elements — which is why a per-dimension bound,
+the obvious fix, would not have been one.
+
+With `-fno-exceptions` none of this produces a diagnostic. The `std::bad_alloc` out of
+`std::vector` reaches `std::terminate` and the process is gone, with nothing written to
+either stream. Every case below was reproduced under a 2 GB address-space cap and came
+back `rc=134`:
+
+| Command | The argument | What it asked for |
+|---|---|---|
+| `fem_poisson1d(100000000)` | `n` | 1e8 elements |
+| `fem_poisson2d(100000, 100000)` | `nx`, `ny` | the product, 1e10 |
+| `fem_poisson3d(5000, 5000, 5000)` | `nx`, `ny`, `nz` | the product, 1.25e11 |
+| `cfd_advection1d(100000000, ...)` | `nx` | 1e8 elements |
+| `cfd_advection2d(100000, 100000, ...)` | `nx`, `ny` | the product |
+| `cfd_advection3d(2000, 2000, 2000, ...)` | `nx`, `ny`, `nz` | the product, 8e9 |
+| `numthy_farey(1000000)` | `n` | about 3e11 rows -- the length of F_n is *quadratic* in n |
+| `impad(A, 1000000)` | `pad` | 4e12, because the padding grows all four sides |
+| `imresize(A, 100000, 100000)` | `rows`, `cols` | the product |
+| `hough_lines(A, 0.5, 1e8, 1e8, 1)` | `n_theta`, `n_rho` | the accumulator, one cell per pair |
+| `hough_circles(A, 1, 100000000)` | `r_max` | one plane of the image per radius |
+| `ml_pca_fit(A, 100000000)` | `n_components` | a component matrix, for a 2x2 input |
+| `ml_pca_fit_transform(A, 100000000)` | `n_components` | the same, plus the transform |
+| `ml_kmeans_fit(A, 100000000)` | `k` | a centroid per cluster, for two rows |
+
+**The budget is not a new number.** `kMaxReplMatrixElems` is 262144, and the REPL
+already refused to *store* a larger matrix — in `assign_matrix_call`, after the
+allocation. All the guard moves is when: from a diagnostic about a matrix that has
+already been built, to one about the argument that asked for it. `ExtentBudget` in
+`src/interp/matrix_call.hpp` reads extents one at a time and divides the budget down as
+it goes, so the bound lands on the product without any handler having to multiply.
+
+**Two of them are shape relationships rather than sizes, and capping them would have
+been wrong.** A principal component is a direction in feature space and there are only
+`min(samples, features)` of them; k clusters need k points to put in them.
+`ml_pca_fit(A, 100000000)` on a 2x2 is not an expensive request, it is a request with no
+answer, and it now says so. `numthy_farey` is a third kind: its length is quadratic in
+its argument, so the guard computes `|F_n|` exactly with a totient sieve rather than
+estimating it — an estimate would have to be conservative, and a conservative estimate
+refuses an order whose sequence actually fits.
+
+**And one was in `src/compress`, found by AddressSanitizer in CI rather than by any of
+this.** `lz77_decode` reads a back-reference as a distance BACK from the end of what it
+has decoded so far:
+
+    size_t start = out.size() - t.offset;
+    for (uint16_t i = 0; i < t.length; ++i) out.push_back(out[start + i]);
+
+`t.offset` comes straight from the caller's data and the subtraction is unsigned, so an
+offset larger than the output wrapped to an index near 2^64 and read roughly four billion
+bytes past the buffer. It is reached from `lz77_decode_vec(M3)` -- a 3x3 matrix of small
+numbers, which is to say from the first malformed token stream anyone hands the REPL --
+and `test_repl_malformed_sweep` has been handing it one all along. It has failed on both
+ASan runs that finished (`7bc6e38` and `75c870f`); the runs before those were cancelled
+by the next push, so how far back it goes is not established here.
+
+A stream that back-references a byte it never emitted is not one this can decode, and no
+prefix of it is meaningful either, so the answer is nothing rather than a guess.
+`eval_lz77_decode_vec` names the offending token before it gets that far, and also stops
+truncating: `static_cast<uint16_t>(70000)` is 4464, so an offset past the type's range
+used to become a DIFFERENT, valid offset and decode silently to the wrong bytes.
+
+**Two of them were in `src/image` rather than at the REPL boundary, and a guard at the
+boundary does not reach them.** `image::impad` computes `img.rows + 2*pad` in `int`. At
+`pad >= (INT_MAX - 2) / 2` that overflows to a negative, `Image`'s constructor clamps a
+non-positive extent to an EMPTY image, and the copy loop -- bounded by the *source's*
+extents rather than the destination's -- ran anyway and wrote an index near 2^30 into a
+zero-length vector, about 4.29 GB past a null base. A negative `pad` reached the same
+write from the other end. `image::imresize` indexed its destination with
+`(r * nc + c) * channels` in `int`, which wraps negative once the output passes INT_MAX
+elements -- and 46341 x 46341 single-channel is an image this type can legitimately
+hold. Both are settled inside the library now: a caller can be asked to keep a request
+affordable, and cannot be asked to keep a function inside its own allocation.
+
+**The cast is gone from all 256 of them.** The list above is what was measured to end
+the process; the same conversion was in front of every other integer argument the REPL
+takes, and every one is now decided on the double. The second family needs a different
+bound, because it is not an extent:
+
+    legendre_p(1750000000, 0.5)
+
+*returns.* Nothing is allocated per unit of an order; what it does is drive a recurrence,
+one step per unit, in a REPL with no way to interrupt one -- so it takes longer than the
+twenty seconds a probe will wait for it. `checked_int_argument` bounds these at 1e7,
+which is the number `repl_engine_internal.cpp` has used for a matrix index and a matrix
+count since the accessors were added. It is a WORK bound and not an accuracy one: these
+recurrences still carry several correct digits well past it; what they do not do is
+finish. No order anyone writes down is within four orders of magnitude of it.
+
+The same helper refuses truncation, which is the half of this that has nothing to do
+with undefined behaviour. `static_cast<int>(2.5)` is perfectly well defined, and
+`bessel_j(1.5, 1)` answered as though 1 had been written, with nothing to say so.
+
+Removing the cast made 109 conditions unreachable -- `if (n < 0 || n_d != n)` cannot
+reach its second half once the double has been checked -- and those are removed with it,
+because a condition that reads as a guard and cannot fire is the thing this whole entry
+is about. 42 tests that asserted a combined message ("expected integer l and m") now
+assert the per-argument one, which names which argument.
+
+**What a linear bound does not cover.** The number above is 1e7 and the comment beside
+it justifies it by a duration -- "a three-term recurrence is about a tenth of a second".
+Which means it was never a bound on the argument's MAGNITUDE. It was a bound on the WORK
+a linear command does per unit of it, read out in the argument's own units, because for a
+linear command the two coincide. For a command whose cost is not linear they do not, and
+the linear reading is not conservative, it is catastrophic:
+`finance_binomial_call(S,K,T,r,sigma,10000000)` is a perfectly ordinary integer that asks
+for 5e13 node visits, about twelve days.
+
+That gap is now closed, and closing it turned up **nine more commands that end the
+process**, in the same class as the fourteen above and missed by the same sweep that
+found those. The reason they were missed is worth stating plainly, because it is a fact
+about the test rather than about the code: `test_repl_malformed_sweep` probes
+`3000000000` and `1e18`, which the linear cap REJECTS. **A sweep made of values the guard
+turns away cannot find a command that dies on a value the guard lets through.**
+
+Each was reproduced under a 4 GB address-space cap and came back `rc=134`, a
+`std::bad_alloc` reaching `std::terminate` with nothing on either stream:
+
+| Command | At | Why |
+|---|---|---|
+| `pde_heat_1d(ones(200,1),0.1,0.1,0.001,10000000)` | 10.9 s | 16 GB of history for 200 numbers |
+| `pde_heat_1d_cn(...)` | 26.2 s | the same |
+| `pde_advection_1d(...)` | 8.6 s | the same |
+| `pde_advection_1d_lax_wendroff(...)` | 12.3 s | the same |
+| `pde_reaction_diffusion_1d(...)` | 12.2 s | the same |
+| `pde_burgers_1d(...)` | 11.9 s | the same |
+| `pde_wave_1d(...)` | 8.5 s | the same |
+| `pde_heat_2d(ones(60,60),...)` | 22.7 s | the same, per 3600-cell grid |
+| `pde_wave_2d(...)` | 26.4 s | the same |
+| `gria_alpha_ca(30,10000000,10000000)` | 0.02 s | `bits.reserve(steps*width)` -- 800 TB |
+
+`pde_heat_2d_cn_adi` is the tenth and was still running at 35 s rather than aborting
+inside it.
+
+The shape is the same in all nine solvers: they accumulate the whole trajectory,
+`result.u.push_back(u)` once per step, and the REPL reads only `.back()`. So the request
+is for a 16 GB history in order to return 200 numbers. (The waste is not fixed here --
+the library's return type is a trajectory and other callers read it -- but it no longer
+reaches a size that matters, because the bound on `steps` scales with the grid.)
+
+**Two policy numbers and a measurement at every call site.** A bound on a super-linear
+argument is really a bound on TIME, since a REPL command runs to completion with no
+interrupt. That splits cleanly into a judgement and a fact, and the two should not be
+confused:
+
+  - `kMaxReplCommandWorkNanos` (0.25 s) and `kMaxReplSimulationWorkNanos` (4 s) are the
+    POLICY. Two rather than one, because the distinction is in what the argument MEANS: a
+    binomial tree converges like 1/steps and is finished by about a thousand, so nobody
+    types `steps = 1000000` on purpose and bounding it costs no one anything; a Monte
+    Carlo converges like 1/sqrt(n_paths), so a hundred thousand paths is not a slip, it is
+    the command doing its job. Holding the second to a quarter of a second would take the
+    command away rather than protect it.
+  - `nanos_per_unit`, passed by each call site, is the MEASUREMENT. These differ by a
+    factor of a hundred and twenty, which is exactly why a single shared "quadratic
+    arguments" cap would have been wrong in both directions at once:
+
+| Command | ns per unit | Measured from |
+|---|---|---|
+| `finance_binomial_call` / `_put` | 11 | 2.69 s at steps=16000 |
+| `finance_american_option` | 28 | 2.65 s at steps=10000 |
+| `finance_trinomial_option` | 28 | 2.84 s at n_steps=10000 |
+| `diffgeo_sphere_gauss_bonnet` (+`_residual`) | 1970 | 1.97 s at n=1000 |
+| `pde_advection_1d` | 14 | 0.56 s at 200x2e5 |
+| `pde_heat_1d` | 16 | 0.62 s |
+| `pde_wave_1d` | 18 | 0.71 s |
+| `pde_reaction_diffusion_1d` | 20 | 0.78 s |
+| `pde_advection_1d_lax_wendroff` | 21 | 0.82 s |
+| `pde_burgers_1d` | 25 | 0.97 s |
+| `pde_heat_2d` | 38 | 1.50 s at 3600x1.1e4 |
+| `pde_heat_2d_cn_adi` | 101 | 4.03 s |
+| `pde_wave_2d` | 45 | 1.78 s |
+| `quantum_schrodinger` (+`_final`) | 25 | 15.7 s at 8x8, n=1e7 |
+| `gria_alpha_ca` | 177 | 17.7 s at 1e5x1e3 |
+| the Monte Carlo family | 190 | 1.68 s at 1e4 paths x 1e3 steps |
+
+A binomial tree at 3000 steps takes 0.21 s and is allowed; Gauss-Bonnet at 3000 takes
+17.4 s and is not. One cap could not have said both.
+
+**`WorkBudget` is `ExtentBudget`'s shape applied to work.** Where the cost is a PRODUCT
+-- `steps` sweeps of a grid, `n_paths` walks of `n_steps` -- no single factor looks wrong
+and `checked_int_argument` bounds each at 1e7 independently, so the product it admits is
+1e14. The budget multiplies the factors as they are read, and charges the operand matrix
+first so the bound on `steps` shrinks as the grid grows: a hundred steps of a large grid
+costs what ten thousand steps of a small one does, and that is the relationship that
+actually holds.
+
+**A shape ceiling is not a cost ceiling.** `tensorops_decompose_cp` and `_nmf` already
+refused a rank past the tensor's element count -- which is a statement about whether the
+decomposition is informative, and says nothing about what it costs. Underneath it,
+`tensorops_decompose_nmf(h, ones(80,80), 200)` is rank 200 of 6400, an entirely ordinary
+request, and had not finished after 45 s. The two differ in shape and are bounded
+differently: NMF runs every one of its `max_iter` sweeps, so the iteration count is
+charged before the rank is read; CP's ALS converges out of `max_iter` long before
+reaching it -- 1e7 iterations of a 40x40 still returns in 0.02 s -- so only the rank
+drives it. `tensorops_decompose_tucker` measured the same way as CP and is left alone:
+the mode-dimension ceiling it already has is the right one.
+
+**The `uint64_t` family: eighty-one sites, and the answers were fabricated rather than
+absent.** Every one guarded the bottom of the range and none the top --
+
+    if (arg < 0.0 || std::floor(arg) != arg) { /* reject */ }
+    ... static_cast<uint64_t>(arg) ...
+
+-- which rejects negatives and fractions and then converts anything else, 1e300 included.
+What that looked like from the prompt was an answer:
+
+| Typed | Printed |
+|---|---|
+| `numthy_gcd(1e300, 18)` | 18 |
+| `numthy_lcm(1e300, 3)` | 0 |
+| `numthy_num_divisors(1e300)` | 1 |
+| `numthy_euler_phi(1e300)` | 0 |
+| `numthy_sum_divisors(18446744073709551615)` | 0 |
+
+The last is the sharpest. That literal is 2^64-1, which no double represents; it rounds
+UP to exactly 2^64, one past the last value the destination holds, so the conversion had
+nothing to return and sigma was reported as zero. `checked_u64_argument` decides the range
+on the double, and the clamp is written against 2^64 - 2048 -- the largest double that is
+also a `uint64_t` -- because `kTwoPow64 - 1.0` rounds straight back to `kTwoPow64` and
+would have admitted the one value that cannot be converted.
+
+The argument names in those diagnostics are not invented. They are read out of the
+signatures the REPL's own help prints, so `numthy_mod_pow(1e300, 2, 7)` says `base` and
+`gria_gf2n_inv` says `poly`.
+
+**Fifteen seeds, and two of them were the same seed.** `static_cast<unsigned>` has the
+same problem one type down, and here it does not merely admit nonsense:
+
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,42)           10.799620
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,4294967296)   10.757478
+    finance_mc_european_call(100,100,1,0.05,0.2,1000,1e300)        10.757478
+
+The last two agree because neither conversion had a value to produce. Somebody varying
+the seed to see the Monte Carlo spread would have been reading one sample twice and
+calling it two.
+
+**The exclusion list is gone, and neither entry needed a cap.** `test_repl_malformed_sweep`
+skipped `numthy_prime_nth` and `numthy_sum_divisors` through an `is_proportional_cost`
+predicate -- a record of an unfixed defect rather than of a test that does not apply. The
+earlier note here said both ran indefinitely on `3000000000`; measured, only `prime_nth`
+did. `sum_divisors(3000000000)` answers in 0.01 s and it is `sum_divisors(1e18)` that took
+3.55 s. In both cases the right answer turned out not to be a bound at all:
+
+  - `sum_divisors` built the divisor list by trial division to sqrt(n) -- 4.3e9 iterations
+    at the top of the range. Sigma is multiplicative, so the exponents are enough, which
+    is what `num_divisors` and `euler_phi` on either side of it already did: they answer
+    the same n in 0.01 s out of the same factorisation.
+  - `prime_nth` ran one Miller-Rabin test per prime up to n: 4.3 s at n=1e6 and still
+    going at half a minute for 3e9. It sieves once instead, to the Rosser-Schoenfeld
+    bound p_n < n(ln n + ln ln n), with the first five primes listed because that bound is
+    not valid below n=6.
+
+**A cap on the result is not a cap on the working set.** `fem_poisson1d(262144)` still
+aborted the process AFTER §54's extent guard was in place, and at exactly the number that
+guard enforces. The guard charged `n` against `kMaxReplMatrixElems`, which is right for
+the RESULT -- a vector of `n` node values. It is not what gets allocated:
+`assemble_stiffness_1d` builds a **dense** `n_nodes` by `n_nodes` `ColMatrix`, so
+`n = 262144` asks for 6.9e10 doubles, 550 GB. `fem_poisson2d` and `fem_poisson3d` assemble
+the same way from `(nx+1)(ny+1)` and `(nx+1)(ny+1)(nz+1)` nodes.
+
+It is the same sentence as §54's own "a cap on each extent is not a cap on the
+allocation", one level further out, and it is worth separating because §54 read as closed.
+`ExtentBudget::charge_dense_order` charges the mesh order a second time, so what the
+budget bounds is the stiffness matrix rather than the answer, at all seven dispatch sites.
+
+The `fem_mesh` family had the plain version of the same defect and no budget at all:
+`parse_positive_size_arg` bounds each extent at 1e7 on its own, so
+`fem_mesh2d(0, 0, 1, 1, 10000000, 10000000)` asks for 1e14 nodes. Measured aborting;
+`fem_mesh2d`, `fem_mesh2d_rectangular`, `fem_mesh3d` and `fem_mesh3d_box` now charge the
+product.
+
+Both were found the same way -- by running the probes the audit proposed, against the
+guard that was supposed to have closed them. A guard is not a fix until the input that
+motivated it has been re-run against it.
+
+**Eight more that ended the session, from running the audit's own probes.** A read-only
+sweep of all ten library domains proposed 86 candidates with a probe line each; running
+them turned up eight further aborts, and their shapes are the four the guards already
+knew, arriving where the earlier sweeps had not looked:
+
+| Shape | Commands |
+|---|---|
+| an output that is a MULTIPLE of the input | `signal_upsample`, `signal_interpolate`, `signal_resample` |
+| an output that is the SQUARE of an extent | `quantum_identity_n`, `topo_pairwise_distances` |
+| a PRODUCT of two arguments | `topo_persistence_landscape` |
+| a parameter whose MAGNITUDE sizes a matrix | `mathieu_a`'s `q`, and `lbfgs`'s history `m` |
+
+The last row is the one worth naming. `mathieu_a(n, q)` looks like it takes two ordinary
+numbers, and `q` is a size argument wearing a parameter's clothes: the characteristic
+matrix is sized `max(24, index + 16 + ceil(sqrt(|q|)))`, so `q = 1e18` asks for a
+1e9-entry tridiagonal, and at `q = 1e300` the `static_cast<int>` of that square root is
+undefined before it gets there. `checked_matrix_sized_parameter` bounds the DIMENSION
+rather than `q`, because what has to fit is the matrix and `q` is only how the command
+spells it; the same guard covers `mathieu_b`, `_ce`, `_se` and the three spheroidal
+commands.
+
+`lbfgs`'s `m` came through `parse_optional_positive_int`, which bounded the bottom of the
+range and not the top across **nineteen** call sites. `max_value` is the caller's there,
+because what those nineteen bound is not one kind of thing -- an iteration count is
+bounded by work, and a stored history by memory, and `m` is the second.
+
+**Two of the fixes had to move to the funnel.** `signal_resample` and
+`topo_pairwise_distances` are each reached by more than one dispatch path -- the
+assignment form goes through the matrix-call registry and the bare form does not -- and
+guarding the handler left the other route intact, which the probe caught by still
+aborting. The guard belongs in `eval_signal_resample` and `eval_topo_pairwise_distances`,
+where every route converges.
+
+**And one was wrong in a way only the probe showed.** `charge_dense_order` charges the
+order ONCE, as the SECOND factor: at the FEM sites an earlier `take` had already charged
+the first. `topo_pairwise_distances` had no earlier take, so a 131072-point set passed a
+check it should have failed by a factor of 131072. It aborted again, which is the only
+reason it was caught.
+
+**The image filters: twelve commands, and the no-assignment form is a second path.**
+Every one of them visits each pixel once per kernel cell, so the cost is the image times
+the kernel -- times its SQUARE for the morphology and median filters. Measured on a
+256x256: `medfilt2` at ksize 21 takes 1.73 s, so the `medfilt2(ones(512,512), 999)` the
+audit proposed is 2.6e11 pixel-cells, about four hours.
+
+| Command | ns per pixel-cell | Kernel enters as |
+|---|---|---|
+| `medfilt2` | 60 | its square |
+| `imdilate`, `imerode`, `imopen`, `imclose`, `imtophat`, `imbothat`, `imgradient_morph` | 20 | its square |
+| `bilateral` | 45 | its square, from `half = 2*sigma_s` |
+| `boxfilter` | 45 | its width (separable) |
+| `imgaussfilt`, `laplacian_of_gaussian` | 35 | its width, from `half = 3*sigma` |
+
+`sigma` is not a tuning knob on the cost: the kernel half-width is a multiple of it, so
+what sigma names IS the kernel, and the bound is stated on the kernel because the kernel
+is the thing that has to fit. There is also a shape argument available -- a kernel wider
+than the image is meaningless, every window being the whole image -- but it would not
+have been enough on its own: 512 x 512 x 512^2 is still four hours.
+
+And the trap that had already caught `signal_resample` and `topo_pairwise_distances`
+caught this family too, in its own way. Guarding the twelve handlers left
+`medfilt2(A, 999)` -- the same call with no `B =` in front of it -- running for four
+hours, because the no-assignment form does not go through the matrix-call registry. It
+was the TEST that found it: the suite went from 130 s to 1570 s and timed out, which is
+the same signal as an abort and nearly as loud.
+
+**A step count that is not an argument at all.** The six CFD advection commands take
+`t_end` and `dt` and no step count: the number of sweeps is `ceil(t_end/dt)`. Neither
+number looks like a size and their QUOTIENT is one, so no per-argument guard can see it --
+1.0 and 1e-9 are both unremarkable, and together they are a billion sweeps of the grid
+with one whole grid retained per step. Measured at 70 ns per cell-step in 1-D, 200 in 2-D
+and 370 in 3-D. The bound is on the quotient, which is the only place the size actually
+appears, and it sits in the six `eval_cfd_*` functions because that is where every
+dispatch path converges -- applying the lesson from `signal_resample` rather than
+relearning it.
+
+**Work for an answer that could never be shown.** The REPL's scalar is a double and
+`bigint_to_scalar` requires the exact BigInt to round-trip through one, so 21! already
+fails and so does fib(79). What the bignum commands did with a large argument was compute
+the exact answer FIRST and refuse it afterwards: `bigint_fib(200000)` spent 15.3 s
+building a number it then declined to print, and `bigint_factorial(20000)` 1.4 s. Both are
+quadratic in n, because each of the n steps operates on a number that is itself growing.
+The bounds added sit far above where the round trip stops succeeding, so they refuse
+nothing that could have worked; all they do is stop the computing.
+
+**And the Schmidt family is cubic in the subsystem dimension.** The Gram matrix is
+`dim_a` by `dim_a` and the Jacobi sweep over it is cubic: 0.65 s at dim_a = 1024, so
+dim_a = 4096 is 6.9e10 units and 82 s. Ten qubits is an ordinary subsystem to decompose
+and stays inside the bound; twelve does not. Five commands share it --
+`quantum_schmidt_rank`, `_number`, `_decomposition`, `_bases` and
+`quantum_entanglement_entropy`.
+
+**One reported finding did not survive a probe.** The allocation audit recorded
+`graph_bipartite_match` aborting at its second argument. It does not:
+`graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and
+`graph_bipartite_match(M3, 10000000)` returns "not bipartite" promptly, which is the
+right answer for that matrix. Recorded here rather than dropped, because an unreproduced
+report left in a list reads later like an unfixed defect.
+
+Both now report the same sieve-span sentinel `prime_pi` does, and that sentinel got an
+honest message on the way past: it used to say "result does not fit in 64 bits" about
+pi(3000000000), a number near 1.4e8 that fits in a double with room to spare. The limit
+is the sieve, not the width, and it now says so.
+
+### Closing it: four more shapes, and the sweep that should have found them
+
+The remaining candidates were measured and bounded, and four of them were not new caps
+at all:
+
+  - **A guard can be wrong in the direction it was added to fix.** The
+    `checked_matrix_sized_parameter` above had Mathieu's rule -- `ceil(sqrt(|q|))` --
+    baked in, and was also applied to the three spheroidal commands, whose rule is
+    `(n - m)/2 + 22 + ceil(|c|)`. Linear, not a square root. `c = 1e10` read as a
+    dimension of 1e5, passed, and all three were measured ABORTING the process on it.
+    Neither family bounded the ORDER either. Each caller computes its own dimension now
+    and only the bound is shared.
+  - **`sym_series` was fixed rather than capped.** It differentiated a tree it never
+    simplified -- the coefficient was read off a simplified COPY and the copy thrown
+    away -- so every unsimplified term of one derivative was carried into the next. The
+    tree grew about eight times an order: 0.3 s at order 9, 2.6 s at 10, 20.2 s at 11,
+    and order 25 did not finish. It is instant now, at the same answer.
+  - **`stats_kendall` likewise.** Its pair loop is 5e9 comparisons on 100000
+    observations. Kendall's tau-b is an identity away from an inversion count --
+    `C - D = n0 - n1 - n2 + n3 - 2 * inversions` -- so Knight's O(n log n) form reaches
+    the same number, checked exactly against the quadratic definition over four tie
+    regimes. 30 s to 0.2 s.
+  - **`numthy_prime_nth` is a cost that is not the argument.** It sieves to
+    `n(ln n + ln ln n)`, so at n = 1e7 the span is 1.8e8 and the command took 20 s.
+
+The rest are the same four shapes one level further out each time: **a cap on the
+accumulator is not a cap on the work** (both Hough commands: 262144 angles over a
+512x512 image is an accumulator that fits exactly and 6.9e10 votes); **a cap on the grid
+is not a cap on the system it assembles** (`pde_helmholtz_2d` builds the five-point
+stencil DENSELY, so an ordinary 100x100 grid is a 9604-unknown system and 738 MB);
+**a design matrix that fits is not normal equations that fit** (`ones(1, 262144)` is
+exactly `kMaxReplMatrixElems` and X^T X is 1.1 TB); and **a per-argument ceiling is not a
+product ceiling** (10000 trees over a 10000-row subsample, both inside their own
+maximum, is 1e8 sampled rows).
+
+**And the sweep itself had the blind spot.** `test_repl_malformed_sweep`'s oversized
+probes were 3000000000 and 1e18, which `kMaxReplIntegerArgument` refuses -- so the sweep
+could not see a command that dies on a value inside the cap, which is what every one of
+these was. It probes 10000000 as well now, and found a process abort on its first run
+(`info_transfer_entropy`'s `bins^3` joint distribution, formed in `int`, where the cube
+overflows at 1291) plus sixteen commands spending between 2 and 52 seconds building a
+result they were then refused for. The oversized sweep went from 193 s to 7.9 s.
+
+**Verified over the whole probe set**: 119 lines, every candidate from every sweep this
+session, run under a 4 GB address-space limit with a 20 s timeout. **Zero aborts, zero
+timeouts.**
+
+## §7 — Stubs and half-implementations
+
+**Open.** Ship-or-cut decisions, tracked in
+[`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+
+## §8 — Coverage and testing programme
+
+| Item | Status | Note |
+|---|---|---|
+| 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
+| 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
+| 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; fifteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
+| 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
+| 8.7 Remaining gaps | Open | |
+| 8.8 Group 573 integration targets | Done | 573 executables → 31 |
+| 8.9 Lock it in | Done | four source-only gates plus the coverage ratchet, all gating in CI |
+
+### §8.4, and the four kinds of survivor
+
+`scripts/mutation_test.py` changes one character-range of a source file, rebuilds the
+target that covers it, runs it, and reports what happened. Coverage says a line ran; a
+surviving mutant says nothing asserted it.
+
+**Mutants that do not compile are reported separately and are not counted as killed.**
+Folding them in is the standard way a mutation score is inflated: a harness that
+generates mostly uncompilable mutants and calls them killed reports 95% while testing
+nothing. The score is over viable mutants only, and the raw counts are printed.
+
+First file: `src/compress/compress.cpp`, 16 mutants at seed 3. **Five of fifteen viable
+mutants survived — 66.7% — on a file with 105 tests and full line coverage.** What made
+the run worth more than the number is that the five were four different things:
+
+| Survivor | What it was |
+|---|---|
+| `:791` wavelet header byte order | A missing test. Every wavelet test was short enough that the length fits in the last header byte, so reading the wrong one gave the same answer. **Killed.** |
+| `:329` ANS frequency normalisation | A missing test *that no round trip can supply*. The excess comes off the largest frequency; the encoder writes its choice into `freq_table`, which the decoder rebuilds from, so the decoder absorbs it wherever the encoder did. **Killed by pinning the bytes.** |
+| `:270` the decoder's count clamp | **Equivalent.** `symbol_for_count` clamps to the last index by construction, so `total - 1` and `total + 1` select the same symbol. Not a gap. |
+| `:359` `index_of`'s `-1` | **Unreachable.** All three callers look up a symbol the model was built from. Not a gap — but all three then index `freq` and `cum` with the result unchecked. |
+| `:185` the range coder's carry | **Dead, or as good as.** Instrumented and counted: zero hits across 800,000 bytes in four distributions, on both the encode and decode paths. The condition tests bit 56 of a 64-bit `low` while `kTop` is `1u << 24`, a 32-bit coder's constant, and the expression truncates through `static_cast<uint32_t>`. Recorded rather than changed: altering a working entropy coder's carry logic with no reproducing input would be reckless. **Open.** |
+
+The general lesson is the second row. **A property that says "decode undoes encode" is
+blind to any change applied symmetrically**, and for a codec that is most of the
+implementation. `CompressFormat.TheEncodedBytesAreWhatTheyHaveAlwaysBeen` pins the exact
+output of both entropy coders, which makes the compressed format a contract —
+deliberately, since `bzip2_compress_vec` and its siblings hand a user a matrix they can
+save and read back in a later build.
+
+Score after: **80.0%**, with the three remaining classified above rather than counted as
+gaps.
+
+Second file: `src/combo/combo.cpp`, 14 mutants at seed 5 against all three targets that
+cover it. **13 of 14 killed, 92.9%**, one survivor: `combo.cpp:144`, `if (i < 0) return
+false;` -- a line that ran and that nothing asserted.
+
+Third file: `src/numthy/numthy.cpp`, 16 mutants at seed 7 against `test_numthy` and
+`test_numthy_overflow`. **12 of 15 viable killed, 80.0%** -- and all three survivors are
+classified, none of them a gap. Each was settled by MEASUREMENT and not only by the
+argument for it, because an equivalence that is merely argued is how an untested line
+gets written off:
+
+| Survivor | What it was |
+|---|---|
+| `:312` `if (e > 1)` in `pow_u64` | **Not compiled.** It sits inside the `#else` of `#if defined(__SIZEOF_INT128__)`, and `__int128` is available on every platform CI builds, so the mutant produced a byte-identical program. Traced by hand, the mutant *would* be wrong if that branch were ever taken -- `pow_u64(3, 2)` would return 3 -- so the fallback is correct and simply has no coverage anywhere. |
+| `:479` `M > UINT64_MAX / t` in `crt` | **Equivalent.** `t` is a residue mod `m[i]`, so `t < m[i]`, so `UINT64_MAX / t > UINT64_MAX / m[i]`: the boundary `M == UINT64_MAX / t` that `>=` would newly reject always trips the modulus guard four lines below, which returns the identical message. Confirmed over 400,000 random systems weighted towards moduli large enough to reach the overflow guards -- byte-identical output. |
+| `:180` `(c % (n - 1)) + 1` in `pollard_rho` | **Equivalent through the only caller.** `pollard_rho` is `static` and `factor_recursive` is its sole caller; that caller trial-divides by 2, 3, 5, 7, 11 and 13 first and passes `c` from 1 to 20, and `c % (n-1) == c == c % (n+1)` whenever `c < n - 1`. The two differ only for `n <= 21`, where the result is unchanged anyway. Confirmed by running `factor(n)` for every `n` from 2 to 300,000 under both -- identical. |
+
+The first row is the one worth keeping. A mutation score cannot see a branch the
+preprocessor removed, so a fallback implementation behind a `#if` is invisible to this
+technique *and* to the test suite at the same time -- and the two silences look exactly
+alike from the outside.
+
+Fourth file: `src/sym2/expr.cpp`, 16 mutants at seed 11 against all eight targets that
+cover it. **10 of 16 killed, 62.5%** -- the lowest of the four, and the §10 core. Six
+survivors, and the spread is the finding rather than the number:
+
+  - **One real gap, and it is in `evaluate`.** `*base == 0.0 && *exponent < 0.0` widened
+    to `<=` -- which turns `0^0` into a division-by-zero error -- survived all eight
+    suites. `test_sym2_core` *does* assert `0^0`, but on the BUILDER, which folds the
+    literal to `undefined` before any Pow node exists; the evaluator's own guard is a
+    different path reached only when base and exponent both come out zero from the
+    environment, and nothing was asserting it. Measured: `evaluate(b^e, {b:0, e:0})` is
+    `1.0`, following `std::pow`. **Tested now**, and the new assertion was checked
+    against the mutant: it fails.
+  - **Two are unreachable, and for the same reason.** `:308`, the `hash !=` fast path in
+    `structurally_equal`'s structural fallback, and `:347`, the equal-value branch of
+    `compare` on two Reals. Both functions short-circuit on `a == b` first, and
+    interning means the public API cannot produce two structurally equal nodes that are
+    not the same pointer -- measured over integers, reals, symbols, sums and a nested
+    power, every pair came back pointer-identical. `structurally_equal`'s comment
+    justifies the fallback by "a node built before an interner reset, or handed in from
+    a bridge that constructed one directly"; there is no interner-reset API, so it is
+    defensive code for a caller that does not exist yet.
+  - **Three are equivalent.** `:371` and `:363` sit after an explicit equality test
+    (`if (x != y)`, `if (xb == yb) return 0;`), so widening `<` to `<=` cannot change
+    the branch taken; `:363`'s other mutant returns 2 where the code returns 1, and a
+    three-way comparator is consumed as a sign. `:958` sorts by `display_key`, and `mul`
+    collects same-base factors at construction, so two factors with an equal key do not
+    arise.
+
+The number to take from this is not 62.5%. It is that the newest code in the tree, whose
+tests were written alongside it, had its one real gap exactly where a test asserted the
+*builder* and the reader would reasonably believe the behaviour was covered.
+
+Fifth file: `src/sym2/latex_parse.cpp`, 18 mutants at seed 13 against
+`test_sym2_latex_parse`, `test_sym2_latex_roundtrip` and `test_sym2_notation_roundtrip`:
+**12 of 17 viable killed, 70.6%**. Five survivors, and unlike `expr.cpp` above, three of
+them are real gaps rather than one:
+
+  - **`:202`, the multi-character escapes.** `i += sizeof("\\textasciitilde{}") - 1`
+    widened to `- 2` leaves the closing brace unconsumed, so `\operatorname{a\textasciitilde{}b}`
+    reads as the name `a~}b` -- and all eight sym2 suites still passed, because §1.2's
+    three named escapes had **no test anywhere in the tree**. All three are asserted now,
+    not just the one a mutant happened to land on.
+  - **`:974`, the adjacency clause of the scientific numeral.** §2.4 spells the base as
+    the single terminal `"10"`, so `1 0` -- two tokens with a space between them -- is
+    not it. Rewriting one `||` of the five-way chain to `&&` regroups it so a
+    NON-adjacent `1 0^{3}` satisfies it. Measured on the mutant: `2 \times 1 0^{3}` reads
+    as 2000.
+  - **`:1984`, the derivative denominator's opening brace.** §2.6 requires the second
+    `{`; the mutant returns before reading the variable, calling `\frac{d}x` a derivative
+    of the empty name. This one took three attempts to kill, and the failures are the
+    lesson: asserting that a MALFORMED string is rejected separates nothing, because the
+    mutant rejects it too. What separates them is a **positive** case --  `\frac{d}x` is
+    legal (§2.9 lets one token stand for a group) and means the quotient `d/x`.
+
+The other two are not gaps, and each was settled by reading every path rather than by
+eye:
+
+  - `:1547`, `std::size_t bad_at = 0`. **Equivalent.** `unescape_name` has exactly two
+    `return false` statements and both are immediately preceded by `bad_at = i`, so the
+    initialiser is never the value anyone reads.
+  - `:1931`, `at_leibniz_fraction`'s own `if (!at_fraction()) return false`.
+    **Unreachable.** Its single caller sits inside `if (at_fraction())`, and the only
+    thing between them is a `while (try_derivative_operator(var))` loop that restores
+    `pos_` on failure -- and the branch is only reached when that loop matched nothing.
+
+Every one of the three new tests was checked against its mutant: apply, rebuild, and
+confirm the test fails. A test added for a survivor that does not actually kill it is
+the same silence with more lines in it.
+
+Sixth file: `src/sym2/notation_latex.cpp`, two runs against all four suites that cover
+it -- 18 mutants at seed 17 and 26 at seed 23. **31 of 44 not viable**, which is what a
+printer looks like to this harness: almost every `+` in it concatenates strings, and
+`-` on two `std::string`s does not compile. Of the 24 viable, **19 killed, 79.2%**, and
+all five survivors are equivalent. Two of them are the more interesting kind, because
+both are *equivalent only by something outside the line they sit on*:
+
+| Survivor | What it was |
+|---|---|
+| `:250` `value < 0.0 ? "-inf" : "inf"` widened to `<=` | **Equivalent by the guards above it.** The line is reached only when `!isfinite(value)` and `!isnan(value)`, so `value` is exactly one of the two infinities and is never `0.0`. Both spellings are asserted already: `real(inf)` is `\infty` and `real(-inf)` is `-\infty`. |
+| `:257` `at + 1 >= text.size()` with the `1` changed to `2` | **Equivalent by `format_exact`'s output shape.** It formats with `%g`, which always writes the exponent with a sign and at least two digits, so when `e` is found there are at least three characters after it. Measured over **2,002,815 doubles** -- every power of ten a double can hold and its neighbours, the denormal minimum, both extremes, and two million uniformly random bit patterns -- the shortest tail after `e` was 3, and neither `at + 1 >= size()` nor `at + 2 >= size()` was ever true. The guard is unreachable defensive code. |
+| `:164` `open = sizeof("\mathrm{") - 2` changed to `- 3` | **Equivalent.** Both indices land on or before the `{`, and the characters between are ordinary letters that the scan ignores. |
+| `:165` and `:166`, the `\operatorname{` arm of `is_upright_word` | **Equivalent on every reachable input, and that is the finding.** |
+
+The last row is worth the space. `is_upright_word` asks whether a fragment is one upright
+multi-letter name *and nothing else*, because such a fragment is a word on the page and
+juxtaposing two of them gives the reader one longer word. It has an arm for
+`\operatorname{`, and instrumenting it showed the arm is **reached 80 times** across the
+roundtrip suite -- and returns `false` every single time. Every string that carries the
+prefix is a function CALL, because `operator_name` is only ever used immediately before
+`group(arguments)`, so the matching `}` is never the last character. Two mutants of that
+arm therefore cannot change an answer: a live branch, not equivalent as written, that
+nothing it is given can distinguish.
+
+Its behaviour is pinned now -- `\operatorname{foo}(x)y` takes no thin space and
+`\mathrm{bar}\,\operatorname{foo}(x)` takes one -- and the new assertion was checked
+against a mutant that makes the arm return `true`: it fails, where every test that
+existed before passed.
+
+Seventh file: `src/linalg/iterative.cpp`, 24 mutants at seed 29 against the five suites
+that cover it. **12 of 22 viable killed, 54.5%** -- the lowest of the seven, and on the
+Krylov solvers. Ten survivors, and what makes this file different from the six before it
+is that most of them are gaps rather than equivalences. Four are fixed:
+
+| Survivor | What it was |
+|---|---|
+| `:313` the GMRES Givens rotation | **A sign error nothing could see.** `g[step + 1] = -sn[step] * g0` flipped to `+` breaks the rotation chain the inner least-squares solve depends on, and every suite stayed green -- because the outer restart loop recomputes the residual from scratch and simply iterates longer, so a wrong inner solution costs iterations rather than correctness. What pins it is the property the least-squares solve EXISTS for: GMRES with a restart wide enough to hold the whole Krylov space reaches the exact solution in at most `n` steps. **Tested now**, on a nonsymmetric 4x4 that needs all four. |
+| `:257` the restart clamp | `restart == 0` is clamped to 1, and no test distinguished that from any other positive value. The separating case is a budget where the restart width still matters: at six iterations GMRES(1) stops at 2.43366e-4 and GMRES(2) at 4.46026e-7, so `restart = 0` has to match the first exactly and the second not at all. |
+| `:1020` SSOR's zero-diagonal arm | The header documents it -- "A zero diagonal entry contributes nothing (its inverse is taken as 0)" -- and every SSOR test used a full diagonal. **Finding an assertion that could see it was the work.** Wherever `i` or `j` is the singular row, the corresponding factor is `dw[i] = A(i,i)/omega`, which is zero *because the diagonal is*, so the term vanishes whatever `dinv` holds and the obvious entries pass under the mutant too. Only `M(2,2)` sees it, where the `k = 1` term is `A(2,1) * dinv[1] * A(1,2)` and `dinv[1]` enters multiplied by 9: 4 as written, 13 under the mutant. |
+| `:917` TFQMR's half-step counter | `size_t m = 0` started at 1 and nothing noticed, because `m` is only ever READ in the `ConvergenceFail` a failed solve returns. An off-by-one in a diagnostic is invisible to every test that asks only whether the solve succeeded. Pinned at the exact count -- three outer iterations that exhaust cleanly are six half-steps. |
+
+The other six are classified rather than counted as gaps. `:920` (`|rho| < kTiny` widened
+to `<=`) and `:716` (`alpha > 1e-30` to `>=`) differ only on exact equality with a
+breakdown threshold, which no arithmetic reaches. `:1080` initialises the ILU(0) working
+matrix and every entry of it is overwritten by the copy loop two lines below. `:583`
+widens a work vector from one column to two and the extra column is never addressed.
+`:654` inverts the true-residual confirmation inside `if (norm2(r) <= tol * norm_b)`; the
+discriminating case is a recursive residual that has converged while the true one has
+not, which none of the suite's systems produces -- with the mutant, the tested systems
+simply run to the iteration limit and are returned by the same-answer fallback below.
+`:943`'s stall guard (`tau < kTiny || !isfinite(tau)` to `&&`) needs a tau that goes tiny
+but stays finite, and nothing in the suite drives one there.
+
+Every one of the four new tests was checked against its mutant. The SSOR one is the
+reason that step is not a formality: the first version of it asserted three entries, all
+of which passed under the mutant, and it took reading the summation to find the one
+entry that could tell the difference.
+
+Eighth file: `src/crypto/crypto.cpp`, 20 mutants at seed 31 against `test_crypto` and
+`test_crypto_random`. **17 of 20 viable killed, 85.0%** -- the highest of the eight, on
+a file where none of the 20 mutants failed to compile. Three survivors:
+
+| Survivor | What it was |
+|---|---|
+| `:1359` the PBKDF2 degenerate guard | **A gap, and a subtle one.** `if (dklen == 0 \|\| iterations == 0) return {};` survived the zero becoming a one -- because `dklen = 0` takes the same path either way (the block count rounds to zero and the loop does not run) and every other test asks for 16, 20, 25 or 64 bytes. Nothing asked for ONE, so nothing could tell the guard from a guard that also refuses a one-byte key. **Tested now**, by PBKDF2's own property: a shorter derived key is a PREFIX of a longer one, which pins every short length at once rather than pinning one more vector. |
+| `:43` `#    define O_CLOEXEC 0` | **Not compiled.** It is inside `#ifndef O_CLOEXEC`, and Linux defines it, so the mutant produced a byte-identical program -- the same class as `numthy.cpp:312` above. |
+| `:722` `for (int i = 0; i < 16; ++i)` in `aes_sub_bytes` | **A memory error that a plain build cannot see.** Widened to `<=` the loop writes `state[16]`, one byte past the AES block: undefined behaviour rather than a wrong answer, and the byte it corrupts is not one any assertion reads, so all of `test_crypto` passed. This is a limit of the technique rather than of the suite -- the mutant would die under the AddressSanitizer job, and mutation testing run against a non-sanitised build is blind to exactly this class. Recorded rather than "fixed": there is no test-level assertion that can see a stray write into a buffer the tests cannot reach. |
+
+Ninth file: `src/image/image.cpp`, 22 mutants at seed 37 against the three suites that
+cover it. **8 of 21 viable killed, 38.1%** -- the lowest of the nine by a wide margin, on
+the largest file measured (4040 lines). The survivors said why in one sentence: **the
+image tests assert shapes, not pixels.**
+
+  - `ImageFilter.GaussianBlur` asserts a blurred spike is "less than 1 and more than 0.1".
+  - `ImageFilter.BoxFilter` uses a CONSTANT image, where every window has the same mean
+    wherever it is placed.
+  - `ImageEdge.Canny` asserts the output has as many rows and columns as the input.
+
+None of that can see an indexing mistake, and the mutants that survived were indexing
+mistakes: `c + d - half` becoming `c + d + half` (the whole kernel window shifted) in both
+the separable filter's and the box filter's multi-channel branches; a row loop starting at
+1; one of the nine taps of the 3x3 convolution changing sign; and Canny reading its
+suppressed-magnitude buffer at channel 1 of a one-channel image, which with the
+interleaved layout is the NEXT PIXEL.
+
+**And writing the test that could see it found a real defect.** `threshold_otsu` returned
+an all-ones image for every clean two-mode input tested -- 0.60/0.92, 0.20/0.80,
+0.55/0.95, 0.62/0.90. `best_t` is the LAST bin of the background class, because the loop
+accumulates `wB` up to and including `t`, and thresholding at `best_t/255` with
+`threshold_binary`'s `>=` puts that whole bin on the foreground side. On a bimodal image
+the background is exactly one bin, so all of it crossed. The threshold is the first
+FOREGROUND bin now, `(best_t + 1)/255`, which is exact: a pixel lands in bin
+`(int)(v*255)`, so `bin >= best_t + 1` is precisely `v >= (best_t + 1)/255`. Nothing in
+the tree asserted Otsu's values -- the four integration tests that use it call
+`expect_ok` -- which is how it stood.
+
+The new tests are reference-based rather than golden-valued: `reference_correlate`
+correlates with replicate padding straight from the definition, in double, and `imfilter`
+and `boxfilter` are compared against it over three kernels (separable, non-separable, and
+5x3), one and three channels, and five sizes each. Comparing a filter against the
+definition is the only comparison that can fail for an indexing reason. Six survivors were
+verified killed against their own mutants.
+
+**The second run is not a before-and-after, and saying so matters.** Re-running seed 37
+after the fix gives 22 viable and **45.5%**, but the site list is derived from the file
+and the file changed, so it is a different sample of the same population rather than the
+same mutants re-scored. Quoting 38.1% -> 45.5% as a ratchet would be the same inflation
+this harness refuses elsewhere. What is measured is narrower and firmer: two independent
+samples of about twenty mutants scored 38.1% and 45.5%, and each of the six survivors the
+new tests were written for fails under its own mutant.
+
+Both samples agree on where the rest of the gap is: the feature detectors (SIFT's
+descriptor binning, ORB's orientation quadrants, FAST's non-maximum suppression) and the
+segmentation code (graph cut's foreground mean, adapthisteq's tile size). Those are
+recorded rather than closed here.
+
+Three crashes turned up while reading for those, all in code a frequency table reaches
+from `ans_decode_vec`, and all verified before and after:
+
+- every count zero: `raw_total` was zero and `from_counts` divided by it. **SIGFPE.**
+- a count above `INT_MAX`: `static_cast<int>` made it negative, skewing every scaled
+  frequency computed from the total.
+- and one that appeared only *after* the first two were fixed: a table normalising to no
+  usable symbols left the decoders indexing an empty model. **SIGSEGV.** A guard that
+  returns an empty model turns a division by zero into an out-of-bounds read unless the
+  caller is guarded too.
+
+Tenth file: `src/runtime/cpu/lapack_dbdsqr.cpp`, 24 mutants at seed 7 against the three
+suites that cover it. **14 of 22 viable killed, 63.6%** on the first run -- and the
+survivor list was the finding, because all eight were in the rotation appliers: the
+routines that carry the sweep's Givens rotations into U and V**T. That is a structural
+answer, not a thin-suite one. `test_blas_lapack` alone has 164 tests.
+
+What none of them asserted was the singular **vectors**. The implicit QR computes the
+singular VALUES from the bidiagonal `d` and `e` alone, so they are insensitive to
+anything the rotation accumulation does, and the three reconstruction tests were at three
+fixed small shapes. So the file got `tests/unit/linalg/test_lapack_svd_properties.cpp`,
+which asks the two questions no accident satisfies --
+
+    A = U * Sigma * V**T           the factorisation is of the matrix it was given
+    U**T U = I and V V**T = I      the vectors are orthonormal
+
+-- over square, tall and wide shapes from 1x1 to 33x33, plus rank-one, repeated-singular-
+value, all-zero and badly-scaled inputs, with everything computed in plain loops rather
+than through the library's own matrix operations. A test that uses the thing it is
+testing to check the thing it is testing has one fewer independent opinion in it than it
+appears to.
+
+**It failed on the first run, and it found four defects, three of them silent.**
+
+| Defect | What it was |
+|---|---|
+| `dgesvd` failed for EVERY matrix with `min(m, n) == 1` | `dgebd2`'s null guard required `E != nullptr`. A reduction with `k = 1` has no off-diagonal entries, and `std::vector<double>(0).data()` is null, so every `m x 1` and every `1 x n` input returned `info = 1`. Not silent -- but a test was defending it: `LapackDgesvdTest.empty_or_k_zero` asserted `dgesvd(1, 1, ...) == 1`. Writing down the observed behaviour is how a defect acquires a guard. |
+| `dbdsqr_upper`'s `n == 1` path never initialised the vectors | It returned early without touching U or VT. A caller that hands in zeroed buffers -- which `dgesvd` does -- got a zero U back, and a factorisation of the zero matrix. |
+| `dgesvd_tall` returned V where the contract says V**T | The header documents `VT` as `k x n`; the tall path wrote V and the wide path wrote V**T. Both callers in the tree compensated by reading the array one way for `m >= n` and the other for `m < n`, which is why nothing failed -- and why the next caller would have been wrong. The tall path transposes on the way out now, and the branch in `ms::svd` is gone. |
+| `recompute_vt_from_u` returned a ZERO ROW for every zero singular value | V**T's rows are derived as `(1/sigma_k) * U_k**T * B`; where `sigma_k` is zero the guard substituted `1/sigma = 0`, so the row came out zero. A zero row is not a null-space basis vector, it is the absence of one. **V was not orthogonal for any rank-deficient input, and was entirely zero for the zero matrix.** The two existing rank-deficient tests checked orthogonality of the leading columns only -- `ortho_error(result->V, 2)` on a 4x4 of rank 2 -- so the null space was exactly the part nobody looked at. The rows arrive in decreasing order of sigma, so they are orthonormalised in that order now: accurate leading rows survive to within a rounding, degenerate trailing ones are rebuilt, and a row with no direction left takes a standard basis vector orthogonalised against the rows already fixed. |
+
+The remaining survivors were then classified, and the classification is the more
+interesting half. **`dbdsqr` recomputes V**T from U and B after the sweep, which
+discards everything the sweep accumulated into it.** Measured rather than argued: zeroing
+VT immediately before that recompute leaves every one of the 331 tests passing. So for
+every caller that asks for both U and V**T -- which is every caller in the tree -- the
+rotation accumulation into V**T is not untested, it is **unobservable**. A mutant there
+cannot be killed by any test, because no test can see the line at all.
+
+Two things followed from that.
+
+- Three of the four `dlasr_*` appliers -- both left-side ones and the backward right-side
+  one -- had **no caller anywhere in the tree**. Confirmed by deleting them and compiling.
+  Removed rather than tested: a mutation survivor in a function nobody calls is not a
+  coverage gap, and dead code shaped like the real algorithm is worse than no code,
+  because a maintainer fixing a V-related bug would fix it there and see no change.
+- The API still admits `U == nullptr` with V**T asked for, and on that path the
+  accumulation IS the answer. Nothing exercised it. Without U there is no factorisation
+  to check, but there is still a property that pins the vectors: **V**T diagonalises
+  B**T B, with the squared singular values on the diagonal.** That is now asserted for
+  `n` in {2, 3, 4, 6, 9, 14} in both the upper and lower bidiagonal forms, and it passes
+  -- so the accumulated path is correct, and it is now covered.
+
+Score after: **95.5%** -- 21 of 22 viable, with the last survivor classified by
+measurement rather than by the argument for it. `iter += m - ll` is the give-up counter;
+the only way to see it is at the threshold. Instrumented across all three suites, the
+threshold is reached exactly **once**, by a bidiagonal whose off-diagonal is NaN, which
+never converges however fast the counter advances and returns 1 either way. Every other
+input in the corpus finishes with the counter at **22% of its budget or less** (33 of 198
+at n = 33, 32 of 144 at n = 24, 21 of 102 at n = 17), and the mutation at most doubles the
+increment, so every one of them still finishes inside it. Killing that line would take an
+input contrived to need between half and all of the iteration budget, which tests the
+budget rather than the code.
+
+As with `image.cpp`, the two runs are different samples rather than the same mutants
+re-scored -- the site list is derived from the file and the file changed -- so 63.6% and
+95.5% are two measurements, not a ratchet. What is firmer than either: every survivor of
+the first run is now either killed by a named test, deleted as uncalled, or classified by
+an instrumented measurement.
+
+Eleventh file: `src/linalg/decompositions.cpp`, 24 mutants at seed 41 against the eight
+suites that cover it. **12 of 24 viable killed, 50.0%**, and not one mutant failed to
+compile -- the lowest score of the eleven with the cleanest sample. The reason is visible
+without reading a single survivor. Here are the unit tests for the four decompositions in
+that file, in full:
+
+| Test | What it asserts |
+|---|---|
+| `schur_factorization` | `T.rows() == 3` and `Q.cols() == 3` |
+| `bidiagonal_reduction` | `B.rows() == 3` and `B.cols() == 2` |
+| `hessenberg_form` | `H.rows() == 3`, and `H(2, 0)` is about zero |
+| `ldl_3x3` | `L.rows() == 3` |
+
+**An implementation that returned the right-sized matrices of zeros passes all four.**
+The numerical reference suite is better -- `SchurDecomp.T_Is_Upper_Triangular_Or_Quasi`
+asserts `A = Q T Q**T` and `Q**T Q = I` -- but for exactly one 3x3 SYMMETRIC matrix,
+whose eigenvalues are all real. The Francis double shift exists for the case that matrix
+does not have: a complex conjugate pair, which leaves a real 2x2 block on T's diagonal
+and is the entire reason the shift is a quadratic in H rather than a scalar.
+
+`tests/unit/linalg/test_linalg_decomp_properties.cpp` asserts the defining identity of
+each, on inputs that reach those paths -- rotation blocks with purely complex spectra, a
+companion matrix of `(x^2+1)(x^2+4)(x-3)` whose T must carry two 2x2 blocks and one 1x1,
+repeated eigenvalues, already-triangular, identity and zero, over sizes to 12. `hess`
+returns H alone, with no Q to check it against, so similarity is asserted through the
+power sums tr(A), tr(A^2), tr(A^3), which determine the characteristic polynomial: a
+reduction that zeroed the lower triangle and stopped passes the zero-pattern check and
+fails every one of those.
+
+**Everything passed on the first run.** Unlike the SVD, this file was right; what was
+missing was anything saying so. The score went **50.0% -> 62.5%**, and this one IS a
+before-and-after rather than two samples: the source did not change, so seed 41 selects
+the same twenty-four mutants and they are re-scored, not re-drawn.
+
+Two of the kills came from a distinction reconstruction cannot make, and they are the
+useful half of the exercise. LDL's threshold rule is "keep the natural pivot unless it
+has lost roughly half the available precision relative to the best remaining diagonal",
+and **a factorisation of the permuted matrix is still a factorisation**, so `P**T A P =
+L D L**T` holds whether the interchange fires or not. Both halves of the rule need
+asserting directly, and each needs its own matrix:
+
+- `{{1e-14, 1, 0}, {1, 4, 1}, {0, 1, 3}}` -- the natural pivot is unusable, so the
+  interchange MUST fire. Kills `best_i != j` becoming `best_i == j`, which turns every
+  swap into a swap with itself.
+- `{{1, 0, 0}, {0, 9, 0}, {0, 0, 5}}` -- the natural pivot is nine times smaller than
+  the best and perfectly healthy, so it must NOT. Kills `&&` becoming `||`. A diagonally
+  dominant matrix cannot: there the best pivot already IS the natural one, so the second
+  half of the condition never differs and both readings agree.
+
+The nine remaining survivors are classified, each by a measurement rather than by the
+argument for it:
+
+| Survivor | Why nothing can see it |
+|---|---|
+| `:167` the double-shift polynomial | The shift is a convergence accelerator, not a correctness input: the sweep is built from Householder reflectors, so H stays orthogonally similar to A whatever shift is chosen, and a wrong shift converges more slowly to an equally correct answer. Measured: the property test -- A = Q T Q**T and Q**T Q = I over twenty-odd matrices including purely complex spectra -- passes under the mutant. |
+| `:214` the per-sweep round-off cleanup | `schur_iterate` repeats the same cleanup over the whole matrix once the iteration finishes, so the output's zero pattern is identical either way and only intermediate round-off differs -- below any tolerance an assertion on the answer can use. |
+| `:278` `schur_iterate`'s sweep count | `real_schur` is its only caller and reads only whether it succeeded. The number is never observed by anything. |
+| `:284` the sweep budget, `:324` the ConvergenceFail payload | Instrumented across all eight suites: the worst case uses **20 sweeps of 260, 7.7% of the budget** (n = 4). The failure branch is never reached by any input in the tree, and the mutation reduces the budget by 100, which nothing comes close to. |
+| `:183` `if (vtv > 0.0)` | `v[0] = x + sign*sqrt(x^2 + tail_sq)` with `sign` matching `x`, so `|v[0]| >= sqrt(tail_sq) > 0` whenever the enclosing `tail_sq != 0.0` holds. The guard is never false. Instrumented: not once, across every call in the eight suites. |
+| `:396` LDL's `amax` scan | It sets `zero_tol = amax * n * eps`. Skipping row 0 changes that tolerance only if row 0 held the largest entry, and the change is only observable for a pivot lying between the two tolerances -- within about 1e-15 relative. Killing it would test the tolerance rather than the code. |
+| `:433` `D(t, 0)` becoming `D(t, 1)` | D is n x 1, so that is a read one past the end. The harness rebuilds without sanitizers, and **mutation testing under a plain build is blind to memory errors** -- already recorded as a limitation of the method. The new tests do reach that branch with a non-trivial correction (`{{1,1,1},{1,1,3},{1,3,1}}`, whose first column eliminates to `L(1,0) = L(2,0) = 1`), which the pre-existing inputs did not: in all of them the L entries multiplying it were zero, so the subtraction was a no-op whatever it subtracted. |
+
+
+Twelfth file: `src/sym2/notation_mathml.cpp`, 22 mutants at seed 43 against the two suites
+that cover it. **6 of 9 viable killed, 66.7%** -- and the headline number here is the
+OTHER one: **13 of 22 mutants did not compile.** The file is string construction, and the
+harness's arithmetic operator is `+` becoming `-`, which between two `std::string`s is not
+an expression. That is a fact about the method rather than about the file, and it is why
+the score is reported over nine mutants with the raw counts beside it: a score over a
+sample that small says less than it looks like it says, and folding the thirteen in as
+"killed" would have reported 81.8% while testing nothing.
+
+One of the three survivors was a real gap, and a precise one. `vars.size() > 1` chooses
+between `d` and `d^n` in the numerator of a Presentation MathML derivative. The Content
+MathML side of the same file asserts exactly that distinction for its own spelling -- one
+variable is `<diff/>`, several are `<partialdiff/>`, and the test renders both -- but the
+Presentation side rendered only `d/dx sin(x)`. So the branch that writes the exponent
+never ran, and `d^2/dx dy` would have come out as `d/dx dy`: a first derivative written
+with two denominators, which is not a thing. Two cases now assert it, at two and at three
+variables so the exponent is the count rather than a fixed 2, and the three-variable one
+repeats a variable, since the node says which variables and not how many distinct.
+
+The other two survivors are equivalent, and **measured rather than argued**. Content
+MathML's `needs_grouping()` returns false and its `exponent_is_fenced()` returns true, and
+both mutate to their opposite without changing a byte of output. The dataflow says why --
+`place()` is the only reader of `exponent_is_fenced()` and short-circuits on
+`!needs_grouping()` before it uses the value, and Content MathML's `group()` is the
+identity, so the two call sites of `needs_grouping()` select between `inner` and
+`group(inner)` -- but the check is a corpus: 24 expressions rendered in both notations,
+chosen for the shapes those hooks govern (nested powers, a power whose exponent is a sum,
+an unfenced quotient with a multi-factor numerator, a negated product), **byte-identical
+under each mutant**.
+
+Score after: **77.8%**, 7 of 9, with the two remaining measured equivalent. Same file,
+same seed, same twenty-two mutants, so this one is a ratchet.
+
+
+**Closing image.cpp's detectors, and a harness change to make it possible.** The two
+earlier image samples both said the rest of the gap was in the feature detectors and the
+segmentation code, and both recorded it rather than closing it. The obstacle was the
+method: a uniform sample of 22 mutants over a 4048-line file lands one or two in any given
+function, which is not a measurement of that function. `scripts/mutation_test.py` takes
+`--lines` now, so the sample can be aimed. Aimed at the three regions in question -- the
+SIFT and ORB detectors, the graph cut, and CLAHE -- there are **437 sites**, and 24 of them
+scored **12 of 23 viable killed, 52.2%**.
+
+The survivors named the reason in one line, and it is the same reason `compress.cpp` gave:
+**`ImageOrb.IsDeterministic` compares ORB against another call of ORB.** A round trip is
+blind to any change applied consistently, and for a detector "consistently" covers the
+whole pyramid: how many levels it has, each level's dimensions, the per-level feature
+budget, and which octave a keypoint is attributed to. Every other assertion in that suite
+is a bound -- `0 <= x <= 95`, responses descending, orientation within +/-pi, descriptors
+of unit norm -- and a pyramid one level taller satisfies all of them.
+
+So the detectors got their output pinned, the way the compressed format was:
+`ImageFeatureGolden` fixes ORB's 176 keypoints on the standard texture (count, the six
+occupied octaves, and the first twelve keypoints' position, scale, orientation, response
+and octave) and SIFT's 160 on the blob field (count, octave range, the first eight
+keypoints, and the first descriptor's leading two spatial rows). The float fields compare
+at 1e-3 rather than exactly: they are an integer coordinate times a power of the scale
+factor, so they agree far more closely than that between compilers, while a structural
+change moves them by whole pixels. It is a regression guard rather than a proof, and what
+makes it worth having is the property tests already around it -- rotation covariance,
+translation covariance, scale selection, unit norm -- which establish that the answers are
+right and leave exactly this freedom for the golden to freeze.
+
+Three more assertions came from reading the survivors rather than the code:
+
+- **CLAHE's mapping must reach 1 at the top occupied bin.** It is a cumulative histogram
+  over its total, so the highest occupied bin accumulates everything. Every existing CLAHE
+  test compares RANGES between two outputs, which a constant offset applied to both leaves
+  alone -- and dropping the first bin from the running sum is exactly such an offset,
+  `hist[0]/total`. Killed its mutant.
+- **ORB's per-level budget must sum to what was asked**, at a `max_features` small enough
+  to bind. At 200 the levels run out of corners first (176 come back), so the allocation
+  is never the constraint and an allocation off by one is invisible; at 24 and at 7 it is.
+  Killed its mutant.
+- **A grabcut rectangle empty in only ONE dimension.** The existing degenerate case uses
+  `(3, 3, 1, 1)`, empty in both, on which `r1 <= r0 || c1 <= c0` and `r1 <= r0 && c1 <= c0`
+  agree. This one did NOT kill its mutant, and that is the finding: after the `&&` lets a
+  zero-height rectangle through, `inside` is all zero, the first fit finds no foreground
+  samples and breaks, and the output is all background anyway. **The guard is a shortcut,
+  not a correctness requirement.** The test stays -- it pins the documented behaviour for
+  cases nothing covered -- and the survivor is classified equivalent, measured by a test
+  written specifically to discriminate and unable to.
+
+Score after: **52.2% -> 73.9%**, the same twenty-four mutants re-scored. Six survive:
+
+| Survivor | Why |
+|---|---|
+| `:2519` the grabcut shortcut | Equivalent, measured as above. |
+| `:3784` SIFT's octave cap | `floor(log2(min_side)) - 2` becoming `+ 2` changes nothing, for any image. The octave loop carries its own guard -- it stops when a level falls below `2*border + 2` -- and that guard binds at or before the cap every time. Measured: keypoint counts and octave ranges **identical across fifteen sizes from 16 to 512**. The cap is subsumed by the guard that follows it. |
+| `:2547`, `:3825` loop bounds becoming `<=` | Reads one past the end. **Mutation testing under a build without sanitizers is blind to memory errors**, which is a limitation of the method, already recorded. The ASan job in CI is what covers this class. |
+| `:3870` SIFT's skip-the-centre test | `dl == 0 && dr == 0 && dc2 == 0` becoming `dl == 1 && ...` skips the neighbour at (layer+1, r, c) instead of the centre -- and comparing the centre with itself is a no-op, so the only effect is that one of twenty-six neighbours goes unchecked. It shows only on a candidate that exactly that neighbour rejects, and the golden's 160 keypoints contain none. |
+| `:2749` radon's sampling bound | The line range overshot into `radon`, which was not one of the three regions. `x >= 0` becoming `x >= 1` drops the first column from a projection's average. A real gap, in a function this pass was not aimed at, and recorded as such. |
+
+
+Thirteenth file: `src/ml/ml.cpp`, 24 mutants at seed 59 against the three suites that
+cover it. **15 of 23 viable killed, 65.2%** -- on a file with 214 unit tests. Every
+survivor was a FORMULA rather than a control-flow branch, and each was invisible for its
+own specific reason. The reasons are the point, because none of them is "nobody tested
+this function":
+
+| Survivor | Why the tests that exist cannot see it |
+|---|---|
+| `r2_score`: `1 - ss_res/ss_tot` -> `1 + ...` | On a perfect fit the residual share is zero and both give 1. That is the only case the suite scores. |
+| `StandardScaler`: `(x-m)*(x-m)` -> `(x+m)*(x-m)` | Algebraically the same number: `sum (x+m)(x-m) = sum x^2 - n*m^2 = sum (x-m)^2`, precisely because the value subtracted is the mean. **Equivalent**, and measured -- the recovered `std_` agrees with an independently computed standard deviation to 1e-9 under both. |
+| `StandardScaler`: `sqrt(s/n + 1e-12)` -> `- 1e-12` | The epsilon that keeps a zero-variance column out of a square root of a negative. Nothing scaled a constant column, so nothing produced the NaN. |
+| `var_tanh`: `1 - t^2` -> `1 + t^2` | Nothing differentiated a tanh and checked the number. |
+| `TSNE::kl_divergence`: `size() < 2` -> `<= 2` | **Equivalent**, and the reason is worth writing down: the divergence of a TWO-point embedding is identically zero however the points are placed -- P has one pair and puts all its mass there, Q has the same one pair and does the same, so KL is `1*log(1/1)` whatever the distance. Refusing at two and computing at two return the same 0.0. Measured at two different embeddings, one near and one far. |
+| `GaussianMixture`: `double v=0` -> `v=1`, and the variance loop starting at feature 1 | Nothing asserted a fitted VARIANCE -- the GMM tests check means, weights, cluster assignment and log-likelihood finiteness. |
+
+`tests/unit/ml/test_ml_properties.cpp` asserts the six:
+
+- **R^2 across its whole range**: 1 for a perfect fit, exactly 0 for predicting the mean,
+  0.9 for a residual share of one tenth, and **-3 for a prediction worse than the mean** --
+  the half of the range a "close to 1" assertion never reaches, and the half where the
+  sign in front of the share is decided.
+- **The scaler's columns come out with mean 0 and standard deviation 1**, compared against
+  a standard deviation computed independently in the test. A `fit` / `inverse_transform`
+  round trip holds for ANY non-zero divisor, so it says nothing about which divisor was
+  chosen; this does.
+- **A constant column stays finite**, which is what the epsilon is for.
+- **Reverse-mode derivatives against central differences**, for tanh, exp, sigmoid, sqrt
+  and log at four points each, plus `d/dx tanh(3x) = 3(1 - tanh^2 3x)` so the derivative is
+  multiplied by something rather than returned alone.
+- **The two-point KL is zero at two different embeddings**, which states the property
+  rather than observing it once.
+- **A GMM recovers the variances it was given.** Two perfectly separated components with
+  known and different per-feature variances -- feature 0 tight in one and wide in the
+  other, feature 1 the other way about -- so each feature discriminates. EM's
+  responsibilities are 0 and 1, so it recovers 0.5 and 32.0 EXACTLY, asserted at 1e-6:
+  the accumulator this pins is off by about 0.05, and a tolerance wide enough to feel
+  comfortable is wide enough to miss it. A second case gives two components differing
+  only in feature 0, so a density that skipped that feature would have nothing left to
+  tell them apart.
+
+Score after: **65.2% -> 91.3%** -- 21 of 23, the same twenty-four mutants re-scored, with
+both remaining survivors measured equivalent. The highest of the thirteen files.
+
+
+Fourteenth file: `src/graph/graph.cpp`, 24 mutants at seed 61 against the two suites that
+cover it. **16 of 24 viable killed, 66.7%**, nothing not-viable. The most useful survivor
+was not a line of code but a test name.
+
+**`WeightedMatching.NeverBeatsBruteForceOnSmallGraphs` performs no brute force.** It is
+one hand-computed six-vertex graph, and the sixteen weighted-matching cases around it are
+each one hand-computed graph too -- chosen, between them, to make a blossom form, nest, be
+relabelled and be expanded, which is a good set to have chosen. What the mutation run says
+about it is that it is a set of POINTS: `while (j != 0)` in the blossom relabel loop became
+`while (j == 0)`, which stops the loop running at all, and every one of those cases still
+passed.
+
+So the name now describes the test. `AgreesWithExhaustiveSearchOnRandomGraphs` compares the
+matching weight against the true optimum found by enumerating every matching, over **480
+random graphs from 2 to 9 vertices at densities from 20% to 100%**, with small integer
+weights so ties are common -- a tie is where a tie-break decides which blossom forms. A
+second test does the same for the two shapes the algorithm exists for: odd cycles and
+cliques at 3, 5, 7 and 9 vertices, 320 of them. The corpus asserts its own worth: more
+than half the graphs must have an optimum of two edges or more, or it is a test of the
+empty case.
+
+The implementation agrees with exhaustive search on every one of them -- it was right --
+and the corpus kills three survivors the case list could not, one of them by **segfault**:
+`for (i = 0; i < blossomchilds[b].size(); ++i)` becoming `<=` reads one past the end, and
+a sample of a thousand graphs reaches it where seventeen hand-written ones did not. That
+is worth recording on its own, because it is the one place this session where the
+plain-build blindness to memory errors did not hold: given enough inputs, an
+out-of-bounds read stops being invisible and starts being a crash.
+
+The other kill came from a tie-break nobody had asserted. **A\*'s relaxation `ng < g[u]`
+became `ng <= g[u]`** -- which cannot change a distance, only which of several equal-cost
+routes is returned. Every existing A\* test has a unique cheapest route, so both readings
+answer them identically. On a 4x4 grid of unit edges there are twenty equal-cost routes
+from corner to corner, and the two readings return opposite sides of the grid: measured,
+`0 1 2 3 7 11 15` against `0 4 8 12 13 14 15`. The contract -- the first route to reach a
+vertex at the best cost keeps it -- is asserted now, along with the path being a real one.
+
+Score after: **66.7% -> 79.2%**, the same twenty-four mutants re-scored. Five survive, each
+classified:
+
+| Survivor | Why |
+|---|---|
+| `:1559` PageRank's convergence sum, from index 1 | Dropping one node from the L1 change that decides when to stop. Measured: the ranks come back **identical to seventeen significant digits** on three graphs of 5, 12 and 30 vertices at 35% density -- the omitted term does not move the 1e-10 threshold to a different iteration. Same family as the bidiagonal QR's give-up counter and the Schur sweep budget: a mutation inside a criterion whose purpose is to be satisfied approximately. |
+| `:1298` the planarity DFS root height | `height[root] = 0` becoming `1` shifts every height in that root's tree by one. The Left-Right criterion reads height DIFFERENCES, so a constant offset per tree is not visible to it. |
+| `:1328` `right_ref.assign(n, -1)` -> `-2` | A sentinel that is never read before it is written: `half_edge_cw` assigns every entry it later reads. |
+| `:38` the Jacobi sweep's `<` -> `<=` | Reads one past the end. The plain build cannot see it, and unlike the blossom case above there is no corpus large enough here to turn it into a crash. ASan in CI is what covers it. |
+| `:2288` the blossom's `allowedge` initialisation | Marking every edge allowed at the top of each stage instead of none. It is a starting hint the algorithm re-derives from slack, and the answer is unchanged over the **eight hundred graphs** above, every one verified against exhaustive search. Not proved equivalent -- stated as measured: if it is a defect, no graph of nine vertices or fewer exhibits it. |
+
+
+Fifteenth file: `src/symbolic/symbolic.cpp`, 24 mutants at seed 67 against the twelve
+suites that cover it -- the largest source file measured at 5,992 lines. **13 of 22 viable
+killed, 59.1%.** A sample of twenty-four over six thousand lines is thin by construction,
+and the honest reading is that it locates gaps rather than scoring the file; the nine
+survivors are recorded here with what each one is, and one of them is closed.
+
+**`sym_solve_linear` had no test that gives it something non-linear.** Its six tests all
+pass a system that IS linear, so the refusal path -- the one the function was already
+fixed for once, when it discarded terms it could not read instead of refusing them -- was
+never exercised at all. `SymbolicSolveLinearTest.refuses_a_system_that_is_not_linear`
+covers six cases: `x^2 + x - 1`, `x^3 - 8`, `x*y = 1` beside `x + y = 3` (non-linear
+though each factor is degree 1), `sin(x) = 0.5`, and two that must still be ACCEPTED --
+`3*x^1 + 6`, since refusing everything would pass the first four and be useless, and
+`x + k^2`, where the non-linearity is in a variable the system is not solving for and is
+therefore a constant.
+
+What that test did NOT do is kill the survivor that prompted it, and checking rather than
+assuming is what turned that into a finding. `extract_linear_term`'s `x^1` branch had its
+`value == 1.0` become `value != 1.0` and the quadratic was still refused. **The branch is
+unreachable for the input it was written for**: `extract_linear_row` normalises with
+`sym_simplify(sym_expand(...))` first, and that rewrites `x^1` to a bare `x` -- measured,
+`simplify(expand(x^1))` prints `x` -- so no `Pow` with exponent 1 ever reaches the matcher.
+It is redundant code rather than an untested branch, and the test stays because the
+contract it asserts was genuinely unasserted whatever kills that particular mutant.
+
+The remaining eight are located and left open, which is the useful state to leave them in:
+
+| Survivor | What it is |
+|---|---|
+| `:4248` `degree = a.size() + b.size() - 2` -> `+ 2` in `ode_poly_mul` | The degree is used to size the output and to compare against `kOdeMaxPolyDegree` (8). The output is trimmed of trailing zeros afterwards, so the product is unchanged; only the cap moves, four degrees early. Visible only for a product of true degree 5 to 8. |
+| `:675`, `:693` the `(1 +/- t)^m` expansion guards | A null check turned into a disjunction, and `m < 1` into `m < 2`. |
+| `:1479` the integration heuristic's factor-count test | |
+| `:3405` the `x^1` matcher | Unreachable, as above. |
+| `:4885` `ode_integrate(..., depth + 1)` -> `depth + 2` | A recursion-depth budget, the same family as the other iteration budgets classified in this section. |
+| `:5034`, `:5093` the ODE identity and zero tolerances | Comparisons against `kOdeZeroTol` and `kOdeIdentityTol`: knife-edge tolerances, the same shape as LDL's `amax` scan. |
+| `:5277` the `Add`/`Sub`/`Neg` test in an ODE rewrite | |
+
+
+### What the corpus found on its first run
+
+§8.3's first eight transcripts turned up seven things on the run that generated them,
+which is the argument for the shape of the test rather than for the tests in it. None
+were regressions; all were already true and none had a test.
+
+- **`^` was not an operator in the REPL's scalar evaluator** -- `2^3` did not parse,
+  and `pow(2, 3)` was the only spelling, while `^` *was* an operator in every symbolic
+  command and in the matrix literal syntax. **Fixed**, in all three evaluators at once
+  (the interpreter's two and the ORC JIT's own copy), and the two backends were checked
+  against each other on the same seventeen expressions rather than assumed to agree.
+
+  The first implementation of it was wrong in a way worth recording, because it is the
+  same shape as the audit findings: both backends agreed, and they agreed on **4** for
+  `-2^2`. Unary minus binds looser than exponentiation -- in mathematics and in every
+  language that has a power operator -- so the answer is **-4**. Both readings evaluate
+  and nothing but an assertion distinguishes them. It also had to stay compatible with
+  an earlier fix in the same function: the additive level must be searched *before* a
+  leading sign is taken as unary, or `-4 + 1` becomes `-(4 + 1)`, while the power level
+  must be searched *after* it.
+- **`transpose(A)` had no no-target form** although `matmul(A, A)` does. The CHANGELOG
+  says the registry gives every matrix-returning callee a bare form. **Fixed**, and
+  the count is the finding: it was not one name but **98**.
+
+  A hand-written chain of 92 `else if (fn == ...)` branches, continued in a second
+  function of 53 more because MSVC would not compile it as one, sits in front of the
+  registry fallback. Its terminal `else` did not decline a name it had never heard of;
+  it *claimed* the line and reported `unknown function`, six lines above the registry
+  that knows every matrix-returning callee there is. So the rule was: a unary call
+  whose argument resolves to a matrix reaches the registry only if somebody remembered
+  to add the name to the list by hand. `prewitt`, `scharr` and `roberts` were on it;
+  `sobel`, `sobel_x` and `sobel_y` were not. `graph_laplacian` was; `laplacian` was
+  not. `matmul(A, A)` worked only because `A, A` fails to resolve as one matrix name
+  and takes a different path entirely.
+
+  The tail returns `std::nullopt` for a name it does not know now, which is a
+  different answer from rejecting the line, and the caller asks the registry. The
+  fallback prints **and stores** under `_`, so `B = transpose(_)` works on the next
+  line. 13 more callees that take a scalar (`zeros(A)`, `eye(A)`, `fftfreq(A)`, ...)
+  stop answering `unknown function: zeros` and give the handler's own diagnosis.
+
+  Four names -- `boxfilter`, `imgaussfilt`, `laplacian_of_gaussian`, `medfilt2` --
+  turned out to be listed at arity 1 in the arity table with no arity-1 form in the
+  handler. **Fixed**, and not uniformly, because the four are not the same case.
+  `medfilt2` and `boxfilter` now take the form: a default exists to be used rather than
+  invented -- `image::medfilt2` declares `int ksize = 3` in its own signature, and 3 is
+  what the eight neighbours in the same arity group use. `imgaussfilt` and
+  `laplacian_of_gaussian` answer arity 1 with a diagnostic instead, because sigma is not
+  a setting on a Gaussian blur, it IS the blur: there is no width that a caller who did
+  not name one meant. Answering the arity rather than removing it from the table is
+  deliberate -- the table decides whether the line is a matrix call at all, so dropping
+  the row would stop `B = imgaussfilt(A)` being recognised as a call and report
+  something further still from the truth.
+
+  The fix adds no nesting to the 92-deep chain, deliberately: everything new sits
+  after it, at the depth of the `return` it replaces. A change that deepened that
+  chain would be paid for on the Windows runner an hour later, which is what the
+  chain was split in two to avoid.
+- **The no-target matrix form printed a result it did not store.** Recorded first as a
+  labelling problem -- it said `C` where the CHANGELOG says `_` -- which understated
+  it: the name was not merely wrong, nothing was stored under it or any other name, so
+  the value could be read and not used. **Fixed.** `matmul`, `tensorops_matmul`,
+  `tensorops_einsum`, `signal_conv2`, `ml_mat_mul` and `dist_matmul` had hand-written
+  branches predating the registry fallback and shadowing it; they now print under `_`
+  and store there, so `B = matmul(_, A)` works on the next line as it already did after
+  `rand(2, 2)`.
+
+  Two things nearby are **not** defects, and are recorded so they are not "fixed"
+  later by someone reading the first sentence. A bare `lu(A)` printing `L =`, `U =`,
+  `P =` is right -- those are the factors' names, not invented ones -- and the
+  assignment form printing the name the user chose is right for the same reason. What
+  is arguably still open is that the multi-output bare forms store nothing either;
+  that needs a decision about what `_` should mean when a command yields three
+  matrices, which is why it was not answered here.
+- **`stats_one_way_anova` and `rle_encode_vec` were unknown in the bare form** and
+  reachable only through an assignment. **Fixed** by the same change: they are two of
+  the 98. Both now answer with their handler's own diagnosis, which is what the
+  transcript line was written to see -- `the test is not defined for these groups` and
+  `byte values must be whole numbers in [0, 255]` rather than `unknown function`.
+- **`1 / 0` reported "could not parse"** rather than anything about division. **Fixed**:
+  the bare-expression fallback discarded the evaluator's error and replaced it with a
+  parse failure, so a real diagnosis was thrown away and the reader was sent looking for
+  a typo that was not there. A line carrying a top-level operator or a call now reports
+  what actually went wrong. A bare word still reports the parse error, deliberately:
+  `load` is an incomplete command and `no_such_variable` is a missing name, they are the
+  same line shape, and calling either an unknown *scalar* asserts a category this code
+  cannot know.
+- **`A + B` said "unknown scalar: A"** once errors were propagated, with `A` sitting in
+  `vars` as a matrix. **Fixed** in passing: the resolver now distinguishes a name that
+  does not exist from one that exists as a matrix, and says that matrices have no
+  operator arithmetic.
+- **`not_a_function(1)` reported `unknown matrix: 1`** -- the diagnostic named the
+  argument rather than the function it could not find, sending the reader to look for a
+  matrix called 1. **Fixed**, and what the fix is *not* is the point.
+
+  Saying "unknown function" instead would be a different false claim. `f(x)` reaches
+  that return from every dispatch form in the REPL, not just the one whose name list is
+  nearby: sweeping all 1,278 `fn == "..."` names through the binary as `N(1)` shows 502
+  reaching it, of which 278 are real, working callees -- `mat_at`, `finance_npv`,
+  `stats_percentile`, `finance_bs_call`, `stats_ttest` among them -- dispatched from
+  blocks no predicate at that point enumerates. Nothing there knows whether the callee
+  exists.
+
+  So the message says only what was established: that no reading of the line worked. It
+  keeps naming the argument when the argument is a *name*, because `det(no_such)` should
+  still say `no_such`.
+
+  The durable fix this finding really wants is one shared "is this a known REPL callee"
+  predicate generated from every dispatch form. `scripts/extract_manifest.py` covers the
+  485-entry matrix-call registry, which is one form of several. **Open.**
+
+- **`bigint("495.0")` was not diagnosed by name.** Noticed while fixing the line above.
+  The literal was rejected -- it no longer answers 0, which was the recorded defect --
+  but no reading of the line claimed it, so it reported the generic "could not read"
+  where it used to report a phantom matrix. **Fixed**, and the cause was not the
+  message: `bigint` existed only as an ASSIGNMENT form, so the bare line was not a
+  command at all. `bigint("495")` did not work either. Both go through the same
+  reporting parse now, and `bigint("495.0")` says `invalid decimal literal: 495.0`.
+- **`sym_simplify("x + x")` returned `(x + x)`.** Like terms were collected during
+  `sym_expand` and not during `sym_simplify`, which folded a constant into a constant,
+  dropped a zero, and stopped: `sym_simplify("2*x + 3*x")` came back as
+  `((2.000000 * x) + (3.000000 * x))`, the input with the spaces moved. **Fixed**, and
+  the shape of the fix is the point.
+
+  The obvious route is to reuse expansion's polynomial normal form. It would also
+  multiply products out -- `x*x` becoming `(x ^ 2.000000)` -- in all ~180 of simplify's
+  callers, including the ODE solvers that dispatch on the *op* of what it returns. So
+  the collector flattens the sum, adds the coefficients of terms that are the same
+  term, and changes nothing else; when nothing merges it returns the expression it was
+  given rather than a rebuilt copy, so a sum with no like terms in it is untouched.
+  `x*x + y + y` is `((x * x) + (2.000000 * y))`: the product survives a sum that
+  collected around it.
+
+  The first version keyed addends by `sym_to_string`, and an existing test caught it
+  within the hour. The printer renders a constant with six decimals, so
+  `sin(1.0000001*x)` and `sin(1.0000002*x)` print identically and their difference
+  collapsed to exactly zero. `SymbolicTables.ExpansionKeepsDistinctAtomsApart` exists
+  because expansion made the same mistake earlier, and its comment names the trap in
+  advance. The text is a bucket key now and `sym_equal` decides; the simplify half of
+  the property is asserted too, so the next person to reach for a printed form as an
+  identity has two tests telling them not to.
+
+The transcripts record all seven as they are, with the two most misleading marked in
+the script files, so each becomes a readable diff the day it is fixed rather than an
+assertion someone has to reconstruct.
+
+One further note the corpus settled: the one-dimensional root finders bind **`x0`**,
+not `x`. `c88f0ef`'s message says `x` -- the guard it describes is correct and the
+name in the prose is not. `docs/API.md` now states the binding on the row a user
+reads.
+
+### What the corpus found on Windows, and what it did not
+
+**The Windows job never ran a single transcript, and had not since the corpus was
+added.** Four CI cycles were spent on hypotheses about what the output meant when
+there was no output, and the correction is worth more than any of them.
+
+The test invokes `mathscriptc` through `std::system` with a command holding four
+quoted paths -- the program, the script, and two redirect targets:
+
+    "...\mathscriptc.exe" "...\arithmetic.ms" > "...\arithmetic.actual.out" 2> "...\arithmetic.actual.err"
+
+On Windows `system()` runs `cmd.exe /c <command>`, and cmd's documented rule is that
+unless the command holds *exactly two* quote characters it strips the first quote and
+the last one. This one holds eight. Stripping takes the closing quote off the final
+redirect target, cmd finds an unterminated quote where a filename should be, and says
+
+    The filename, directory name, or volume label syntax is incorrect.
+
+and exits **1** without running anything. That is the whole of it: empty stdout, empty
+stderr, exit 1, for every transcript, on every Windows run since the corpus existed.
+An extra outer pair of quotes is what the stripping is there to consume, and is the
+fix.
+
+Two things were in plain view and were read as noise:
+
+- **The exit code was 1.** A Windows access violation is 3221225477 and a stack
+  overflow is 3221225725. `mathscriptc` cannot return 1 without first writing to
+  standard error. So the status could not have come from the program at all, which
+  named the shell as the suspect three cycles before it was one.
+- **cmd printed the reason every time.** It went to the test's own standard error,
+  which is 5,800 lines deep in a CTest log whose API reaches only the end. Re-running
+  the failed tests after a failing run -- added for an unrelated reason -- is what put
+  it at the tail where it could be read, and it was legible on the first run after
+  that.
+
+#### What that means for the two "Windows failures" recorded here before
+
+Both were inferences from an empty transcript, not observations, and neither can have
+happened: with no output there is no line to differ. The record said otherwise and was
+wrong.
+
+- `-nan` versus MSVC's `-nan(ind)` in `dispatch_errors.out`: never observed. The fix
+  it prompted stands on its own and is not withdrawn -- **a NaN reaching the display
+  is a marker printed as a value**, `ms::sym2::evaluate` already declined both
+  `log(-1)` and `sqrt(-1)`, and the REPL and the symbolic core disagreeing about the
+  same expression is a defect whatever Windows does. `check_scalar_domain` now reports
+  for `sqrt`, `log`, `log2`, `log10`, `log1p`, `asin`, `acos`, `acosh` and `atanh` in
+  both of the REPL's scalar evaluators. Reaching those reports also required
+  distinguishing a diagnosis from a decline among the three readings of `f(x)`, which
+  is a real improvement to the resolver.
+- `gamma(20)` at full precision pinning the host libm's last bit: never observed
+  either. The rule it produced is still right and still followed -- **an expected file
+  may hold exact integers, parsed literals printed back, and diagnostics, and may not
+  hold the result of a transcendental at full precision** -- because a golden file
+  that depends on which libm ran is a golden file that will fail eventually. It is
+  `combo_factorial(19)` now, the same number by a path with no libm in it.
+
+So two good changes were made for a stated reason that was not true. Keeping the
+changes and correcting the reason is the only honest way to hold both, and the reason
+mattered: each was offered as evidence that the transcripts were running on Windows,
+which is exactly what needed testing and was never tested.
+
+#### The lesson that generalises
+
+A transcript that produced *nothing* is not a transcript that produced the wrong
+thing, and reporting it as a content difference sends the reader to the content. The
+test now separates them: empty stdout, empty stderr and a non-zero status is reported
+as its own case, with whether the redirect files exist at all -- a missing file means
+the shell could not create the redirect, so the status is the shell's -- and a re-run
+with nothing redirected, whose output lands on the test's own streams instead of in a
+file the shell may not have opened.
+
+`mathscriptc` also flushes standard output after every line now. Redirected to a
+file, `std::cout` is fully buffered, so a script runner that flushes only at exit
+loses everything it printed if it dies partway; one flush per line means the file that
+survives says how far it got. It also puts the two streams in true order, since
+`std::cerr` is unit-buffered and `std::cout` was not.
+
+#### The three readings of `f(x)`
+
+Recorded here because it came out of the same thread and is not withdrawn: making
+`check_scalar_domain`'s reports reachable took a second fix, and it is the more
+interesting one.
+
+`sqrt(-1)` reported **"unknown matrix: -1"**. The line has the shape `f(x)`, which is
+also the shape of a call on a matrix and of a matrix constructor, and three readings
+compete for it. Whichever fails last was reporting, so the useful diagnosis lost to
+one about a variable the user never mentioned. They are now ordered by how much each
+reading actually established:
+
+1. the scalar reading when it *diagnosed* the line rather than declining it,
+2. then a matrix call that got as far as dispatching and rejected its own arguments,
+3. then the outer failure to resolve an argument as a matrix name.
+
+Distinguishing a diagnosis from a decline is the whole of it, and it took three
+attempts to get right — each wrong version traded one misleading message for another.
+`invalid scalar expression`, `unknown scalar function: X` and `unknown scalar: X` all
+mean "not my kind of line"; `'C' is a matrix, not a scalar` means that too when
+another reading is available, and is the whole answer when none is. That last
+distinction is why the rule is two predicates rather than one.
+
+### 8.1, the number the plan asked for
+
+Measured on an instrumented Debug build with `MS_BUILD_INTEGRATION=ON`, 336/336 CTest
+suites passing, over the denominator declared in `coverage_exclusions.txt`:
+
+| | Measured |
+|---|---|
+| Lines | **91.2%** (76,687 of 84,077) |
+| Functions | **98.3%** (5,492 of 5,588) |
+| Branches (raw gcov) | **57.3%** (82,082 of 143,192) |
+| Branches (decision lines only) | **71.8%** |
+
+Two branch rows, and **neither replaces the other**. The raw gcov figure counts every
+edge gcov emits, which on this codebase includes edges inside library code inlined
+into our lines -- a `std::vector` growth path, an allocation-failure branch -- that no
+test of ours can reach and that we would not write a test for if we could. The
+decision-line figure, which `scripts/decision_coverage.py` computes, counts only the
+branches on lines that carry a decision we wrote. The gap between 57.3% and 71.8% is
+that inlined machinery, and quoting either number alone overstates something: the raw
+one understates what our own decisions cover, the decision one hides how much
+uncovered generated code the binary contains. `docs/STATUS.md` is regenerated each
+coverage run and carries the current pair.
+
+The exclusions hide 7,698 of 91,775 instrumented lines — 8% — and the run prints that
+figure, because a list nobody sees is a list that grows. What remains excluded is
+`/usr/*`, `vendor/`, GoogleTest, the tests themselves, `src/cuda` and `src/gui`; in
+this configuration three of those patterns matched nothing at all, which the run
+reports rather than passing over in silence.
+
+The plan said to expect the line figure to fall as the exclusions came off. It barely
+moved — 92.0% to 91.2% — despite a substantially larger denominator. The likely
+reason is that the 1,377 generated dispatch tests of §3.3 landed on the same branch
+and exercise precisely the `matrix_calls` code the old exclusions removed. That is an
+explanation rather than a measurement: the two changes were not isolated from each
+other. What is measured is that `matrix_calls` handlers dominate the lowest-coverage
+entries in `coverage-ranked.txt`, so the newly-included code is still the weakest in
+the tree.
+
+**The branch figure is the one that matters, and it had never been measured.**
+`coverage_report.sh` asked lcov for branch data under `lcov_branch_coverage`; lcov 2.x
+renamed that to `branch_coverage`, still accepts the old name, still warns that it is
+deprecated, and then collects nothing. Every run reported `branches...: no data found`
+while the script's own header claimed branch coverage was being measured. Nothing was
+silently green — a requested `MS_COVERAGE_BRANCH_MIN` fails as "not measured" rather
+than passing vacuously — but the measurement never happened and the branch gate was
+unusable by anyone who set it.
+
+That header comment was right about why it mattered: this tree's largest files are
+dispatch chains, and a dispatch chain reaches high line coverage with one branch of
+each test taken. 91.2% line coverage against 57.3% branch coverage is that prediction
+confirmed. **The line figure means considerably less on this codebase than it sounds
+like.**
+
+### 8.8, and the collision it exposed
+
+573 integration tests were 573 executables, each linking the whole library. Linking
+is what dominates a test build, and on an instrumented build it dominated it badly
+enough that measuring coverage was a nightly event rather than something anyone did
+before pushing. They are now 31 per-domain executables — the same tests, an order of
+magnitude less link time. The build graph went from 2,431 steps to 1,460.
+
+The prerequisite was not obvious. `TEST(Suite, Name)` expands to a class
+`Suite_Name_Test` whose member functions are implicitly inline, so two files in one
+executable declaring the same pair link with no diagnostic and one body silently
+replaces the other. **71 pairs collided, and 29 of them had different bodies.**
+Grouping without fixing that would have stopped running real tests while the test
+count — the thing anyone would have checked — stayed exactly where it was. The names
+were disambiguated first, and `scripts/check_test_names.py` runs in CI so it cannot
+recur.
+
+### 8.9, what is and is not gated
+
+In CI, as a job that needs no build and fails in under a minute:
+
+- `add_spdx.py --check` — every source file carries a licence identifier
+- `gen_sbom.py --check` — the SBOM matches the tree
+- `extract_manifest.py --check --strict` — every handler parses, no anomalies
+- `gen_matrix_call_tests.py --check` — the generated suites are current
+- `check_test_names.py` — no two tests in one executable share a name
+
+`--strict` on the manifest is deliberate: a handler the parser cannot read is a
+handler whose dispatch nothing tests, and that has to be a failure rather than a line
+of console output nobody reads.
+
+`STATUS.md` is regenerated in the coverage job and published as an artefact, with the
+drift printed — but it is **not** a gate. The coverage figure moves between runners
+and between runs, so failing on inequality would be failing on noise, and a gate that
+cries wolf is how the stale numbers got published in the first place.
+
+The **coverage ratchet** of §8.9 is built and gating: `scripts/coverage_ratchet.py`
+runs in the coverage job and fails on a drop below `tests/coverage_baseline.json`.
+
+It is a ratchet rather than a threshold because a threshold is a number to argue
+about, where a ratchet only asks that the tree not go backwards. It allows a
+tolerance of 0.5 points, and that number is set from measurement rather than taste:
+the same tree measured locally and on the runner agreed on all three metrics to
+within lcov's own 0.1 resolution, so 0.5 is about ten times any spread observed and
+far below what removing a test suite would cost. The evidence is recorded in the
+baseline file next to the number, because a tolerance with no stated basis is a
+tolerance that grows.
+
+`--update` raises the baseline and refuses to lower it; lowering needs `--force` and
+therefore shows up in the diff. That is the difference between a run that
+legitimately drops coverage and one that quietly moves the goalposts.
+
+## §9 — Performance and intrinsics
+
+| Item | Status |
+|---|---|
+| 9.1 §6.1 fixed first, `MS_FORCE_ISA` override | Done |
+| 9.4 Fix `load_b_panel` and add cache blocking | Done |
+| 9.5 Tier 1 — AVX2/FMA `dgemm` | Done |
+| 9.5 Tier 1 — NEON `dgemm` | Open |
+| 9.5 Tier 1 — `sgemm` | Open |
+| 9.5 Tier 2 — xsimd across `vector_ops`, `linalg`, `fft`, `special` | Open |
+| 9.5 Tier 3 — dispatch table, alignment, threading | Open |
+| 9.5 Tier 4 — masked epilogues, VNNI/BF16, SVE, AES-NI | Open |
+| 9.6 Correctness discipline | Done for the kernels that exist |
+| CI matrix under Intel SDE | Open |
+
+### What the AVX-512 kernel was doing
+
+It read B through a gather written as a set:
+
+```cpp
+_mm512_set_pd(B[(j0+7)*ldb + p], B[(j0+6)*ldb + p], ...)
+```
+
+Eight strided scalar loads per vector, executed on every iteration of the innermost
+loop. Storing C had the mirror-image problem: the accumulator held eight *columns*
+for one row, so writing it back meant spilling to a stack buffer and scattering eight
+scalars. And there was a 4×8 micro-kernel with nothing above it, which is fine while
+the operands fit in cache and stops scaling the moment they do not.
+
+Both are structural rather than local, and both are fixed by the same change:
+orienting the vectors along rows — contiguous in a column-major matrix, for A and C
+alike — and putting a Goto/BLIS loop nest underneath, in
+`src/runtime/cpu/gemm_blocking.hpp`. B still has to be gathered, because it is
+column-major and the kernel needs a row of it, but that now happens once per panel
+during packing rather than k times per tile.
+
+### The gap that mattered more
+
+There was no AVX2/FMA `dgemm` at all. Every machine without AVX-512 — Zen 1 through
+3, every Intel client part since Alder Lake, and the CI configuration itself, which
+passes `-DMS_ENABLE_AVX512=OFF` — fell all the way to a rank-1 update loop for matrix
+multiply. `src/runtime/cpu/avx2_dgemm.cpp` is an 8×6 micro-kernel over the same
+blocking: 8 rows is two 4-wide vectors, and 6 columns keeps 12 accumulators, 2 A
+vectors and 1 broadcast inside the 16 ymm registers AVX2 provides.
+
+### Measured
+
+n = 512 on one Xeon, single-threaded, same inputs through every path:
+
+| Path | GFLOP/s |
+|---|---|
+| no vector kernel compiled in (the old CI configuration) | 5.03 |
+| AVX2/FMA, packed and blocked | 36.06 |
+| AVX-512, gather and no blocking (before) | 12.16 |
+| AVX-512, packed and blocked (after) | 66.62 |
+
+The plan predicted the packing fix alone would be "typically 2-4x"; with the
+blocking above it, the AVX-512 kernel is 5.5× its previous self, and the two agree
+to 6.0e-14 on the same inputs. One machine, one size, one thread — enough to
+establish direction and magnitude, not enough to quote as a general figure.
+
+### The tolerance contract
+
+The kernels reassociate the sum over k and use fused multiply-add. They do not
+reproduce a naive triple loop bit for bit and should not be expected to; both
+behaviours are legitimate and both change the result. `tests/unit/linalg/
+test_dgemm_kernels.cpp` compares each kernel against a reference accumulated in long
+double, at every size that straddles a boundary in the decomposition, with a
+tolerance of 16 × k × ε × max|A| × max|B|. That is loose enough to cover any
+summation order the compiler chooses and far tighter than an indexing mistake could
+hide behind: dropping one term of a k-term sum of unit-scale values is an error of
+order 1, and the tolerance at k = 256 is about 1e-12.
+
+The block sizes are defaults, not measurements. They are a `struct` rather than
+constants baked into the loop because the right values are a property of the machine,
+and claiming otherwise would be inventing a number.
+
+## §10 — Symbolic engine
+
+**Started.** The core the section specifies now exists as `ms::sym2`, built beside
+`ms::symbolic` as §10.5 directs rather than replacing it: exact `BigInt`/`Rational`
+atoms, n-ary sorted `Add`/`Mul` that collect like terms at construction, an interned
+DAG so equality is a pointer comparison, `Derivative`/`Integral`/`Limit` heads and an
+`undefined` value in place of the nine sentinel returns of §6.8, a precedence-aware
+printer, and `Result<T>` on `evaluate`. `x/3*3` is `x`; `2*x + 1` prints as `2*x + 1`
+rather than `((2.000000 * x) + 1.000000)`.
+
+The bridge in `ms/sym2/bridge.hpp` converts both ways so functions can be ported one at
+a time under the differential discipline §10.5 asks for, and
+`tests/unit/sym2/test_sym2_differential.cpp` runs it: 4,000 random expressions against
+the old engine at three points each, plus a round trip, a print-and-reparse check, and
+a fixed-point check on the canonical form.
+
+**What is left:** the transforms, series, limits, linear solve and ODE solvers are
+still the old engine's, and nothing in the REPL calls `sym2` yet. §10.6's capability
+roadmap — polynomial `gcd`/`factor`/`together`/`apart`, assumptions, `solve` beyond
+linear — all sits on top of what now exists.
+
+### What was fixed without it
+
+An audit drove the REPL over the standard tables of all twelve symbolic families:
+10,153 commands, 80 claimed gaps, 35 double-confirmed by an independent empirical and
+mathematical check. Acting on it turned up nine results that were not declines but
+**wrong answers with no error attached**, which are worse than the missing table rows
+that prompted the audit:
+
+| Defect | Symptom |
+|---|---|
+| Unary minus bound tighter than `^` | `-t^2` evaluated to `+9` at `t = 3`; `-2^2` to `4`; `-t^0.5` to NaN |
+| `pi` and `e` parsed as free variables | `sym_eval("pi")` returned `0.000000`, as does any unbound variable |
+| `sym_ztransform` folded a coefficient into the pole | `Z{3*2^n}` returned `z/(z-6)` instead of `3z/(z-2)` |
+| `sym_solve_linear` dropped terms it could not read | `x + sin(y) - 1` solved to `x = 1`; `x^2 + x - 1` was answered as if linear |
+| The unsupported sentinel leaked through linearity | one unsupported term in a sum returned part transform, part `d/dt(...)`, reported as success |
+| `sym_hankel` on `r^n exp(-a r)`, `n >= 1` | `H0[r^2 e^{-2r}]` at `k = 1` returned exactly twice the true value |
+| `sym_limit` on a one-sided domain | returned its `0.0` initialiser: `sqrt(x) + 5` at 0 gave `0.000000` |
+| `sym_limit` under cancellation | drove `h` to 1e-15 and returned the resulting 0 as converged |
+| `sym_to_string` on small constants | printed `1e-9` as `0.000000`, losing the term entirely |
+
+and one that was neither a decline nor a wrong answer: `sym_expand("((x+1)^8)^8")` did
+not terminate.
+
+The table gaps behind the audit are closed in `sym_integrate`, `sym_laplace`,
+`sym_ilaplace`, `sym_fourier`/`sym_ifourier`, `sym_mellin`/`sym_imellin`,
+`sym_hankel`/`sym_ihankel`, `sym_ztransform`/`sym_iztransform` and `sym_dsolve`, mostly
+by stating a general rule — the shifting theorems, frequency differentiation, a
+first-degree numerator over three denominator families — rather than adding rows.
+
+`tests/unit/symbolic/test_symbolic_tables.cpp` checks entries against the definitions
+they come from rather than against the implementation: antiderivatives are
+differentiated and compared with the integrand, forward transforms against their
+defining integral evaluated numerically, inverse transforms by forward-transforming the
+result, ODE solutions by substitution into the equation, and Mellin entries on a mesh
+substituted to remove the singularity at each end exactly. That is what caught the
+Hankel factor of two, which no amount of asserting the expected closed form would have.
+
+Both of the items left open here are now closed. `sym_expand` collects like terms on a
+canonical polynomial form, so `((x+1)^8)^8` is the degree-64 binomial in 8 ms rather
+than a hang, and the REPL's scalar output round-trips.
+
+Chasing that second one down through the REPL turned up five more wrong answers, none
+of them symbolic:
+
+| Defect | Symptom |
+|---|---|
+| A leading unary sign applied to the whole expression | `-4 + 1` evaluated to **-5**, `-4 - 1` to **-3**; with `x = 4`, `-x + y` to **-6** |
+| The top-level operator scan did not know an exponent sign | `1e-09 * 2` was split at the minus and reported "could not parse" |
+| Every scalar printed with `printf("%f")` | `x = 0.000000001` echoed as **0.000000**; above 1e16 the same format grew a spurious `.000000` tail |
+| `save_session` wrote six significant digits | `x = 1.23456789` saved as `1.23457` and reloaded 2.1e-06 wrong, silently, for every scalar, matrix entry and plot sample |
+| `combo::binomial` overflowed its intermediate product | `C(67,33)` returned **8829174638479413** for 14226520737620288370 — a value well inside `uint64_t` |
+
+The last of those came out of asking a narrower question: the REPL was printing
+`combo`'s `UINT64_MAX` overflow sentinel as an answer, so `combo_factorial(25)` said
+**18446744073709551615**. Guarding the twenty-one call sites was the fix for that;
+checking the counts against exact arithmetic while writing the test is what showed the
+counting functions themselves were wrapping. `permutations`, `multinomial`,
+`combinations_with_rep` and the four rank/unrank functions had the same problem in
+different forms.
+
+The pattern across all fourteen: the code was wrong in a way that looked right. The
+tests that catch this class compare against an independent definition — quadrature for
+a transform, exact integer arithmetic for a count, a bit pattern rather than a printed
+form for a round trip — because a test written from the implementation's own output
+agrees with the bug.
+
+## The second audit
+
+A read-only sweep of the whole tree, run along eight dimensions in parallel, with every
+finding then handed to an independent verifier told to refute it: **40 claims, 36
+confirmed, 4 refuted.** All 36 are fixed.
+
+The question it asked was narrower than the first audit's and turned out to be more
+productive: not "what is missing" but "what produces a value a user would read as an
+answer and that is not one". The categories it found:
+
+| Category | Examples |
+|---|---|
+| A different function entirely | `jordan_totient` computed the Euler-totient shape; header, implementation and test all agreed with each other |
+| Overflow with no report | `binomial`'s intermediate product, `catalan_num` via the central binomial, `crt`'s modulus, `sum_divisors`, `convergents`, `lucas_sequence`, `BigInt::to_ll` |
+| A marker printed as a value | `combo` and `numthy`'s `UINT64_MAX`, `primitive_root`'s -1, `quantum_fidelity`'s 0.0, `graph_diameter` on a disconnected graph |
+| A rule that is not an identity | `sym_mellin`'s exponential rows dropped Gamma(s); `sym_limit` averaged a two-sided divergence to zero |
+| Success reported for a run that failed | the adaptive ODE step budget; `converged = 1` from five optimisers |
+| A value silently changed on the way through | `matrix_to_bytes` rescaling by 255; the compress round trips; `BigInt` turning a bad literal into 0 |
+| State lost or shadowed | `load_session` clearing the session before failing; `save_session` writing files it cannot read; `A(1,2) = 5`; scalars and matrices shadowing each other |
+| A display that erased its value | 60-odd sites at six significant digits; `saveplot` writing a rounded preview |
+
+Two of them are worth separating out, because they say something about how the rest were
+found rather than only what they were.
+
+**`jordan_totient` was wrong in three places at once.** The header stated
+`J_k(n) = n^k prod (1 - 1/p)`, the implementation computed that, and the test asserted
+`J_2(6) = 12` with a comment deriving it from the same formula. Nothing in the tree
+disagreed with anything else in the tree. The test that catches it counts the k-tuples
+J_k is defined as, which is not a formula and so cannot carry the same error.
+
+**The ORC JIT repeated the interpreter's unary-minus defect exactly.** The same
+`if (expr.front() == '-')` before the binary-operator scan, in the backend whose job is
+to agree with the interpreter. Fixing one and not the other would have left the two
+disagreeing about `-2 + 1` -- which is a worse state than both being wrong.
+
+## §11 — LaTeX and notation interchange
+
+| Item | Status |
+|---|---|
+| 11.1 Output — `to_latex(ExprRef)` and the sibling formats | Done |
+| 11.2 Input — parsing LaTeX | Done — `docs/LATEX_SUBSET.md` defines the subset, `parse_latex` reads it, `sym_from_latex("tex")` in the REPL |
+
+**§11.1 is done, as one walk and five tables rather than as ten printers.** The plan
+insisted on that shape and the reason held up: almost everything a printer does is
+structural, and structure is the same in every notation. `src/sym2/notation.cpp` makes
+every structural decision once -- which factors are a denominator, which sum terms are
+subtractions, which powers are roots, display order, where a grouping is needed, how a
+symbol name splits -- and a notation is a `Syntax` table that only spells what has
+already been decided.
+
+Ten notations come out of five tables: LaTeX, Presentation MathML, Content MathML,
+Unicode, ASCII, SymPy, Mathematica, and C / C++ / Python source. In the REPL:
+`sym_latex("expr")` and `sym_export("expr", "notation")`.
+
+What made this worth doing as one walk rather than ten printers is visible in what each
+table got wrong on its own terms and had to be told: `1e+20` is not a LaTeX numeral,
+`1/3` in a Python session is a float, `1/3` in Wolfram Language is not, `1/3` in C is
+zero, `Sin(x)` in Wolfram Language is a product rather than a call, `√` has no vinculum
+in text so it does not group its argument, and a LaTeX value written as a product may
+not enter a superscript without a grouping or the document does not compile. Every one
+of those is a case where the *obvious* string parses to a different expression than the
+one printed -- and none of them are visible by reading the output.
+
+Also settled, and recorded because it is the same defect class as the audits: a
+derivative, integral or limit has no source form. The C, C++ and Python tables emit an
+identifier that does not exist, so the code fails to compile and names the problem,
+rather than emitting a plausible call.
+
+**§11.2 is done, and the plan's assessment of it is what shaped it**: LaTeX is
+presentation markup and there is no correct general parser, so the work was to define a
+subset, parse it strictly, and reject everything outside it with a source position.
+
+The subset is defined by the printer rather than by taste. `docs/LATEX_SUBSET.md` fixes
+the accepted language as **everything `notation_latex.cpp` can emit, under every
+`NotationOptions` combination**, plus twelve human spellings listed by name. That is
+what turns
+
+    parse_latex(to_latex(e, options)) == e
+
+from an aspiration into an assertion -- and the document lists, exhaustively, the
+twenty-eight shapes where it does not hold, each one a case where the printed form
+carries less than the node did: a whole-valued `Real` prints as an integer, a total and
+a partial derivative are spelled the same way, `\sqrt{x}` is a half power rather than a
+call. Every one of the twenty-eight has its own test pinning what *does* come back. An
+exception list nobody tests is an exception list that grows.
+
+Every rejection names the ambiguity rather than the rule: `\sin^{2}(x)` is the square
+at 2 and the inverse at -1; `\int_{a}^{b}` would have its bounds silently discarded
+because `Head::Integral` records none; `\hat{x}` and `x` are different symbols to a
+reader and the same name to a parser.
+
+**The parser and its 107 tests were written in parallel by two authors, neither seeing
+the other's work, both writing from the document.** They disagreed thirteen times. Ten
+were the parser's. The other three were not bugs on either side -- they were places the
+document was wrong or silent, and each is recorded in it now:
+
+- three of them had **one** cause, and it was a markdown table cell. A literal `|` in a
+  table has to be escaped as `\|`, which is also LaTeX's control symbol for the norm
+  delimiter, so A34, A36, H2 and H3 all wrote the same two characters and meant
+  different things by them. §2.4's grammar, which is in a code block where the character
+  survives, settles it. Every table writes `&#124;` for a literal bar now.
+- **N24** claimed a Constant and a Symbol of the same name print byte-identically. They
+  do not: a Constant never goes through `split_subscript`, so `constant("gamma_E")`
+  prints `\mathrm{gamma\_E}` while `symbol("gamma_E")` splits and prints
+  `\gamma_{E}`. The exception is real; the reason given for it was not.
+- **`\frac{a}{b \cdot c}`** was a question the document had not asked.
+  `mul({a, b^-1, c^-1})` and `mul({a, (b c)^-1})` print the same string, so one of them
+  cannot read back as itself. The parser distributes, keeping the shape a canonical node
+  actually has; the other is N28, whose stated consequence is that `\frac{d}{d \cdot x}`
+  reads as `1/x`.
+
+That is what writing the tests from the document rather than from the implementation
+buys. A test read off a parser agrees with that parser's reading of an ambiguous
+sentence, and the sentence stays ambiguous.
+
+**An adversarial review of the committed parser found five more, and no crash.** 220,000
+fuzzed inputs under ASan and UBSan produced no report, and the depth guard holds to
+20,000 nestings on a 256 KB stack. What it did find was two wrong results and three
+diagnostics that were worse than useless, all now fixed:
+
+- **`\frac{dy}{dx}` came back `y/x`.** `match_derivative_operator` requires the numerator
+  to be exactly `d`, so every Leibniz spelling except `\frac{d}{dx} f` fell through to
+  `parse_fraction` -- which distributes the denominator (N28), leaving `mul` to collect
+  `d^1 * d^-1` and cancel. `\frac{d^{2}y}{dx^{2}}` came back `d*y/x^2`, carrying a factor
+  of `d` the author never wrote, standing exactly where the order of the derivative had
+  been. The partial form was already rejected, so the asymmetry was in the parser rather
+  than in the subset. Now **A53 / E-LATEX-0045**.
+- **`\int x \, dx + 1` came back `integral(d*x^2 + 1)`.** The integrand runs to the end
+  of the enclosing group, so text after the differential breaks the backwards scan, no
+  differentials are found, and the empty-variable-list exemption -- written for `\int f`,
+  which has no differential at all -- re-read `\, dx` as the factors `d` and `x`. Two
+  integral signs rejected the same input correctly, so the hole was exactly the one-sign
+  case. Now **A54 / E-LATEX-0046**.
+- **`(x\right)` was diagnosed as "expected ')' ... found ')'".** `mismatch_site` skipped
+  over `\right` unconditionally and pointed at the token after it. That is right only
+  when the opener licenses `\right` as its closer's prefix: a bare `(` does not, so the
+  one thing wrong with the input was never named and the reader was sent to a perfectly
+  good `)` six columns further on. The rule is now "skip the prefix this opener
+  licenses", which fixes the mirror case (`\left(x\big)`) at the same time.
+- **E-LATEX-0018 handed out advice that parsed to something else.** It told the author of
+  `f'(x)` to write `\frac{d}{dx} f(x)` -- but an unmarked juxtaposition before a
+  parenthesis is a product (A1), so following it gave the derivative of `f` times `x`,
+  with no call in it, and no second diagnostic to say so. It names the `\operatorname`
+  form now, and the test takes the advice *out of the message* and parses it, so the two
+  cannot drift.
+- **`\mathrm{ }` was accepted as `symbol(" ")`**, which §4.1 promises will round-trip and
+  which did not: a one-character name printed bare, so the whole printed form was a
+  single space, and a single space is empty input. The fence went into the printer rather
+  than into a §4.2 row, because the guarantee as §4.1 words it is the one worth having.
+
+## §12 — GUI
+
+**Open.**
+
+## §13 — Other features
+
+| Item | Status |
+|---|---|
+| 13.1 Bit-reproducibility mode | Open — depends on §9.5 Tier 3 |
+| 13.2 Reproducibility manifest | Done — `ms/runtime/repro.hpp` |
+| 13.3 Structured audit log | Open |
+| 13.4 Python bindings | Open |
+| 13.5 Language server | Open |
+| 13.6 Sparse direct solvers | Open |
+| 13.7 Arbitrary-precision transcendentals | Done previously |
+| 13.8 Checkpoint and restart | Open |
+
+`ms::runtime::capture()` reports version and commit, the ISA path actually taken
+after the OS register-state check, whether `MS_FORCE_ISA` applied a ceiling, the
+worker count, and the seed — as text or JSON. It reports conditions rather than
+pinning them, which is the minimum viable form of §13.1 and the part that was nearly
+free.
+
+## §14 — The gate on `v1.0.0`
+
+The plan names five items that must close before the tag:
+
+| Gate | Status |
+|---|---|
+| §4.1 Licence, including the CUDA §7 exception | Done |
+| §4.3 Export-control determination | Done |
+| §4.5 Authorship | **Waived** — declined by the repository owner |
+| §6.1 SIGILL in `dgemm` | Done |
+| §6.3 CSPRNG | Done |
+
+All five are now resolved: four closed by work, the fifth by an explicit decision not
+to do it. **On the plan's own criteria the tag is no longer blocked.**
+
+What still gates `v1.0.0` is `RELEASE.md`'s own eleven criteria rather than this list
+— in practice criterion 1 (CI green) and criterion 5 (the 24 h fuzz marathon, which
+the author is running on their own hardware).
+
+---
+
+## Formal verification
+
+Not in the plan, and worth recording. `verification/` holds bounded-model-checking
+harnesses run under both ESBMC and CBMC in CI:
+
+- `isa_gating.c` — the ISA hierarchy cannot report a wider path than the OS enabled,
+  and `MS_FORCE_ISA` can only narrow.
+- `miller_rabin_witness.c` — the §6.2 defects 2 and 3 are unreachable.
+
+One thing that went wrong here is worth stating, because it is the failure mode this
+kind of tooling is most prone to. The harnesses were first written with
+`__CPROVER_assume`, which ESBMC accepts and silently ignores. They therefore verified
+considerably less than they claimed, and reported success while doing it. They now
+use `__VERIFIER_assume` through a portability shim, and both provers agree.

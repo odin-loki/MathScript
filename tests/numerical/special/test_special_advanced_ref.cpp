@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Special Functions Advanced Numerical Reference Tests
 // Tests erfi, erfcx, dawsonx, log_gamma, bernoulli_number, euler_number, Airy functions
 

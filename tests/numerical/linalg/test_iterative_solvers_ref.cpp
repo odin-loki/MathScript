@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Iterative Solvers Additional Numerical Tests
 // Extended coverage for CG, BiCGSTAB, and GMRES on 3x3 SPD systems
 

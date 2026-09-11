@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include <limits>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -32,6 +35,13 @@ public:
 
 private:
     std::vector<Simplex> simplices_;
+    // O(log n) membership index mirroring simplices_ exactly (same contents, no
+    // ordering role -- simplices_ alone defines insertion order and is what every
+    // accessor reads). add_point/add_simplex keep the two in lock-step so that
+    // has_simplex() is a lookup instead of a linear scan; without it add_simplex
+    // is O(N) per face and complex construction degrades to O(N^2), which
+    // dominates every cech_complex build at max_dim >= 3.
+    std::set<Simplex> index_;
     bool has_simplex(const Simplex& s) const;
     // Boundary matrix for dimension k: cols = k-simplices, rows = (k-1)-simplices
     std::vector<std::vector<int>> boundary_matrix(int k) const;
@@ -43,6 +53,55 @@ SimplicialComplex vietoris_rips(const std::vector<std::vector<double>>& dist_mat
                                  double r, int max_dim = 2);
 
 // ========================== Čech complex ==========================
+// Čech / MEB enumeration ceilings. Same defensive convention as ms::combo's kMaxEnum*
+// constants: a request above a ceiling degrades silently instead of allocating without
+// bound. See the @note on cech_complex for the exact semantics of each.
+inline constexpr int       kMaxCechDim          = 8;      // highest dimension cech_complex will build
+inline constexpr int       kMaxMebExactPoints   = 16;     // largest subset given the exact 2^m support search
+inline constexpr int       kMebApproxIterations = 500;    // Badoiu-Clarkson steps above that ceiling
+inline constexpr long long kMaxCechCandidates   = 50000;  // dim>=3 candidate simplices evaluated per call
+
+// Minimum enclosing ball (MEB) radius of the points indexed by `idx`, computed from
+// the distance matrix alone — no coordinates required, correct for any subset size.
+//
+// Method: the MEB of a finite set S is the circumball of some subset T ⊆ S whose
+// circumcentre lies in conv(T) and which encloses every point of S (the standard
+// optimality condition c ∈ conv(S ∩ ∂B); Carathéodory lets T be taken affinely
+// independent, so such a T is always reachable by the enumeration below). Both tests
+// are distance-only. Writing the circumcentre in barycentric form c = Σ λ_a q_a with
+// Σ λ_a = 1, the bordered (|T|+1)x(|T|+1) Cayley-Menger system
+//        [ 0  1^T ] [ v0 ]   [ 1 ]
+//        [ 1   D  ] [ λ  ] = [ 0 ]      (D = squared pairwise distances of T)
+// yields the barycentric circumcentre λ directly, plus R^2 = -v0/2 — equivalently, in
+// determinant form, R^2 = -det(D) / (2 det(CM)). Containment of any point x then
+// follows from the coordinate-free identity |c - x|^2 = Σ_a λ_a d(q_a,x)^2 - R^2, i.e.
+// x is inside the circumball of T iff Σ_a λ_a d(q_a,x)^2 <= 2 R^2.
+// All λ_a >= 0 means the circumcentre lies inside conv(T), so the MEB equals its
+// circumball; otherwise the search moves on to larger support sets and takes the
+// smallest enclosing ball that still contains every point of `idx`.
+//
+// Sizes 1..3 are answered by the closed forms this module already used, bit for bit:
+// 0 for a single point, dist/2 for a pair, and the acute/obtuse circumradius rule for a
+// triangle (the same static helper cech_complex and alpha_complex call, including its
+// absolute obtuseness tolerance). From size 4 the support-set search above runs; above
+// kMaxMebExactPoints a Badoiu-Clarkson core-set iteration replaces it, which does not
+// under-report: its value is the covering radius of a genuine enclosing ball, hence an
+// upper bound on the true MEB radius up to floating-point round-off.
+//
+// @param dist_matrix square, symmetric matrix of pairwise distances
+// @param idx         indices into dist_matrix selecting the subset; order is irrelevant
+// @return MEB radius of the indexed subset
+// @note Defensive, non-throwing on malformed input (this module returns plain values,
+//       not Result): an empty or single-element idx, an index outside
+//       [0, dist_matrix.size()), or a ragged/non-square dist_matrix all return 0.0.
+//       Affinely dependent subsets (coplanar quadruples, collinear triples, duplicated
+//       points) make the Cayley-Menger system singular; those subsets are skipped and
+//       the correct MEB is recovered from a smaller support set — e.g. four coplanar
+//       square corners give diagonal/2, four collinear points give span/2, and
+//       coincident points give 0.
+double meb_radius_from_distances(const std::vector<std::vector<double>>& dist_matrix,
+                                 const std::vector<int>& idx);
+
 // Build the Čech complex of a point cloud (given as a distance matrix) at scale epsilon.
 //
 // Definition: the Čech complex Čech(ε) contains a k-simplex {v0,...,vk} iff the
@@ -58,22 +117,45 @@ SimplicialComplex vietoris_rips(const std::vector<std::vector<double>>& dist_mat
 //     side alone, i.e. radius = longest_side/2 (the opposite vertex lies inside it).
 //     Obtuseness (at the vertex opposite the longest side) is detected by comparing
 //     longest_side^2 against the sum of the other two sides squared.
+//   - dim k >= 3 (k+1 points): MEB radius via meb_radius_from_distances (above), which
+//     solves the same problem exactly from the distance matrix alone using the bordered
+//     Cayley-Menger system. There is no coordinate requirement and no approximation:
+//     for k+1 <= kMaxMebExactPoints the answer is the true MEB radius.
 //
 // @param dist_matrix square, symmetric matrix of pairwise distances (dist_matrix[i][i] == 0)
 // @param epsilon      ball radius; a k-simplex is included iff its MEB radius <= epsilon
 // @param max_dim      highest simplex dimension to construct (0 = vertices only,
-//                      1 = vertices+edges, 2 = vertices+edges+triangles)
+//                      1 = vertices+edges, 2 = vertices+edges+triangles, and so on up
+//                      to kMaxCechDim)
 // @return SimplicialComplex containing all Čech simplices up to max_dim
 // @note Unlike vietoris_rips, the Čech complex is NOT a flag complex: a triangle whose
 //       three edges all satisfy the 2ε edge rule need not have MEB radius <= epsilon
 //       (an obtuse triangle can have all edges short but a circumradius that exceeds
 //       epsilon whenever the pairwise distances are far from acute). Each candidate
 //       simplex is therefore checked independently against the true MEB condition.
-// @note max_dim > 2 is not supported: computing the minimum enclosing ball of 4+ points
-//       from pairwise distances alone (without explicit coordinates) requires solving a
-//       higher-dimensional Cayley-Menger / semidefinite feasibility problem (the naive
-//       generalization of Welzl's algorithm needs actual point coordinates). Requests
-//       with max_dim > 2 are silently clamped to 2 rather than crashing.
+// @note Dimensions >= 3 ARE supported. The historical restriction ("needs actual point
+//       coordinates") was unnecessary: the circumradius R and the barycentric
+//       circumcentre coordinates λ of a k-simplex both fall out of one bordered
+//       Cayley-Menger linear system built purely from squared pairwise distances, and
+//       Welzl's "is the centre inside the simplex / is point p inside the ball" tests
+//       are then expressible in distance-only form as well. See the derivation above
+//       meb_radius_from_distances in src/topo/topo.cpp.
+// @note Enumeration is bounded, not unbounded. Čech(ε) considers every (k+1)-subset of
+//       the n points, i.e. C(n, k+1) candidates at dimension k, so an unguarded max_dim
+//       would let a stray REPL argument or a fuzzer input build an astronomically large
+//       complex — the failure mode ms::combo guards with its kMaxEnum* constants. Two
+//       ceilings apply, both degrading silently rather than erroring:
+//         * max_dim > kMaxCechDim is clamped to kMaxCechDim (max_dim < 0 behaves as 0,
+//           exactly as it does today: only vertices and the unconditional edge pass run);
+//         * at most kMaxCechCandidates candidate simplices of dimension >= 3 are
+//           evaluated. Dimensions 0..2 are never budgeted, and survivors are committed
+//           one whole dimension at a time, so the returned complex is always COMPLETE
+//           through its own top dimension — a truncated build simply stops lower than
+//           requested, and its Euler characteristic and Betti numbers stay meaningful.
+//       Higher dimensions are cheap in practice because the MEB radius is monotone
+//       under supersets: Čech(ε) is closed under faces, so dimension k+1 is expanded
+//       only from the simplices that survived dimension k, and only when every one of a
+//       candidate's facets survived.
 SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matrix,
                                 double epsilon, int max_dim = 2);
 

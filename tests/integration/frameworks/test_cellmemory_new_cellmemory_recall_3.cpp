@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -24,7 +26,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationFrameworks,  CellmemoryGria) {
+TEST(IntegrationFrameworks, CellmemoryGria_CellmemoryNewCellmemoryRecall3) {
     Interpreter interp;
     expect_contains(interp, "help", "cellmemory_recall");
     expect_contains(interp, "help", "gria_ca_step");
@@ -48,7 +50,7 @@ TEST(IntegrationFrameworks,  CellmemoryGria) {
     ASSERT_GT(interp.state().matrices.count("fld"), 0u);
 }
 
-TEST(IntegrationFrameworks,  KelvinKerScalar) {
+TEST(IntegrationFrameworks, KelvinKerScalar_CellmemoryNewCellmemoryRecall3) {
     Interpreter interp;
     expect_ok(interp, "kker = kelvin_ker(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("kker"), ms::kelvin_ker(0, 1.0), 1e-8);

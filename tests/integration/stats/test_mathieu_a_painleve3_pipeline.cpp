@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,12 @@ TEST(IntegrationStats,  SpecialPainleve3) {
 
     expect_ok(interp, "p3 = painleve3(0.5, 0.5, -0.1, 0.5, 0.3)");
     ASSERT_GT(interp.state().scalars.count("p3"), 0u);
-    EXPECT_NEAR(interp.state().scalars.at("p3"), 1.398748842793728, 1e-2);
+    // AUDIT FIX (special module): 1.398748842793728 was the value of an ODE that was not
+    // Painleve III -- the old right-hand side put (alpha w^2 + beta) over z^2 instead of z and
+    // omitted gamma w^3 + delta/w entirely. Re-pinned against DLMF 32.2.3 (gamma = 1,
+    // delta = -1); see tests/unit/special/test_special_audit_fixes.cpp for the ODE residual and
+    // exact-solution checks.
+    EXPECT_NEAR(interp.state().scalars.at("p3"), 0.48771921611212105, 1e-9);
     expect_contains(interp, "help", "painleve3(");
 }
 

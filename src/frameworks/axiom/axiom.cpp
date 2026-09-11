@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/frameworks/axiom/axiom.hpp"
 #include "ms/frameworks/gria/gria.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
@@ -225,24 +227,264 @@ std::unique_ptr<GPNode> crossover_offspring(
     return offspring;
 }
 
+// --- Provenance: per-individual breeding record -----------------------------
+
+/// Share of mutation events routed to the structure-preserving point mutation;
+/// the rest use subtree replacement. Drawn once per mutation event, after the
+/// mutation_rate gate has fired.
+constexpr double kPointMutationShare = 0.3;
+
+/// Variation operator that produced an individual.
+enum class VariationKind { InitGrow, CloneElite, Clone, Crossover };
+
+/// Mutation operator (if any) applied to it afterwards.
+enum class MutationKind { None, Subtree, Point };
+
+/// Breeding record carried from the breeding loop to the stamping loop of the
+/// same generation. Never stored across generations: the Algorithm's Sym fields
+/// are the durable record.
+struct Provenance {
+    std::string selection = "init(grow)";
+    VariationKind variation = VariationKind::InitGrow;
+    MutationKind mutation = MutationKind::None;
+    bool depth_repaired = false;
+};
+
+/// Compact rendering of a configuration parameter for provenance labels
+/// ("0.1", "0.35", "1"). Deliberately not format_constant(), which uses %.17g so
+/// GP constants round-trip exactly and would render 0.1 as
+/// "0.10000000000000001". O(1).
+std::string format_param(double value) {
+    char buf[32] = {};
+    std::snprintf(buf, sizeof(buf), "%.6g", value);
+    return buf;
+}
+
+/// Uniform index in [0, count), clamped against random_int()'s inclusive upper
+/// edge (CSPRNG::next_f64() can return exactly 1.0). Returns 0 when count == 0.
+/// O(1).
+size_t random_index(izaac::CSPRNG& rng, size_t count) {
+    if (count == 0) {
+        return 0;
+    }
+    const int raw = random_int(rng, 0, static_cast<int>(count));
+    if (raw <= 0) {
+        return 0;
+    }
+    return std::min(static_cast<size_t>(raw), count - 1);
+}
+
+/// Uniform index in [0, count) that differs from `excluded`; returns `excluded`
+/// when count < 2, because no alternative exists. O(1).
+int random_index_excluding(izaac::CSPRNG& rng, int count, int excluded) {
+    if (count < 2) {
+        return excluded;
+    }
+    int pick = random_int(rng, 0, count - 1);
+    if (pick > count - 2) {
+        pick = count - 2;
+    }
+    if (pick < 0) {
+        pick = 0;
+    }
+    if (pick >= excluded) {
+        ++pick;
+    }
+    return pick;
+}
+
+void collect_mutable_nodes(GPNode& node, std::vector<GPNode*>& out) {
+    out.push_back(&node);
+    if (node.left) {
+        collect_mutable_nodes(*node.left, out);
+    }
+    if (node.right) {
+        collect_mutable_nodes(*node.right, out);
+    }
+}
+
+/// Pre-order list of every node in `node` as mutable pointers. Mirrors
+/// collect_nodes() without needing a const_cast at the use site. O(n).
+std::vector<GPNode*> collect_mutable_nodes(GPNode& node) {
+    std::vector<GPNode*> out;
+    collect_mutable_nodes(node, out);
+    return out;
+}
+
+/// Replaces one node's payload in place, leaving the tree shape untouched: a
+/// constant is jittered by U(-1, 1); a variable, binary operator or unary
+/// function is swapped for a *different* member of its pool. Returns false when
+/// the pool holds no alternative (single-variable problems, single-primitive
+/// registries), leaving the node unchanged. O(1) plus the pool scan.
+bool point_mutate_node(
+    GPNode& node,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng) {
+    switch (node.kind) {
+    case GPNode::Kind::Constant:
+        node.const_value += random_double(rng, -1.0, 1.0);
+        return true;
+    case GPNode::Kind::Variable: {
+        if (n_vars < 2) {
+            return false;
+        }
+        node.var_index = random_index_excluding(rng, static_cast<int>(n_vars), node.var_index);
+        return true;
+    }
+    case GPNode::Kind::BinaryOp: {
+        const int op_count = static_cast<int>(std::size(kBinaryOps));
+        if (op_count < 2) {
+            return false;
+        }
+        int current = 0;
+        for (int i = 0; i < op_count; ++i) {
+            if (kBinaryOps[i] == node.binary_op) {
+                current = i;
+            }
+        }
+        const int pick = random_index_excluding(rng, op_count, current);
+        node.binary_op = kBinaryOps[static_cast<size_t>(pick)];
+        return true;
+    }
+    case GPNode::Kind::UnaryFunc: {
+        if (available_funcs.size() < 2) {
+            return false;
+        }
+        int current = 0;
+        for (size_t i = 0; i < available_funcs.size(); ++i) {
+            if (available_funcs[i] == node.func_name) {
+                current = static_cast<int>(i);
+            }
+        }
+        const int pick =
+            random_index_excluding(rng, static_cast<int>(available_funcs.size()), current);
+        node.func_name = available_funcs[static_cast<size_t>(pick)];
+        return true;
+    }
+    }
+    return false;
+}
+
+/// Clones `tree` and point-mutates one uniformly chosen node. `applied` reports
+/// whether the node's payload actually changed. The shape is never altered, so
+/// the result satisfies whatever depth bound `tree` satisfied. O(n).
+std::unique_ptr<GPNode> point_mutation(
+    const GPNode& tree,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng,
+    bool& applied) {
+    auto result = clone_tree(tree);
+    applied = false;
+    const std::vector<GPNode*> nodes = collect_mutable_nodes(*result);
+    if (nodes.empty()) {
+        return result;
+    }
+    GPNode* target = nodes[random_index(rng, nodes.size())];
+    if (target != nullptr) {
+        applied = point_mutate_node(*target, n_vars, available_funcs, rng);
+    }
+    return result;
+}
+
+std::string variation_label(VariationKind kind) {
+    switch (kind) {
+    case VariationKind::InitGrow:
+        return "none";
+    case VariationKind::CloneElite:
+        return "clone(elite)";
+    case VariationKind::Clone:
+        return "clone";
+    case VariationKind::Crossover:
+        return "crossover";
+    }
+    return "none";
+}
+
+/// "<variation>[+<mutation>(<rate>)][+regrow(<max_depth>)]", e.g. "clone(elite)",
+/// "crossover", "clone+point(0.1)", "crossover+subtree(0.3)+regrow(4)". O(1).
+std::string mutation_label(const Provenance& prov, double mutation_rate, size_t max_depth) {
+    std::string label = variation_label(prov.variation);
+    if (prov.mutation == MutationKind::Subtree) {
+        label += "+subtree(" + format_param(mutation_rate) + ")";
+    } else if (prov.mutation == MutationKind::Point) {
+        label += "+point(" + format_param(mutation_rate) + ")";
+    }
+    if (prov.depth_repaired) {
+        label += "+regrow(" + std::to_string(max_depth) + ")";
+    }
+    return label;
+}
+
+void collect_var_indices(const GPNode& node, std::vector<int>& out) {
+    if (node.kind == GPNode::Kind::Variable
+        && std::find(out.begin(), out.end(), node.var_index) == out.end()) {
+        out.push_back(node.var_index);
+    }
+    if (node.left) {
+        collect_var_indices(*node.left, out);
+    }
+    if (node.right) {
+        collect_var_indices(*node.right, out);
+    }
+}
+
+/// Applied form actually evaluated for fitness: "f(<bound vars>)=<expression>",
+/// e.g. "f(x0,x1)=(x0*sin(x1))". The signature lists exactly the variables the
+/// tree references, ascending, matching evaluate()'s column-j -> "xj" binding;
+/// a constant-only tree yields "f()=<constant>" and a null tree "f()=0".
+/// O(n * v) in nodes and distinct variables, plus an O(v log v) sort.
+std::string evaluation_form(const GPNode* tree) {
+    if (tree == nullptr) {
+        return "f()=0";
+    }
+    std::vector<int> vars;
+    collect_var_indices(*tree, vars);
+    std::sort(vars.begin(), vars.end());
+    std::string form = "f(";
+    for (size_t i = 0; i < vars.size(); ++i) {
+        if (i > 0) {
+            form += ",";
+        }
+        form += "x" + std::to_string(vars[i]);
+    }
+    form += ")=";
+    form += to_sym_string(*tree);
+    return form;
+}
+
+/// Stamps the three provenance Syms onto `algo`. Replaces the pre-1.0
+/// assign_placeholder_fields(), which wrote the constants Sym("f(x)"),
+/// Sym("tournament") and Sym("mutate") onto every individual of every
+/// generation. O(n) in tree nodes.
+void assign_provenance_fields(
+    Algorithm& algo,
+    const GPNode* tree,
+    const Provenance& prov,
+    double mutation_rate,
+    size_t max_depth) {
+    algo.evaluation = Sym(evaluation_form(tree).c_str());
+    algo.selection = Sym(prov.selection.c_str());
+    algo.mutation = Sym(mutation_label(prov, mutation_rate, max_depth).c_str());
+}
+
+/// Clones `tree` and replaces one uniformly chosen node with a freshly grown
+/// subtree, sized so the result respects `max_depth`. Unconditional: the
+/// mutation_rate gate lives in apply_mutation(). O(n).
 std::unique_ptr<GPNode> subtree_mutation(
     const GPNode& tree,
     size_t max_depth,
     size_t n_vars,
     const std::vector<std::string>& available_funcs,
-    izaac::CSPRNG& rng,
-    double mutation_rate) {
+    izaac::CSPRNG& rng) {
     auto result = clone_tree(tree);
-    if (rng.next_f64() >= mutation_rate) {
-        return result;
-    }
-
-    const auto nodes = collect_nodes(*result);
+    const std::vector<GPNode*> nodes = collect_mutable_nodes(*result);
     if (nodes.empty()) {
         return result;
     }
 
-    GPNode* target = const_cast<GPNode*>(nodes[random_int(rng, 0, static_cast<int>(nodes.size()))]);
+    GPNode* target = nodes[random_index(rng, nodes.size())];
     const size_t target_depth = find_node_depth(*result, target, 1).value_or(1);
     const size_t remaining = max_depth >= target_depth ? max_depth - target_depth + 1 : 1;
     const size_t subtree_max = std::max<size_t>(1, std::min(remaining, size_t{3}));
@@ -285,10 +527,34 @@ size_t tournament_select(const std::vector<Algorithm>& population, size_t tourna
     return static_cast<size_t>(best_idx);
 }
 
-void assign_placeholder_fields(Algorithm& algo) {
-    algo.evaluation = Sym("f(x)");
-    algo.selection = Sym("tournament");
-    algo.mutation = Sym("mutate");
+/// Gates and dispatches the mutation stage for one child. The draw order is
+/// fixed: (1) the mutation_rate gate, (2) only if it fires, the point/subtree
+/// choice. `kind` reports which operator actually ran. Falls back to subtree
+/// replacement when point mutation finds no alternative payload, so a mutation
+/// event is never silently dropped. `mutation_rate == 0` therefore always
+/// yields MutationKind::None. O(n).
+std::unique_ptr<GPNode> apply_mutation(
+    const GPNode& tree,
+    size_t max_depth,
+    size_t n_vars,
+    const std::vector<std::string>& available_funcs,
+    izaac::CSPRNG& rng,
+    double mutation_rate,
+    MutationKind& kind) {
+    kind = MutationKind::None;
+    if (rng.next_f64() >= mutation_rate) {
+        return clone_tree(tree);
+    }
+    if (rng.next_f64() < kPointMutationShare) {
+        bool applied = false;
+        auto mutated = point_mutation(tree, n_vars, available_funcs, rng, applied);
+        if (applied) {
+            kind = MutationKind::Point;
+            return mutated;
+        }
+    }
+    kind = MutationKind::Subtree;
+    return subtree_mutation(tree, max_depth, n_vars, available_funcs, rng);
 }
 
 } // namespace
@@ -311,9 +577,11 @@ Axiom::Axiom(EvolutionConfig cfg, PrimitiveRegistry primitives)
     izaac::CSPRNG& rng = session_rng();
 
     const size_t init_depth = std::max<size_t>(2, cfg_.max_depth / 2);
+    const Provenance init_prov{"init(grow)", VariationKind::InitGrow, MutationKind::None, false};
     for (size_t i = 0; i < cfg_.population_size; ++i) {
         gp_trees_[i] = random_tree(0, init_depth, num_vars_, primitives_.function_names, rng);
-        assign_placeholder_fields(population_[i]);
+        assign_provenance_fields(
+            population_[i], gp_trees_[i].get(), init_prov, cfg_.mutation_rate, cfg_.max_depth);
         sync_representation(i);
         population_[i].fitness = 0.0;
     }
@@ -345,35 +613,56 @@ Result<Algorithm> Axiom::evolve(
         }
     }
 
+    // Selection label for every non-elite child: tournament_select() clamps the
+    // tournament to the population, so the label records the size that actually ran.
+    const size_t effective_tournament =
+        std::max<size_t>(1, std::min(cfg_.tournament_size, population_.size()));
+    const std::string tournament_label =
+        "tournament(" + std::to_string(effective_tournament) + ")";
+
     for (size_t generation = 0; generation < cfg_.max_generations; ++generation) {
         if (termination(best)) {
             break;
         }
 
         std::vector<std::unique_ptr<GPNode>> next_trees;
+        std::vector<Provenance> next_prov;
         next_trees.reserve(cfg_.population_size);
+        next_prov.reserve(cfg_.population_size);
         next_trees.push_back(clone_tree(*gp_trees_[best_idx]));
+        next_prov.push_back(
+            Provenance{"elitism(1)", VariationKind::CloneElite, MutationKind::None, false});
 
         for (size_t i = 1; i < cfg_.population_size; ++i) {
+            Provenance prov;
+            prov.selection = tournament_label;
             const size_t parent_a = tournament_select(population_, cfg_.tournament_size, rng);
             std::unique_ptr<GPNode> child;
             if (rng.next_f64() < cfg_.crossover_rate) {
                 const size_t parent_b = tournament_select(population_, cfg_.tournament_size, rng);
                 child = crossover_offspring(*gp_trees_[parent_a], *gp_trees_[parent_b], rng);
+                prov.variation = VariationKind::Crossover;
             } else {
                 child = clone_tree(*gp_trees_[parent_a]);
+                prov.variation = VariationKind::Clone;
             }
-            child = subtree_mutation(
-                *child, cfg_.max_depth, num_vars_, primitives_.function_names, rng, cfg_.mutation_rate);
+            child = apply_mutation(
+                *child, cfg_.max_depth, num_vars_, primitives_.function_names, rng,
+                cfg_.mutation_rate, prov.mutation);
+            const size_t depth_before = child ? tree_depth(*child) : 0;
             child = enforce_max_depth(
                 std::move(child), cfg_.max_depth, num_vars_, primitives_.function_names, rng);
+            prov.depth_repaired = depth_before > cfg_.max_depth;
             next_trees.push_back(std::move(child));
+            next_prov.push_back(prov);
         }
 
         gp_trees_ = std::move(next_trees);
 
         for (size_t i = 0; i < cfg_.population_size; ++i) {
-            assign_placeholder_fields(population_[i]);
+            assign_provenance_fields(
+                population_[i], gp_trees_[i].get(), next_prov[i], cfg_.mutation_rate,
+                cfg_.max_depth);
             sync_representation(i);
             population_[i].fitness = objective(population_[i]);
             if (population_[i].fitness > best.fitness) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/cpu/lapack.hpp"
 
 #include <algorithm>
@@ -35,34 +37,65 @@ double generate_reflector(int n, double* x) {
     return tau;
 }
 
+// Symmetric rank-2 update realising the similarity transform A22 := H * A22 * H,
+// where H = I - tau * v * v^T is the reflector produced by generate_reflector for
+// step i.  Everything is expressed in the LAPACK 'L' convention used by dsytrd:
+//
+//   * v is stored in column i of A, rows i+1 .. n-1.  v[0] is implicitly 1 (that
+//     slot holds the new subdiagonal entry beta), v[k] = A(i+1+k, i) for k >= 1.
+//   * A22 is the trailing block rows/cols i+1 .. n-1, referenced through its
+//     LOWER triangle only; the upper triangle still holds untouched input data.
+//
+// With p = tau * A22 * v and w = p - (tau/2) * (p^T v) * v, the exact identity
+//   H A22 H = A22 - v w^T - w v^T
+// holds; dropping the second-order term would only give H * A22.
 void sym_rank2_lower(int n, int i, double* A, int lda, double tau) {
     const int nk = n - i - 1;
     if (nk <= 0 || tau == 0.0) {
         return;
     }
 
-    std::vector<double> w(static_cast<std::size_t>(nk), 0.0);
-    for (int j = 0; j < nk; ++j) {
-        double sum = A[static_cast<std::size_t>(i + 1 + j) * static_cast<std::size_t>(lda) +
-                     static_cast<std::size_t>(i + 1)];
-        for (int k = 1; k < nk; ++k) {
-            sum += A[static_cast<std::size_t>(i + 1 + j) * static_cast<std::size_t>(lda) +
-                     static_cast<std::size_t>(i + 1 + k)] *
-                   A[static_cast<std::size_t>(i + 1 + k) * static_cast<std::size_t>(lda) +
-                     static_cast<std::size_t>(i)];
+    const std::size_t ld = static_cast<std::size_t>(lda);
+    const std::size_t base = static_cast<std::size_t>(i + 1);
+
+    // v[k] for k in [0, nk): stored in column i below the (implicit) unit entry.
+    auto vec = [&](int k) -> double {
+        if (k == 0) {
+            return 1.0;
         }
-        w[static_cast<std::size_t>(j)] = tau * sum;
+        return A[static_cast<std::size_t>(i) * ld + base + static_cast<std::size_t>(k)];
+    };
+
+    // A22(r, c) read from the lower triangle only, using symmetry for r < c.
+    auto a22 = [&](int r, int c) -> double {
+        const int rr = (r >= c) ? r : c;
+        const int cc = (r >= c) ? c : r;
+        return A[(base + static_cast<std::size_t>(cc)) * ld + base + static_cast<std::size_t>(rr)];
+    };
+
+    std::vector<double> w(static_cast<std::size_t>(nk), 0.0);
+    double pv = 0.0;
+    for (int r = 0; r < nk; ++r) {
+        double sum = 0.0;
+        for (int c = 0; c < nk; ++c) {
+            sum += a22(r, c) * vec(c);
+        }
+        const double p_r = tau * sum;
+        w[static_cast<std::size_t>(r)] = p_r;
+        pv += p_r * vec(r);
     }
 
-    for (int jj = 0; jj < nk; ++jj) {
-        for (int ii = jj; ii < nk; ++ii) {
-            const double vi = (ii == 0) ? 1.0 : A[static_cast<std::size_t>(i + 1 + ii) * static_cast<std::size_t>(lda) +
-                                                         static_cast<std::size_t>(i)];
-            const double vj = (jj == 0) ? 1.0 : A[static_cast<std::size_t>(i + 1 + jj) * static_cast<std::size_t>(lda) +
-                                                         static_cast<std::size_t>(i)];
-            A[static_cast<std::size_t>(i + 1 + ii) * static_cast<std::size_t>(lda) +
-              static_cast<std::size_t>(i + 1 + jj)] -= vi * w[static_cast<std::size_t>(jj)] +
-                                                        vj * w[static_cast<std::size_t>(ii)];
+    const double half = -0.5 * tau * pv;
+    for (int r = 0; r < nk; ++r) {
+        w[static_cast<std::size_t>(r)] += half * vec(r);
+    }
+
+    for (int c = 0; c < nk; ++c) {
+        const double v_c = vec(c);
+        const double w_c = w[static_cast<std::size_t>(c)];
+        for (int r = c; r < nk; ++r) {
+            A[(base + static_cast<std::size_t>(c)) * ld + base + static_cast<std::size_t>(r)] -=
+                vec(r) * w_c + w[static_cast<std::size_t>(r)] * v_c;
         }
     }
 }
@@ -303,6 +336,38 @@ void dsteqr(int n, double* d, double* e, double* Z, int ldz) {
     }
 }
 
+// Z := Q * Z, where Q = H(0) H(1) ... H(n-2) is the orthogonal factor implied by
+// the dsytrd reduction (A = Q T Q^T).  Reflector i is stored in column i of A:
+// v(i+1) = 1 implicitly (that slot holds the subdiagonal entry), v(r) = A(r, i)
+// for r > i+1.  This offset-by-one layout is the LAPACK dsytrd 'L' convention and
+// differs from the dgeqrf layout that dormqr expects, so the sweep is done here.
+void apply_q_from_dsytrd(int n, const double* A, int lda, const double* tau, double* Z, int ldz) {
+    const std::size_t la = static_cast<std::size_t>(lda);
+    const std::size_t lz = static_cast<std::size_t>(ldz);
+    for (int i = n - 2; i >= 0; --i) {
+        const double t = tau[static_cast<std::size_t>(i)];
+        if (t == 0.0) {
+            continue;
+        }
+        for (int col = 0; col < n; ++col) {
+            const std::size_t zc = static_cast<std::size_t>(col) * lz;
+            double dot = Z[zc + static_cast<std::size_t>(i + 1)];
+            for (int r = i + 2; r < n; ++r) {
+                dot += A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(r)] *
+                       Z[zc + static_cast<std::size_t>(r)];
+            }
+            if (dot == 0.0) {
+                continue;
+            }
+            Z[zc + static_cast<std::size_t>(i + 1)] -= t * dot;
+            for (int r = i + 2; r < n; ++r) {
+                Z[zc + static_cast<std::size_t>(r)] -=
+                    t * dot * A[static_cast<std::size_t>(i) * la + static_cast<std::size_t>(r)];
+            }
+        }
+    }
+}
+
 void dsytrd(int n, double* A, int lda, double* d, double* e, double* tau) {
     for (int i = 0; i < n - 1; ++i) {
         d[i] = A[static_cast<std::size_t>(i) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)];
@@ -349,7 +414,7 @@ int dsyev(char jobz, int n, double* A, int lda, double* w) {
     }
 
     if (jobz == 'V' || jobz == 'v') {
-        dormqr('L', 'N', n, n, n - 1, A, lda, tau.data(), z_ptr, ldz);
+        apply_q_from_dsytrd(n, A, lda, tau.data(), z_ptr, ldz);
         for (int j = 0; j < n; ++j) {
             for (int i = 0; i < n; ++i) {
                 A[static_cast<std::size_t>(j) * static_cast<std::size_t>(lda) + static_cast<std::size_t>(i)] =

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/stats/stats.hpp"
 #include "ms/prob/prob.hpp"
 #include <algorithm>
@@ -143,12 +145,24 @@ double mode(std::span<const double> data) {
     return best;
 }
 
+// A fraction in [0, 1] scaled by a count and converted to an index. The clamp has to
+// happen BEFORE the conversion: converting a negative or out-of-range double to size_t is
+// undefined behaviour, and in practice produces a value near 2^64.
+static size_t index_from_fraction(double fraction, size_t count) {
+    if (count == 0) return 0;
+    if (!(fraction > 0.0)) return 0;  // also catches NaN
+    if (fraction >= 1.0) return count - 1;
+    const size_t idx = static_cast<size_t>(fraction * static_cast<double>(count - 1));
+    return idx < count ? idx : count - 1;
+}
+
 double percentile(std::span<const double> data, double p) {
     if (data.empty()) {
         return 0.0;
     }
-    const size_t idx = static_cast<size_t>(
-        (p / 100.0) * static_cast<double>(data.size() - 1));
+    // p is a percentage: outside [0, 100] it used to scale straight into the index, so
+    // percentile(v, 3e9) indexed ~3e7 elements past the end and segfaulted.
+    const size_t idx = index_from_fraction(p / 100.0, data.size());
     std::vector<double> scratch(data.begin(), data.end());
     std::nth_element(scratch.begin(), scratch.begin() + static_cast<std::ptrdiff_t>(idx),
                      scratch.end());
@@ -450,7 +464,10 @@ double trimmed_mean(std::span<const double> data, double frac) {
     if (data.empty()) return 0.0;
     std::vector<double> scratch(data.begin(), data.end());
     const size_t n = scratch.size();
-    size_t trim = static_cast<size_t>(frac * static_cast<double>(n));
+    // Same conversion hazard: a negative frac is undefined as a size_t, and 2*trim on the
+    // resulting huge value wraps, so the guard below could not be relied on.
+    const double clamped = (frac > 0.0) ? (frac < 1.0 ? frac : 1.0) : 0.0;
+    const size_t trim = static_cast<size_t>(clamped * static_cast<double>(n));
     if (2 * trim >= n) return median(data);
     std::nth_element(scratch.begin(),
                      scratch.begin() + static_cast<std::ptrdiff_t>(trim),
@@ -468,42 +485,188 @@ double trimmed_mean(std::span<const double> data, double frac) {
 double spearman(std::span<const double> x, std::span<const double> y) {
     if (x.size() != y.size() || x.empty()) return 0.0;
     const size_t n = x.size();
-    // Rank x and y
-    const auto rank_vec = [&](std::span<const double> v) {
-        std::vector<size_t> idx(n);
-        std::iota(idx.begin(), idx.end(), 0u);
-        std::sort(idx.begin(), idx.end(),
-                  [&](size_t a, size_t b) { return v[a] < v[b]; });
-        std::vector<double> ranks(n);
-        for (size_t i = 0; i < n; ++i) ranks[idx[i]] = static_cast<double>(i + 1);
-        return ranks;
-    };
-    auto rx = rank_vec(x);
-    auto ry = rank_vec(y);
-    double d2 = 0.0;
+    // Spearman's rho is Pearson's r computed on ranks. This used to assign
+    // distinct ranks 1..n by sort position, with NO tie handling, and then apply
+    // the d^2 shortcut 1 - 6*sum(d^2)/(n(n^2-1)). That shortcut is only
+    // algebraically equal to Pearson-on-ranks when every rank is distinct, and
+    // the arbitrary rank assignment made the result depend on the sort's
+    // tie-breaking order. Every other rank routine in this file
+    // (mann_whitney_u, kruskal_wallis, friedman, fligner_test,
+    // wilcoxon_signed_rank) already uses average_ranks; spearman was the outlier.
+    const std::vector<double> rx = average_ranks(std::vector<double>(x.begin(), x.end()));
+    const std::vector<double> ry = average_ranks(std::vector<double>(y.begin(), y.end()));
+
+    const double nd = static_cast<double>(n);
+    double mx = 0.0;
+    double my = 0.0;
     for (size_t i = 0; i < n; ++i) {
-        double d = rx[i] - ry[i];
-        d2 += d * d;
+        mx += rx[i];
+        my += ry[i];
     }
-    double nd = static_cast<double>(n);
-    return 1.0 - 6.0 * d2 / (nd * (nd * nd - 1.0));
+    mx /= nd;
+    my /= nd;
+
+    double sxy = 0.0;
+    double sxx = 0.0;
+    double syy = 0.0;
+    for (size_t i = 0; i < n; ++i) {
+        const double dx = rx[i] - mx;
+        const double dy = ry[i] - my;
+        sxy += dx * dy;
+        sxx += dx * dx;
+        syy += dy * dy;
+    }
+    // Constant ranks in either input (n == 1, or every value tied): the
+    // correlation is undefined. Report NaN rather than a number, which is what
+    // the previous 0/0 shortcut produced and what callers already rely on.
+    if (sxx <= 0.0 || syy <= 0.0) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return sxy / std::sqrt(sxx * syy);
 }
+
+namespace {
+
+// A total order that puts NaN last and treats NaNs as equal to each other.
+//
+// `std::sort` with a comparator that is not a strict weak ordering is undefined
+// behaviour, and `a < b` on doubles is not one when NaN is present -- which the pair-loop
+// version of `kendall` below already tripped over in its own tie counting. This is the
+// cheapest way to keep the program defined on data it cannot say anything useful about.
+inline bool kendall_less(double a, double b) {
+    if (std::isnan(a)) {
+        return false;
+    }
+    if (std::isnan(b)) {
+        return true;
+    }
+    return a < b;
+}
+
+inline bool kendall_equal(double a, double b) {
+    return (std::isnan(a) && std::isnan(b)) || a == b;
+}
+
+// Tied-pair count: sum of t(t-1)/2 over the maximal runs of equal values.
+double kendall_tie_pairs(const std::vector<double>& sorted) {
+    double total = 0.0;
+    std::size_t i = 0;
+    while (i < sorted.size()) {
+        std::size_t j = i + 1;
+        while (j < sorted.size() && kendall_equal(sorted[j], sorted[i])) {
+            ++j;
+        }
+        const double t = static_cast<double>(j - i);
+        total += t * (t - 1.0) / 2.0;
+        i = j;
+    }
+    return total;
+}
+
+// Inversions of `v`, counted by merge sort: the pairs i < j with v[i] > v[j].
+double kendall_inversions(std::vector<double>& v, std::vector<double>& scratch,
+                          std::size_t lo, std::size_t hi) {
+    if (hi - lo < 2) {
+        return 0.0;
+    }
+    const std::size_t mid = lo + (hi - lo) / 2;
+    double count = kendall_inversions(v, scratch, lo, mid) +
+                   kendall_inversions(v, scratch, mid, hi);
+    std::size_t a = lo;
+    std::size_t b = mid;
+    std::size_t out = lo;
+    while (a < mid && b < hi) {
+        if (kendall_less(v[b], v[a])) {
+            // Everything still left in the first half is greater than v[b].
+            count += static_cast<double>(mid - a);
+            scratch[out++] = v[b++];
+        } else {
+            scratch[out++] = v[a++];
+        }
+    }
+    while (a < mid) {
+        scratch[out++] = v[a++];
+    }
+    while (b < hi) {
+        scratch[out++] = v[b++];
+    }
+    std::copy(scratch.begin() + static_cast<std::ptrdiff_t>(lo),
+              scratch.begin() + static_cast<std::ptrdiff_t>(hi),
+              v.begin() + static_cast<std::ptrdiff_t>(lo));
+    return count;
+}
+
+} // namespace
 
 double kendall(std::span<const double> x, std::span<const double> y) {
     if (x.size() != y.size() || x.empty()) return 0.0;
     const size_t n = x.size();
-    long long concordant = 0, discordant = 0;
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            double sx = x[i] - x[j];
-            double sy = y[i] - y[j];
-            if (sx * sy > 0.0) ++concordant;
-            else if (sx * sy < 0.0) ++discordant;
+
+    // Knight's O(n log n) formulation of the same tau-b.
+    //
+    // What this replaces compared every pair against every other. That is 1e10
+    // comparisons at n = 100000 -- measured at 3.5 s for n = 20000 and 13.9 s for
+    // n = 40000, the signature of a square -- and it is an identity away from an
+    // inversion count:
+    //
+    //     C - D = n0 - n1 - n2 + n3 - 2 * inversions
+    //
+    // with n0 the pair count, n1 and n2 the tied-pair counts of x and y, n3 the pairs
+    // tied in BOTH, and `inversions` the discordant pairs, which are exactly the
+    // inversions of y once the rows are ordered by x. The pair loop counted C and D by
+    // skipping any pair tied in either variable; n1 + n2 - n3 is how many pairs that is,
+    // so C + D = n0 - n1 - n2 + n3 and C - D is the line above. The denominator is
+    // unchanged, and so is every value this function returns.
+    std::vector<size_t> order(n);
+    std::iota(order.begin(), order.end(), size_t{0});
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        if (!kendall_equal(x[a], x[b])) {
+            return kendall_less(x[a], x[b]);
         }
+        return kendall_less(y[a], y[b]);
+    });
+
+    std::vector<double> x_sorted(n);
+    std::vector<double> y_in_x_order(n);
+    for (size_t i = 0; i < n; ++i) {
+        x_sorted[i] = x[order[i]];
+        y_in_x_order[i] = y[order[i]];
     }
-    double nd = static_cast<double>(n);
-    double denom = nd * (nd - 1.0) / 2.0;
-    return (denom > 0.0) ? static_cast<double>(concordant - discordant) / denom : 0.0;
+
+    // n3, the pairs tied in both, read off the lexicographic order in one pass.
+    double n3 = 0.0;
+    for (size_t i = 0; i < n;) {
+        size_t j = i + 1;
+        while (j < n && kendall_equal(x_sorted[j], x_sorted[i]) &&
+               kendall_equal(y_in_x_order[j], y_in_x_order[i])) {
+            ++j;
+        }
+        const double t = static_cast<double>(j - i);
+        n3 += t * (t - 1.0) / 2.0;
+        i = j;
+    }
+
+    std::vector<double> y_sorted(y.begin(), y.end());
+    std::sort(y_sorted.begin(), y_sorted.end(), kendall_less);
+
+    const double n1 = kendall_tie_pairs(x_sorted);
+    const double n2 = kendall_tie_pairs(y_sorted);
+
+    // Within a run of equal x the rows are already ordered by y, so those pairs are not
+    // inversions -- which is right, because a pair tied in x is neither concordant nor
+    // discordant and n1 is where it is accounted for.
+    std::vector<double> scratch(n);
+    const double inversions = kendall_inversions(y_in_x_order, scratch, 0, n);
+
+    const double nd = static_cast<double>(n);
+    const double n0 = nd * (nd - 1.0) / 2.0;
+    const double con_minus_dis = n0 - n1 - n2 + n3 - 2.0 * inversions;
+    // tau-b, not tau-a. Dividing by the untied n(n-1)/2 understates the coefficient
+    // whenever ties are present and makes +/-1 unreachable -- a perfectly monotone
+    // relationship with one tied pair could not report 1.0. tau-b normalises by
+    // sqrt((n0 - n1)(n0 - n2)), which restores the [-1, 1] range.
+    const double denom = std::sqrt((n0 - n1) * (n0 - n2));
+    return (denom > 0.0) ? con_minus_dis / denom : 0.0;
 }
 
 double chi2_gof(std::span<const double> observed, std::span<const double> expected) {
@@ -535,6 +698,10 @@ double ks_test(std::span<const double> x,
     return dn;
 }
 
+// The degenerate exits below leave f_stat and p_value at their NaN defaults. They used
+// to be value-initialised to 0.0 and returned through the same path as a success, so
+// an input with no within-group variation reported F = 0 alongside p = 0 -- a pair no
+// F-test can produce, and one that reads as a confident null result.
 AnovaResult one_way_anova(const std::vector<std::vector<double>>& groups) {
     AnovaResult result{};
     if (groups.size() < 2) {
@@ -758,7 +925,10 @@ FriedmanResult friedman(const std::vector<std::vector<double>>& data) {
     const double n_d = static_cast<double>(n);
     const double k_d = static_cast<double>(k);
     double chi2 = (12.0 / (n_d * k_d * (k_d + 1.0))) * sum_sq - 3.0 * n_d * (k_d + 1.0);
-    const double tie_denom = n_d * k_d * (k_d * k_d * k_d - k_d);
+    // Friedman's tie correction divides by n*(k^3 - k), not n*k*(k^3 - k): the
+    // extra factor of k diluted the correction k-fold. The sibling
+    // kruskal_wallis above uses the analogous N^3 - N correctly.
+    const double tie_denom = n_d * (k_d * k_d * k_d - k_d);
     if (tie_cubed_sum > 0.0 && tie_denom > 0.0) {
         const double correction = 1.0 - tie_cubed_sum / tie_denom;
         if (correction <= 0.0) {
@@ -1215,10 +1385,20 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
         y[i] = X[i][j];
     }
 
+    // The auxiliary regression needs an INTERCEPT. multiple_regression solves
+    // the raw normal equations on exactly the columns it is handed, so fitting
+    // without a constant column while measuring R^2 against a mean-centred total
+    // sum of squares mixes two different models: the result is not the
+    // coefficient of determination of any regression and can go negative,
+    // yielding VIF < 1, which the definition 1/(1 - R^2) makes impossible.
+    // Perfectly collinear designs that do not pass through the origin -- whose
+    // true VIF is infinite -- came back as 0.0129, 1.2235 and 1.0513, i.e.
+    // "no multicollinearity", the exact opposite of the truth.
     std::vector<std::vector<double>> X_other(
-        m, std::vector<double>(p - 1, 0.0));
+        m, std::vector<double>(p, 0.0));
     for (size_t i = 0; i < m; ++i) {
-        size_t col = 0;
+        X_other[i][0] = 1.0;  // intercept
+        size_t col = 1;
         for (size_t k = 0; k < p; ++k) {
             if (k == j) {
                 continue;
@@ -1228,7 +1408,7 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
     }
 
     const auto beta = multiple_regression(X_other, y);
-    if (beta.size() != p - 1) {
+    if (beta.size() != p) {
         return 1.0;
     }
 
@@ -1253,7 +1433,12 @@ double variance_inflation_factor(const std::vector<std::vector<double>>& X, size
     if (r_squared >= 1.0 - 1e-14) {
         return std::numeric_limits<double>::infinity();
     }
-    return 1.0 / (1.0 - r_squared);
+    // With an intercept in the fit, OLS gives R^2 in [0, 1] and hence VIF >= 1.
+    // multiple_regression still zeroes a coefficient when it meets a singular
+    // pivot, which can push R^2 slightly negative on a rank-deficient design, so
+    // clamp rather than report a VIF below 1 -- a value the definition cannot
+    // produce and which reads as "less than no multicollinearity".
+    return std::max(1.0, 1.0 / (1.0 - r_squared));
 }
 
 double vif(const std::vector<std::vector<double>>& X, size_t j) {

@@ -1,5 +1,8 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/prob/prob.hpp"
 #include "ms/special/special.hpp"
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -143,23 +146,38 @@ double binom_cdf(int k, int n, double p) {
     if (k >= n) {
         return 1.0;
     }
+    // p == 1 used to give NaN: the seed pow(1-p, n) is 0 and the term ratio
+    // p/(1-p) is +inf, so the first update is 0 * inf. All the mass sits on
+    // k == n, which the early return above already covers, so anything below
+    // n has probability 0.
+    if (p >= 1.0) {
+        return 0.0;
+    }
     double sum = std::pow(1.0 - p, static_cast<double>(n));
     if (k == 0) {
         return sum;
     }
+    // Accumulate in log space, as binom_pdf does, so the running term cannot
+    // overflow for large n before the sum is taken.
     double term = sum;
     for (int i = 0; i < k; ++i) {
         term *= static_cast<double>(n - i) / static_cast<double>(i + 1) * p / (1.0 - p);
         sum += term;
     }
-    return sum;
+    return std::min(sum, 1.0);
 }
 
 double pois_pdf(double k, double lambda) {
     if (k < 0.0 || lambda <= 0.0) {
         return 0.0;
     }
-    return std::pow(lambda, k) * std::exp(-lambda) / std::tgamma(k + 1.0);
+    // Evaluated in LOG space. The linear form pow(lambda, k) * exp(-lambda) /
+    // tgamma(k+1) overflows both the numerator and the denominator to +inf once
+    // k and lambda pass roughly 170, so it returned inf/inf = NaN for any
+    // moderately large mean -- pois_pdf(200, 200) among them. binom_pdf ten
+    // lines above already accumulates through lgamma for exactly this reason.
+    const double log_pmf = k * std::log(lambda) - lambda - std::lgamma(k + 1.0);
+    return std::exp(log_pmf);
 }
 
 double pois_cdf(double k, double lambda) {

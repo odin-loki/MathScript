@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -3643,7 +3645,7 @@ TEST(ReplCommandsTest, fft_irfft_execute_no_assign) {
     Interpreter interp;
     expect_ok(interp, "S = fft_rfft([1; 2; 3; 4])");
     expect_contains(interp, "fft_irfft(S, 4)", "signal =");
-    expect_error_contains(interp, "fft_irfft(S, 1.5)", "positive integer n");
+    expect_error_contains(interp, "fft_irfft(S, 1.5)", "expected an integer n");
 }
 
 TEST(ReplCommandsTest, fft_dct2_noassign) {
@@ -3716,5 +3718,5 @@ TEST(ReplCommandsTest, fft_irfft_noassign) {
     Interpreter interp;
     expect_ok(interp, "S = fft_rfft([1; 2; 3; 4])");
     expect_contains(interp, "fft_irfft(S, 4)", "signal =");
-    expect_error_contains(interp, "fft_irfft(S, 1.5)", "positive integer n");
+    expect_error_contains(interp, "fft_irfft(S, 1.5)", "expected an integer n");
 }

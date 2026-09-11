@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Symbolic Math Tests (Wave 46)
 // Tests for sym_eval, sym_diff, sym_simplify, sym_to_string correctness
 // Note: SymExpr is move-only (unique_ptr members), so expressions must be moved.

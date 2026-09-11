@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Error Types
 // All error types for std::expected<T, Error>
 
@@ -59,9 +61,16 @@ struct IOError {
     std::string_view reason;
 };
 
+/// A position and what went wrong there. `msg` owns its text, unlike the other error
+/// types here: every one of those names a fixed condition and can point at a literal,
+/// while a parse diagnostic has to say what it found, which is a substring of the input
+/// and so is built at run time. A `string_view` here would be a dangling view at every
+/// site worth writing.
+///
+/// `line` and `col` are 1-based; both zero means the position is not known.
 struct ParseError {
     size_t line, col;
-    std::string_view msg;
+    std::string msg;
 };
 
 struct OverflowError {

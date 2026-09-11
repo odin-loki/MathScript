@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -42,7 +44,7 @@ TEST(IntegrationMl,  MlDecisionTreeForestTail18) {
     EXPECT_EQ(interp.state().matrices.at("rf_p").rows(), 6u);
 }
 
-TEST(IntegrationMl,  Theta1Scalar) {
+TEST(IntegrationMl, Theta1Scalar_MlDecisionTreeFitMlDecision3) {
     Interpreter interp;
     expect_ok(interp, "th1 = theta1(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th1"), ms::theta1(0.2, 0.1), 1e-8);

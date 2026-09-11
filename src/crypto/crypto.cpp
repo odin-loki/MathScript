@@ -1,9 +1,48 @@
-﻿#include "ms/crypto/crypto.hpp"
+﻿// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
+#include "ms/crypto/crypto.hpp"
 
 #include <array>
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
 #include <random>
+
+// ---- OS CSPRNG backends (see the header note on random_bytes) ----------------
+// Platform selection uses bare predefined macros, matching the idiom already used in
+// include/ms/memory/{numa,aligned}_allocator.hpp; there is no MS_OS_* layer in this tree.
+#if defined(_WIN32)
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
+#  ifndef NOMINMAX
+#    define NOMINMAX
+#  endif
+#  include <windows.h>
+#  include <bcrypt.h>  // must follow <windows.h>
+#  if defined(_MSC_VER)
+#    pragma comment(lib, "bcrypt.lib")
+#  endif
+#  define MS_CRYPTO_RNG_BCRYPT 1
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || \
+      defined(__NetBSD__) || defined(__DragonFly__)
+#  include <stdlib.h>
+#  define MS_CRYPTO_RNG_ARC4RANDOM 1
+#elif defined(__linux__) || defined(__unix__)
+#  include <cerrno>
+#  include <fcntl.h>
+#  include <unistd.h>
+#  if defined(__linux__) && defined(__has_include)
+#    if __has_include(<sys/random.h>)
+#      include <sys/random.h>
+#      define MS_CRYPTO_RNG_GETRANDOM 1
+#    endif
+#  endif
+#  define MS_CRYPTO_RNG_DEV_URANDOM 1
+#  ifndef O_CLOEXEC
+#    define O_CLOEXEC 0
+#  endif
+#endif
 
 #if defined(_MSC_VER)
 #include <stdlib.h>
@@ -589,9 +628,41 @@ inline std::uint8_t aes_mul(std::uint8_t x, std::uint8_t y) {
         ((y >> 4 & 1) * aes_xtime(aes_xtime(aes_xtime(aes_xtime(x))))));
 }
 
+// Constant-time table read.
+//
+// The only secret-dependent memory access in this implementation was the S-box
+// lookup: kAesSbox[state[i]] and kAesInvSbox[state[i]], 256-byte tables indexed by
+// a byte derived from the key and the data, plus kAesSbox[word[i]] in the key
+// expansion, where the index is key material directly. On any machine where an
+// attacker can observe cache state -- a shared host, a co-resident process, a
+// browser on the same core -- which cache line is touched leaks the index, and the
+// index is enough to recover the key. This is the classic AES cache-timing channel.
+//
+// The rest of the cipher was already free of it: aes_xtime and aes_mul are
+// branchless arithmetic with no tables, and ShiftRows/MixColumns move bytes by
+// fixed offsets. The S-box was the whole exposure.
+//
+// This reads every entry of the table and selects one with a mask, so the sequence
+// of addresses touched is identical for every index. It costs 256 iterations per
+// byte rather than one load; see docs/PERFORMANCE.md for the measured price.
+//
+// The mask arithmetic is the load-bearing part: for diff == 0 (the entry we want),
+// (0 - 1) >> 8 is -1 and narrows to 0xFF; for any diff in 1..255, (diff - 1) is in
+// 0..254 and >> 8 is 0. No comparison, no branch, no conditional move to be
+// second-guessed by a compiler.
+inline std::uint8_t aes_table_lookup_ct(const std::uint8_t table[256], std::uint8_t index) {
+    std::uint8_t result = 0;
+    for (int i = 0; i < 256; ++i) {
+        const std::uint8_t diff = static_cast<std::uint8_t>(static_cast<std::uint8_t>(i) ^ index);
+        const std::uint8_t mask = static_cast<std::uint8_t>((static_cast<int>(diff) - 1) >> 8);
+        result = static_cast<std::uint8_t>(result | (table[i] & mask));
+    }
+    return result;
+}
+
 inline void aes_sub_word(std::uint8_t word[4]) {
     for (int i = 0; i < 4; ++i) {
-        word[i] = kAesSbox[word[i]];
+        word[i] = aes_table_lookup_ct(kAesSbox, word[i]);
     }
 }
 
@@ -643,13 +714,13 @@ inline void aes_add_round_key(std::uint8_t state[16], const std::uint8_t* round_
 
 inline void aes_sub_bytes(std::uint8_t state[16]) {
     for (int i = 0; i < 16; ++i) {
-        state[i] = kAesSbox[state[i]];
+        state[i] = aes_table_lookup_ct(kAesSbox, state[i]);
     }
 }
 
 inline void aes_inv_sub_bytes(std::uint8_t state[16]) {
     for (int i = 0; i < 16; ++i) {
-        state[i] = kAesInvSbox[state[i]];
+        state[i] = aes_table_lookup_ct(kAesInvSbox, state[i]);
     }
 }
 
@@ -1997,11 +2068,130 @@ bool constant_time_eq(std::span<const uint8_t> a, std::span<const uint8_t> b) {
     return diff == 0;
 }
 
+namespace {
+
+#if defined(MS_CRYPTO_RNG_BCRYPT)
+// BCryptGenRandom takes a ULONG length; chunk so that a request larger than ULONG_MAX
+// cannot truncate. std::span::subspan keeps the offset arithmetic out of raw pointers.
+bool bcrypt_fill(std::span<std::uint8_t> out) noexcept {
+    constexpr std::size_t kChunk = static_cast<std::size_t>(1) << 20;
+    std::size_t off = 0;
+    while (off < out.size()) {
+        const std::size_t want = (out.size() - off < kChunk) ? (out.size() - off) : kChunk;
+        const NTSTATUS st = ::BCryptGenRandom(nullptr, out.subspan(off, want).data(),
+                                              static_cast<ULONG>(want),
+                                              BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+        if (st < 0) {
+            return false;
+        }
+        off += want;
+    }
+    return true;
+}
+#endif
+
+#if defined(MS_CRYPTO_RNG_GETRANDOM)
+// getrandom(2) can return short (interrupted by a signal after producing some bytes)
+// and can fail with EINTR before any byte is produced; both are handled. ENOSYS (kernel
+// < 3.17) and EPERM (seccomp) return false so the /dev/urandom backend is tried next.
+bool getrandom_fill(std::span<std::uint8_t> out) noexcept {
+    std::size_t off = 0;
+    while (off < out.size()) {
+        const ssize_t got = ::getrandom(out.subspan(off).data(), out.size() - off, 0);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return false;
+        }
+        if (got == 0) {
+            return false;
+        }
+        off += static_cast<std::size_t>(got);
+    }
+    return true;
+}
+#endif
+
+#if defined(MS_CRYPTO_RNG_DEV_URANDOM)
+// ::open/::read rather than std::ifstream: an ifstream would need a cast from
+// std::uint8_t* to char*, and this tree forbids reinterpret_cast outside [[ms::unsafe]].
+bool dev_urandom_fill(std::span<std::uint8_t> out) noexcept {
+    int fd = -1;
+    do {
+        fd = ::open("/dev/urandom", O_RDONLY | O_CLOEXEC);
+    } while (fd < 0 && errno == EINTR);
+    if (fd < 0) {
+        return false;
+    }
+    std::size_t off = 0;
+    bool ok = true;
+    while (off < out.size()) {
+        const ssize_t got = ::read(fd, out.subspan(off).data(), out.size() - off);
+        if (got < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            ok = false;
+            break;
+        }
+        if (got == 0) {
+            // /dev/urandom never signals EOF, so a zero-length read means a broken
+            // source; looping on it would spin forever.
+            ok = false;
+            break;
+        }
+        off += static_cast<std::size_t>(got);
+    }
+    ::close(fd);
+    return ok;
+}
+#endif
+
+// Last resort only: identical to the pre-1.0 MVP path, kept so that a platform with no
+// reachable OS CSPRNG still produces bytes rather than an empty buffer.
+bool random_device_fill(std::span<std::uint8_t> out) {
+    std::random_device rd;
+    for (std::size_t i = 0; i < out.size(); ++i) {
+        out[i] = static_cast<std::uint8_t>(rd());
+    }
+    return true;
+}
+
+} // namespace
+
+bool random_bytes_into(std::span<uint8_t> out) {
+    if (out.empty()) {
+        return true;
+    }
+#if defined(MS_CRYPTO_RNG_BCRYPT)
+    if (bcrypt_fill(out)) {
+        return true;
+    }
+#elif defined(MS_CRYPTO_RNG_ARC4RANDOM)
+    // arc4random_buf has no failure mode: it either returns or the process dies.
+    ::arc4random_buf(out.data(), out.size());
+    return true;
+#elif defined(MS_CRYPTO_RNG_GETRANDOM)
+    if (getrandom_fill(out)) {
+        return true;
+    }
+#endif
+#if defined(MS_CRYPTO_RNG_DEV_URANDOM)
+    if (dev_urandom_fill(out)) {
+        return true;
+    }
+#endif
+    return random_device_fill(out);
+}
+
 std::vector<uint8_t> random_bytes(std::size_t n) {
     std::vector<uint8_t> out(n);
-    std::random_device rd;
-    for (std::size_t i = 0; i < n; ++i) {
-        out[i] = static_cast<std::uint8_t>(rd());
+    if (n == 0) {
+        return out;
+    }
+    if (!random_bytes_into(std::span<uint8_t>(out.data(), out.size()))) {
+        return {};  // fail closed: never hand back short or predictable key material
     }
     return out;
 }

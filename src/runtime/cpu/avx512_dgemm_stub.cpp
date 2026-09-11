@@ -1,8 +1,14 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/cpu/blas_kernel.hpp"
 
 namespace ms::cpu::blas::avx512 {
 
 bool available() {
+    return false;
+}
+
+bool worthwhile(int /*m*/, int /*n*/, int /*k*/) {
     return false;
 }
 

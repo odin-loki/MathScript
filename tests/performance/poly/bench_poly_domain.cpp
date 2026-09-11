@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Benchmark: Polynomial, Domain, and DiffGeo Operations
 // Benchmarks for poly_eval, poly_mul, poly_deriv, factorial, nchoosek, gcd, Graph, geodesic
 

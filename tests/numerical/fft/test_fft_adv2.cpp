@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced FFT Tests (Wave 44)
 // Tests for roundtrip fidelity, windowed FFT, 2D FFT, spectral properties
 

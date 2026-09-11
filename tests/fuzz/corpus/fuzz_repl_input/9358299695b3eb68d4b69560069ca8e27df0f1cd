@@ -1,0 +1,2 @@
+combo_next_perm(z = stats_ztest([6; 7;[1;2;3] 8; 9; )10], 5, 
+1)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Interpreter Advanced Tests
 // Covers: assign_scalar, assign_scalar_binary, assign_scalar_matrix_call,
 //         eval_scalar_call, PlotSeries/has_plot/plot, print_matrix,

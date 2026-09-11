@@ -1,0 +1,120 @@
+{
+  "bomFormat": "CycloneDX",
+  "components": [
+    {
+      "description": "Test framework. Not linked into any shipped binary.",
+      "hashes": [
+        {
+          "alg": "SHA-256",
+          "content": "8219f0f667ba80823d3c5d40c5c7a3063f6527253fb5a130d24481e76b1a10e3"
+        }
+      ],
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "googletest",
+      "purl": "pkg:github/google/googletest@v1.14.0",
+      "scope": "excluded",
+      "type": "library",
+      "version": "1.14.0"
+    },
+    {
+      "description": "Header-only SIMD abstraction.",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "xsimd",
+      "purl": "pkg:github/xtensor-stack/xsimd@13.2.0",
+      "scope": "required",
+      "type": "library",
+      "version": "13.2.0"
+    },
+    {
+      "description": "Used only when built with MS_BUILD_JIT / MS_BUILD_PLUGIN.",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0 WITH LLVM-exception"
+          }
+        }
+      ],
+      "name": "llvm",
+      "scope": "optional",
+      "type": "library",
+      "version": "provided-by-host"
+    },
+    {
+      "description": "Used only when built with MS_BUILD_GUI (dynamic linking only).",
+      "licenses": [
+        {
+          "license": {
+            "id": "LGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "qt6",
+      "scope": "optional",
+      "type": "library",
+      "version": "provided-by-host"
+    },
+    {
+      "description": "Used only when built with MS_ENABLE_MPI.",
+      "licenses": [
+        {
+          "license": {
+            "id": "BSD-3-Clause"
+          }
+        }
+      ],
+      "name": "openmpi",
+      "scope": "optional",
+      "type": "library",
+      "version": "provided-by-host"
+    },
+    {
+      "description": "Used only when built with MS_ENABLE_CUDA (see LICENSE.exceptions).",
+      "licenses": [
+        {
+          "license": {
+            "name": "LicenseRef-NVIDIA-EULA"
+          }
+        }
+      ],
+      "name": "cuda",
+      "scope": "optional",
+      "type": "library",
+      "version": "provided-by-host"
+    }
+  ],
+  "metadata": {
+    "authors": [
+      {
+        "name": "Odin Loch"
+      }
+    ],
+    "component": {
+      "description": "Computer algebra and numerical computing library. See LICENSE.exceptions for the additional permission covering the NVIDIA CUDA libraries.",
+      "licenses": [
+        {
+          "license": {
+            "id": "AGPL-3.0-or-later"
+          }
+        }
+      ],
+      "name": "MathScript",
+      "type": "application",
+      "version": "1.0.0"
+    }
+  },
+  "serialNumber": "urn:uuid:fca588ce-223f-5405-b8d8-821599943703",
+  "specVersion": "1.5",
+  "version": 1
+}

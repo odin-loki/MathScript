@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -46,7 +48,7 @@ TEST(IntegrationCompress,  DeltaLzwEncodeDecodeTail18) {
     }
 }
 
-TEST(IntegrationCompress,  ProbTCdfScalar) {
+TEST(IntegrationCompress, ProbTCdfScalar_DeltaEncodeVecDeltaDecode2) {
     Interpreter interp;
     expect_ok(interp, "tc = prob_t_cdf(0, 5)");
     EXPECT_NEAR(interp.state().scalars.at("tc"), ms::t_cdf(0, 5), 1e-8);

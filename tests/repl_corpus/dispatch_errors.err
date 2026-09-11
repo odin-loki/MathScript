@@ -1,0 +1,19 @@
+error: repl: could not read 'not_a_function(1)' as a matrix call, a matrix constructor, or a scalar expression
+error: repl: could not parse: sqrt()
+error: repl: could not read 'sqrt(1, 2)' as a matrix call, a matrix constructor, or a scalar expression
+error: repl: could not read 'mat_at(1, 2)' as a matrix call, a matrix constructor, or a scalar expression
+error: dimension mismatch: got 2x1
+error: mat_at: row index 5 is out of range (matrix has 2)
+error: mat_at: expected a non-negative integer row index
+error: mat_row: expected a non-negative integer row index
+error: mat_reshape: element count 4 does not fit 3x3
+error: resolve: 'C' is a matrix, not a scalar; matrices have no operator arithmetic -- use matmul(A, B) and the mat_* accessors
+error: resolve: 'C' is a matrix, not a scalar; matrices have no operator arithmetic -- use matmul(A, B) and the mat_* accessors
+error: dimension mismatch: got 2x1
+error: singular matrix
+error: divide: division by zero
+error: log: expected a positive argument
+error: sqrt: expected a non-negative argument
+error: sym_diff: unexpected end of expression
+error: notation_from_name: unknown notation 'klingon'; known: latex, tex, mathml, presentation-mathml, content-mathml, contentmathml, unicode, utf8, ascii, text, sympy, python-sympy, mathematica, wolfram, c, c++, cpp, python
+error: repl: could not parse: undefined_variable

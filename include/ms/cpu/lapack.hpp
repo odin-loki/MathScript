@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 namespace ms::cpu::lapack {
@@ -8,9 +10,14 @@ int dpotrf(char uplo, int n, double* A, int lda);
 
 /// LU factorization with partial pivoting. On exit, A holds L (unit diagonal implicit) and U.
 /// ipiv[k] is the row index swapped at step k. Returns 0 on success, otherwise a 1-based pivot index.
+/// Breakdown is judged against a scale-relative tolerance, eps * max(m, n) * max|A_ij|,
+/// computed once from the input, so the result is invariant under a uniform rescaling of A
+/// (1e-20 * I factorizes successfully) and reduces to an exact-zero test for an all-zero A.
 int dgetrf(int m, int n, double* A, int lda, int* ipiv);
 
-/// Solve A x = b using dgetrf factors. trans='N' or 'T'. nrhs is the number of right-hand sides.
+/// Solve A x = b using dgetrf factors. nrhs is the number of right-hand sides.
+/// trans='N' solves A x = b; trans='T' (or 'C') solves A^T x = b. Any other character
+/// leaves B unmodified.
 void dgetrs(char trans, int n, int nrhs, const double* A, int lda, const int* ipiv, double* B, int ldb);
 
 /// Factor and solve A x = B for square A. Returns 0 on success, otherwise a 1-based pivot index.
@@ -22,7 +29,11 @@ int dgeqrf(int m, int n, double* A, int lda, double* tau);
 /// Generate the first k columns of Q from a dgeqrf factorization.
 void dorgqr(int m, int n, int k, const double* A, int lda, const double* tau, double* Q, int ldq);
 
-/// Apply Q or Q^T from a dgeqrf/dsytrd factorization to C.
+/// Apply Q or Q^T from a dgeqrf factorization to C.
+/// side='L' computes C := op(Q) * C (C is m-by-n, Q is m-by-m); side='R' computes
+/// C := C * op(Q) (C is m-by-n, Q is n-by-n). trans='N' applies Q, 'T' applies Q^T.
+/// k is the number of Householder reflectors, stored in the first k columns of A with
+/// the dgeqrf convention (v_i(i) = 1 implicit, v_i(r) = A(r, i) for r > i).
 void dormqr(
     char side,
     char trans,

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <map>
 
@@ -131,7 +133,11 @@ TEST(CoreExtTest, format_error_variants) {
     EXPECT_EQ(format_error(SingularMatrix{}), "singular matrix");
     EXPECT_EQ(format_error(DomainError{"fn", "bad input"}), "fn: bad input");
     EXPECT_EQ(format_error(ConvergenceFail{10, 1e-3}), "convergence failed");
-    EXPECT_EQ(format_error(ParseError{1, 2, "token"}), "token");
+    // A parse diagnostic carries a position, and reporting it without one sends the
+    // reader looking through the whole input. Both zero is how a caller says it does
+    // not know where, and only then is the bare message the whole answer.
+    EXPECT_EQ(format_error(ParseError{1, 2, "token"}), "line 1, column 2: token");
+    EXPECT_EQ(format_error(ParseError{0, 0, "token"}), "token");
 }
 
 TEST(CoreExtTest, scalar_arithmetic) {

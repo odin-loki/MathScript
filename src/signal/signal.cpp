@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/signal/signal.hpp"
 #include "ms/core/operations.hpp"
 #include "ms/fft/fft.hpp"
@@ -196,74 +198,11 @@ Result<void> rfft_windowed_segment(const std::vector<double>& signal, size_t sta
     return rfft(segment_buf, spec_buf, fft_work);
 }
 
-Result<std::vector<std::complex<double>>> rfft_windowed_segment(
-    const std::vector<double>& signal, size_t start, size_t segment_len,
-    const std::vector<double>& window) {
-    std::vector<double> segment;
-    std::vector<std::complex<double>> spec;
-    std::vector<std::complex<double>> fft_work;
-    const auto status =
-        rfft_windowed_segment(signal, start, segment_len, window, segment, spec, fft_work);
-    if (!status) {
-        return std::unexpected(status.error());
-    }
-    return spec;
-}
-
-std::vector<std::complex<double>> fft_recursive(std::vector<std::complex<double>> x) {
-    const size_t n = x.size();
-    if (n <= 1) {
-        return x;
-    }
-    if (n % 2 != 0) {
-        std::vector<std::complex<double>> out(n);
-        for (size_t k = 0; k < n; ++k) {
-            std::complex<double> sum(0.0, 0.0);
-            for (size_t t = 0; t < n; ++t) {
-                const double angle = -2.0 * M_PI * static_cast<double>(k * t) / static_cast<double>(n);
-                sum += x[t] * std::complex<double>(std::cos(angle), std::sin(angle));
-            }
-            out[k] = sum;
-        }
-        return out;
-    }
-
-    std::vector<std::complex<double>> even(n / 2);
-    std::vector<std::complex<double>> odd(n / 2);
-    for (size_t i = 0; i < n / 2; ++i) {
-        even[i] = x[2 * i];
-        odd[i] = x[2 * i + 1];
-    }
-
-    even = fft_recursive(std::move(even));
-    odd = fft_recursive(std::move(odd));
-
-    std::vector<std::complex<double>> out(n);
-    for (size_t k = 0; k < n / 2; ++k) {
-        const double angle = -2.0 * M_PI * static_cast<double>(k) / static_cast<double>(n);
-        const std::complex<double> w(std::cos(angle), std::sin(angle));
-        const std::complex<double> t = w * odd[k];
-        out[k] = even[k] + t;
-        out[k + n / 2] = even[k] - t;
-    }
-    return out;
-}
-
-std::vector<std::complex<double>> complex_ifft(const std::vector<std::complex<double>>& x) {
-    if (x.empty()) {
-        return {};
-    }
-    std::vector<std::complex<double>> conj(x.size());
-    for (size_t i = 0; i < x.size(); ++i) {
-        conj[i] = std::conj(x[i]);
-    }
-    auto spectrum = fft_recursive(std::move(conj));
-    const double inv_n = 1.0 / static_cast<double>(x.size());
-    for (size_t i = 0; i < spectrum.size(); ++i) {
-        spectrum[i] = std::conj(spectrum[i]) * inv_n;
-    }
-    return spectrum;
-}
+// The out-of-place fft_recursive/complex_ifft pair that used to live here was dead:
+// the module's only complex inverse call resolves to ms::complex_ifft from
+// <ms/fft/fft.hpp>, and nothing else referenced them. Worse, being in an unnamed
+// namespace inside ms they were reachable as ms::complex_ifft too, so they sat in
+// the overload set of the call that was meant for the fft module's version.
 
 void fft_recursive_inplace(std::complex<double>* x, size_t n, std::complex<double>* scratch) {
     if (n <= 1) {
@@ -400,9 +339,8 @@ std::vector<double> demean(const std::vector<double>& x) {
 
 } // namespace
 
-std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs) {
-    return fft_lowpass(x, cutoff, fs);
-}
+// butterworth() is defined further down, once the analog-prototype and
+// bilinear-transform machinery it needs is in scope.
 
 std::vector<double> lowpass(const std::vector<double>& x, double cutoff, double fs) {
     return fft_lowpass(x, cutoff, fs);
@@ -636,6 +574,19 @@ bool interpolate_use_freq(size_t x_len, int p) {
     if (p < static_cast<int>(kInterpolateFreqCrossover)) {
         return false;
     }
+    // interpolate_freq() periodises the input spectrum as
+    //   spec_out[k] = spec_in[k % in_fft],  in_fft = next_pow2(n),
+    //                                       out_fft = next_pow2(n*p)
+    // which zero-stuffs by out_fft / in_fft, not by p. Those coincide only when
+    // p is a power of two (then next_pow2(n*p) == next_pow2(n) * p exactly).
+    // For p = 9, 10, 11, ... the fast path returned a differently-stuffed,
+    // truncated, mis-scaled signal: a 32-sample ramp 0..31 interpolated by 8
+    // peaks at 34.1 (correct) but by 9 at 10.4 and by 10 at 12.8. Restrict the
+    // path to the case it is actually valid for; everything else takes the
+    // reference stuffed path, which is correct for any p.
+    if ((p & (p - 1)) != 0) {
+        return false;
+    }
     const size_t out_len = x_len * static_cast<size_t>(p);
     return out_len >= 256;
 }
@@ -646,54 +597,10 @@ std::vector<double> decimate_filtered(const std::vector<double>& x, int q, FftLo
     return downsample(filtered, q);
 }
 
-// Single-pass rational resample: merged anti-imaging/anti-aliasing cutoff then downsample.
-std::vector<double> resample_combined(const std::vector<double>& x, int p, int q) {
-    const size_t n = x.size();
-    const size_t up_len = n * static_cast<size_t>(p);
-    const double cutoff_interp = 0.8 / (2.0 * static_cast<double>(p));
-    const double cutoff_decim = 0.8 / (2.0 * static_cast<double>(q));
-    const double cutoff = std::min(cutoff_interp, cutoff_decim);
-    const double fs = 1.0;
-    const double gain = static_cast<double>(p);
-
-    const size_t in_fft = next_power_of_two(n);
-    const size_t out_fft = next_power_of_two(up_len);
-
-    std::vector<double> padded(in_fft, 0.0);
-    std::copy(x.begin(), x.end(), padded.begin());
-
-    const auto spec_in = fft(padded);
-    if (!spec_in) {
-        return {};
-    }
-
-    std::vector<std::complex<double>> spec_out(out_fft);
-    for (size_t k = 0; k < out_fft; ++k) {
-        spec_out[k] = (*spec_in)[k % in_fft];
-    }
-    apply_fft_lowpass_mask(spec_out, cutoff, fs);
-
-    const auto restored = ifft(spec_out);
-    if (!restored) {
-        return {};
-    }
-
-    std::vector<double> upsampled(up_len);
-    std::copy(restored->begin(), restored->begin() + static_cast<ptrdiff_t>(up_len), upsampled.begin());
-    for (double& v : upsampled) {
-        v *= gain;
-    }
-    return downsample(upsampled, q);
-}
-
-bool resample_use_combined(int p, int q, size_t x_len) {
-    (void)p;
-    (void)q;
-    (void)x_len;
-    // Two-stage interpolate+decimate matches reference filters; single-pass cutoff merge
-    // can diverge when p != q.
-    return false;
-}
+// The single-pass "combined" rational resample was removed. Its guard,
+// resample_use_combined, returned false unconditionally -- the merged cutoff can
+// diverge when p != q, so the two-stage interpolate-then-decimate path is the only
+// one that matches reference filters -- which made the whole routine unreachable.
 
 } // namespace
 
@@ -745,9 +652,8 @@ std::vector<double> resample(const std::vector<double>& x, int p, int q) {
     if (x.empty() || p <= 0 || q <= 0) {
         return {};
     }
-    if (resample_use_combined(p, q, x.size())) {
-        return resample_combined(x, p, q);
-    }
+    // Two-stage: interpolate by p (anti-imaging), then decimate by q (anti-aliasing).
+    // Merging the two cutoffs into one pass can diverge when p != q, so it is not done.
     FftLowpassBuffers work;
     return decimate_filtered(interpolate(x, p), q, work);
 }
@@ -1458,6 +1364,21 @@ std::vector<double> poly_from_zeros_zinv(const std::vector<std::complex<double>>
     return poly_from_poles_zinv(zeros);
 }
 
+// Butterworth analog lowpass prototype: `order` poles equally spaced on the left
+// half of the unit circle, no finite zeros, unit gain. This is what makes the
+// magnitude response maximally flat, |H(w)|^2 = 1 / (1 + (w/wc)^(2n)).
+Zpk buttap(int order) {
+    Zpk sys;
+    sys.k = 1.0;
+    sys.p.reserve(static_cast<std::size_t>(order));
+    for (int k = 1; k <= order; ++k) {
+        const double theta =
+            M_PI * static_cast<double>(2 * k + order - 1) / static_cast<double>(2 * order);
+        sys.p.emplace_back(std::polar(1.0, theta));
+    }
+    return sys;
+}
+
 Zpk cheb1ap(int order, double rp_db) {
     const double epsilon = std::sqrt(std::pow(10.0, 0.1 * rp_db) - 1.0);
     const double mu = std::asinh(1.0 / epsilon) / static_cast<double>(order);
@@ -1647,6 +1568,63 @@ IirCoeffs cheby1(int order, double rp_db, double cutoff, double fs, FilterType t
         }
     }
     return coeffs;
+}
+
+IirCoeffs butter(int order, double cutoff, double fs, FilterType type) {
+    if (order < 1 || !valid_cutoff(cutoff, fs, type)) {
+        return {};
+    }
+
+    const double wn = cutoff / (fs / 2.0);
+    const double warped = 4.0 * std::tan(M_PI * wn / 2.0);
+
+    Zpk sys = buttap(order);
+    if (type == FilterType::Highpass) {
+        sys = lp2hp_zpk(sys, warped);
+    } else {
+        sys = lp2lp_zpk(sys, warped);
+    }
+    sys = bilinear_zpk(sys, 2.0);
+
+    IirCoeffs coeffs;
+    coeffs.a = poly_from_poles_zinv(sys.p);
+    coeffs.b = poly_from_zeros_zinv(sys.z);
+    if (std::abs(sys.k - 1.0) > 1e-15) {
+        for (double& v : coeffs.b) {
+            v *= sys.k;
+        }
+    }
+    if (!coeffs.a.empty() && std::abs(coeffs.a[0]) > 1e-15) {
+        const double scale = coeffs.a[0];
+        for (double& v : coeffs.b) {
+            v /= scale;
+        }
+        for (double& v : coeffs.a) {
+            v /= scale;
+        }
+    }
+    return coeffs;
+}
+
+std::vector<double> butterworth(const std::vector<double>& x, double cutoff, double fs, int order) {
+    // This used to be `return fft_lowpass(x, cutoff, fs);` -- byte-for-byte the
+    // body of ms::lowpass, an ideal brick-wall FFT mask. A brick wall has none
+    // of the properties the name promises: no maximally-flat passband, infinite
+    // rolloff instead of -6n dB/octave, and Gibbs ringing from the rectangular
+    // mask. An existing test asserted butterworth == lowpass to 1e-12, which
+    // blessed the aliasing rather than checking any response.
+    //
+    // It now designs a real Butterworth IIR through the same analog-prototype
+    // plus bilinear-transform pipeline cheby1/cheby2 already use, and applies it
+    // with filtfilt for zero phase.
+    if (x.empty() || order < 1) {
+        return x;
+    }
+    const IirCoeffs c = butter(order, cutoff, fs, FilterType::Lowpass);
+    if (c.b.empty() || c.a.empty()) {
+        return x;  // invalid cutoff: degrade rather than fabricate
+    }
+    return filtfilt(c.b, c.a, x);
 }
 
 IirCoeffs cheby2(int order, double rs_db, double cutoff, double fs, FilterType type) {

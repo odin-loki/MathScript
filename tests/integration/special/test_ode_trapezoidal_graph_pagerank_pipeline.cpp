@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationSpecial,  TrapezoidalPagerankTail15) {
     EXPECT_EQ(interp.state().matrices.at("pr").rows(), 5u);
 }
 
-TEST(IntegrationSpecial,  JacobiCsScalar) {
+TEST(IntegrationSpecial, JacobiCsScalar_OdeTrapezoidalGraphPagerankPipeline) {
     Interpreter interp;
     expect_ok(interp, "cs = jacobi_cs(0.5, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cs"), ms::jacobi_cs(0.5, 0.5), 1e-8);

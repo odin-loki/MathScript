@@ -1,0 +1,1 @@
+psi_h = uantum_op_apply(quantum_haard_gate(), [1; 0])

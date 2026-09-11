@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/symbolic/symbolic.hpp"
+#include <numbers>
 
 #include <charconv>
 #include <cctype>
@@ -35,8 +38,41 @@ public:
     }
 
 private:
+    // A recursive-descent parser recurses once per nesting level, so an input like
+    // sin(sin(sin(...))) or x+x+x+... turns unbounded input depth into unbounded stack
+    // use: sym_parse of 10000 nested calls, or 100000 chained additions, overflowed the
+    // stack and crashed with SIGSEGV. The limit is far above any expression a person
+    // writes and well below the depth that exhausts a default 8 MB stack.
+    static constexpr int kMaxDepth = 256;
+
+    // parse_add and parse_mul LOOP over their operands rather than recursing, so a chain
+    // like x+x+x+... does not hit kMaxDepth -- but it still builds a left spine one node
+    // deep per term, and ~SymExpr walks that spine recursively through its unique_ptr
+    // children. 100000 chained additions therefore overflowed the stack on destruction
+    // rather than during the parse. Bounding the node count bounds that spine too.
+    static constexpr int kMaxNodes = 10000;
+
     const std::string& text_;
     size_t pos_ = 0;
+    int depth_ = 0;
+    int nodes_ = 0;
+
+    // Called for every node the parse produces.
+    bool budget_exhausted() { return ++nodes_ > kMaxNodes; }
+
+    // Increments on construction and decrements on destruction, so every return path out
+    // of a parse function unwinds the count.
+    class DepthGuard {
+      public:
+        explicit DepthGuard(SymParser& p) : parser_(p) { ++parser_.depth_; }
+        ~DepthGuard() { --parser_.depth_; }
+        DepthGuard(const DepthGuard&) = delete;
+        DepthGuard& operator=(const DepthGuard&) = delete;
+        bool too_deep() const { return parser_.depth_ > kMaxDepth; }
+
+      private:
+        SymParser& parser_;
+    };
 
     bool at_end() const { return pos_ >= text_.size(); }
 
@@ -70,7 +106,13 @@ private:
         return {};
     }
 
-    std::expected<SymExpr, SymParseError> parse_expr() { return parse_add(); }
+    std::expected<SymExpr, SymParseError> parse_expr() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
+        return parse_add();
+    }
 
     std::expected<SymExpr, SymParseError> parse_add() {
         auto left = parse_mul();
@@ -84,6 +126,9 @@ private:
                 break;
             }
             ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
             auto right = parse_mul();
             if (!right) {
                 return std::unexpected(right.error());
@@ -98,7 +143,7 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_mul() {
-        auto left = parse_pow();
+        auto left = parse_unary();
         if (!left) {
             return std::unexpected(left.error());
         }
@@ -109,7 +154,10 @@ private:
                 break;
             }
             ++pos_;
-            auto right = parse_pow();
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
+            auto right = parse_unary();
             if (!right) {
                 return std::unexpected(right.error());
             }
@@ -122,24 +170,18 @@ private:
         return sym_expr_ok(std::move(*left));
     }
 
-    std::expected<SymExpr, SymParseError> parse_pow() {
-        auto left = parse_unary();
-        if (!left) {
-            return std::unexpected(left.error());
-        }
-        skip_ws();
-        if (peek() == '^') {
-            ++pos_;
-            auto right = parse_pow();
-            if (!right) {
-                return std::unexpected(right.error());
-            }
-            left = sym_expr_ok(sym_pow(std::move(*left), std::move(*right)));
-        }
-        return sym_expr_ok(std::move(*left));
-    }
-
+    // Unary sign binds LOOSER than exponentiation: -x^2 is -(x^2), as it is in every
+    // maths text and every CAS. Parsing it the other way round -- which is what this
+    // grammar did when the unary level sat below the power level -- is not a missing
+    // feature but a wrong answer with no error attached: -t^2 evaluated to +9 at
+    // t = 3, -2^2 to 4, and -t^0.5 to NaN, because (-t)^0.5 is a real root of a
+    // negative number. The exponent itself is still parsed as a unary, so 2^-3 keeps
+    // working and ^ stays right-associative.
     std::expected<SymExpr, SymParseError> parse_unary() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
         skip_ws();
         if (peek() == '+') {
             ++pos_;
@@ -153,7 +195,30 @@ private:
             }
             return sym_expr_ok(sym_neg(std::move(*operand)));
         }
-        return parse_primary();
+        return parse_pow();
+    }
+
+    std::expected<SymExpr, SymParseError> parse_pow() {
+        if (budget_exhausted()) {
+            return std::unexpected(make_error("expression has too many terms"));
+        }
+        auto left = parse_primary();
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        skip_ws();
+        if (peek() == '^') {
+            ++pos_;
+            if (budget_exhausted()) {
+                return std::unexpected(make_error("expression has too many terms"));
+            }
+            auto right = parse_unary();
+            if (!right) {
+                return std::unexpected(right.error());
+            }
+            left = sym_expr_ok(sym_pow(std::move(*left), std::move(*right)));
+        }
+        return sym_expr_ok(std::move(*left));
     }
 
     std::expected<std::string, SymParseError> parse_identifier() {
@@ -249,6 +314,13 @@ private:
     }
 
     std::expected<SymExpr, SymParseError> parse_primary() {
+        DepthGuard guard(*this);
+        if (guard.too_deep()) {
+            return std::unexpected(make_error("expression nested too deeply"));
+        }
+        if (budget_exhausted()) {
+            return std::unexpected(make_error("expression has too many terms"));
+        }
         skip_ws();
         if (peek() == '(') {
             ++pos_;
@@ -274,6 +346,18 @@ private:
             skip_ws();
             if (peek() == '(') {
                 return parse_function_call(*ident);
+            }
+            // pi and e are constants, not free variables. Parsed as variables they
+            // reached sym_eval unbound, and an unbound variable evaluates to zero --
+            // so sym_eval("pi") returned 0.000000 and sym_eval("2*pi*r") returned 0
+            // for every r, with nothing reporting that a symbol was missing. It also
+            // meant the transform tables, which compare a coefficient against
+            // std::numbers::pi, could not match an expression a user had typed pi into.
+            if (*ident == "pi") {
+                return sym_expr_ok(sym_const(std::numbers::pi));
+            }
+            if (*ident == "e") {
+                return sym_expr_ok(sym_const(std::numbers::e));
             }
             return sym_expr_ok(sym_var(std::move(*ident)));
         }

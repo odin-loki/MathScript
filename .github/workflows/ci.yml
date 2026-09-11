@@ -49,8 +49,13 @@ jobs:
       - name: Build
         run: cmake --build build-msvc --config Release
 
+      # The second invocation re-runs only what failed, so a failing test's output is
+      # the LAST thing in the log rather than buried where test 4 of 358 happened to
+      # run. Two Windows cycles were spent guessing at a transcript mismatch that the
+      # test had already diagnosed precisely -- in a part of the log that the API
+      # cannot reach from the end. The step still exits non-zero either way.
       - name: Test
-        run: ctest --test-dir build-msvc --output-on-failure
+        run: ctest --test-dir build-msvc --output-on-failure || ctest --test-dir build-msvc --rerun-failed --output-on-failure
 
       - name: Install smoke
         run: pwsh -NoProfile -File scripts/package_smoke.ps1 build-msvc install-smoke
@@ -123,7 +128,7 @@ jobs:
         run: cmake --build build-linux
 
       - name: Test
-        run: ctest --test-dir build-linux --output-on-failure
+        run: ctest --test-dir build-linux --output-on-failure || ctest --test-dir build-linux --rerun-failed --output-on-failure
 
       - name: Install smoke
         run: bash scripts/package_smoke.sh build-linux install-smoke
@@ -163,6 +168,37 @@ jobs:
       - name: Vendor checksum verify
         run: bash scripts/verify_vendor.sh
 
+  compliance-linux:
+    name: Compliance (source-only checks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # None of these need a build, so they fail in under a minute rather than
+      # after the forty it takes to find out the same thing from a test run.
+
+      - name: SPDX headers present
+        run: python3 scripts/add_spdx.py --check
+
+      - name: SBOM matches the tree
+        run: python3 scripts/gen_sbom.py --check
+
+      # --strict because the manifest is the input to the generated tests: a
+      # handler it cannot parse is a handler whose dispatch nothing checks, and
+      # that must be a failure rather than a line of console output nobody reads.
+      - name: Matrix-call manifest is current
+        run: python3 scripts/extract_manifest.py --check --strict
+
+      - name: Generated dispatch tests are current
+        run: python3 scripts/gen_matrix_call_tests.py --check
+
+      # Integration tests are grouped one executable per domain. Two files in one
+      # executable declaring the same TEST(Suite, Name) link without a diagnostic
+      # and one body replaces the other, so the count stays put while a test stops
+      # running. Nothing else in the toolchain notices.
+      - name: Test names unique within each executable
+        run: python3 scripts/check_test_names.py
+
   coverage-linux:
     name: Coverage (Linux GCC 13)
     runs-on: ubuntu-24.04
@@ -199,6 +235,15 @@ jobs:
           MS_COVERAGE_MIN: "80"
         run: bash scripts/coverage_report.sh build-cov
 
+      # The ratchet, not a threshold: it compares against the previous committed
+      # figure and fails on a decrease larger than the recorded tolerance. A fixed
+      # minimum invites an argument about the number; a ratchet only asks that the
+      # tree not go backwards. The tolerance is set from measurement -- see
+      # tests/coverage_baseline.json -- because a gate that fires on noise is a gate
+      # people learn to re-run until it passes.
+      - name: Coverage ratchet
+        run: python3 scripts/coverage_ratchet.py build-cov
+
       - name: Upload coverage summary
         uses: actions/upload-artifact@v4
         with:
@@ -211,6 +256,24 @@ jobs:
         with:
           name: coverage-report
           path: build-cov/coverage.info
+          if-no-files-found: error
+
+      # STATUS.md is generated from build artefacts, and the coverage figure in it
+      # is only measurable here. Regenerating it is worth doing; gating on it is
+      # not -- run-to-run variation would make the gate fail on noise rather than
+      # on a stale claim, and a gate that cries wolf is how the stale numbers got
+      # published in the first place.
+      - name: Regenerate STATUS.md and report drift
+        run: |
+          python3 scripts/gen_status.py --build-dir build-cov
+          git --no-pager diff --stat -- docs/STATUS.md || true
+          git --no-pager diff -- docs/STATUS.md || true
+
+      - name: Upload generated status
+        uses: actions/upload-artifact@v4
+        with:
+          name: status-md
+          path: docs/STATUS.md
           if-no-files-found: error
 
   fuzz-linux:

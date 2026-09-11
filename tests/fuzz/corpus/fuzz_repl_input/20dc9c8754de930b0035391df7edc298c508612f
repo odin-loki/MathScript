@@ -1,0 +1,1 @@
+bode = control_bode([1], [1p50 = stats_percentil1)

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationGraph,  GreedyColourKCoreTail30) {
     EXPECT_EQ(interp.state().matrices.at("cores").rows(), 4u);
 }
 
-TEST(IntegrationGraph,  Theta4Scalar) {
+TEST(IntegrationGraph, Theta4Scalar_GraphGreedyColourGraphKCore) {
     Interpreter interp;
     expect_ok(interp, "th = theta4(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th"), ms::theta4(0.2, 0.1), 1e-8);

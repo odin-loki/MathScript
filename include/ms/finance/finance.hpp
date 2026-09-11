@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include "ms/error/error_types.hpp"
 #include <span>
@@ -110,6 +112,11 @@ double cvar(std::span<const double> returns, double alpha = 0.95); // ES
 // return observations (no normality assumption). confidence in (0,1); VaR is
 // the empirical (1-confidence) percentile of returns, reported as a positive
 // loss. CVaR is the mean of all returns at or below the VaR threshold.
+// A confidence outside (0,1), or NaN, is clamped to the nearest end of the tail
+// rather than indexing out of the sample: confidence >= 1 (and NaN) reports the
+// single worst observation, confidence <= 0 averages the whole sample. Both used
+// to scale a negative tail fraction and convert it to size_t, which is undefined
+// behaviour and read far past the end of the array.
 double historical_var(std::span<const double> returns, double confidence = 0.95);
 double historical_cvar(std::span<const double> returns, double confidence = 0.95);
 

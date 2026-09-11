@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -24,7 +26,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationFem,  FemLoad3dCfdGrid3d) {
+TEST(IntegrationFem, FemLoad3dCfdGrid3d_FemMesh3dBoxFemLoad3dPipeline) {
     Interpreter interp;
     expect_contains(interp, "help", "fem_load_3d");
     expect_contains(interp, "help", "cfd_grid3d");

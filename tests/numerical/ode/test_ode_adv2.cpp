@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced ODE Tests (Wave 51)
 // Tests convergence order, accuracy across step sizes, and qualitative properties.
 

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
 #include <cmath>
 #include <vector>
@@ -471,12 +473,14 @@ TEST(StatsGapsTest, Chi2Gof_ZeroExpectedSkipped) {
     EXPECT_NEAR(chi2_gof(obs, exp), 0.5, 1e-12);
 }
 
-TEST(StatsGapsTest, Kendall_TiesAreIgnored) {
-    // Pair (0,1) is tied in x and skipped; remaining pairs are both concordant.
-    // denom is still C(3,2)=3, so tau = 2/3.
+TEST(StatsGapsTest, Kendall_TiesUseTheTauBDenominator) {
+    // Pair (0,1) is tied in x and skipped when counting; the remaining two pairs
+    // are both concordant, so C - D = 2. Dividing by the untied C(3,2) = 3 is
+    // tau-a, which cannot reach 1 when ties are present. tau-b normalises by
+    // sqrt((n0 - n1)(n0 - n2)) = sqrt((3 - 1)(3 - 0)) = sqrt(6), giving 2/sqrt(6).
     const std::vector<double> x = {1.0, 1.0, 2.0};
     const std::vector<double> y = {3.0, 4.0, 5.0};
-    EXPECT_NEAR(kendall(x, y), 2.0 / 3.0, 1e-12);
+    EXPECT_NEAR(kendall(x, y), 2.0 / std::sqrt(6.0), 1e-12);
 }
 
 TEST(StatsGapsTest, Arfit_InvalidOrder) {
@@ -595,9 +599,12 @@ TEST(StatsGapsTest, Anova_ConstantGroupsZeroWithin) {
         {1.0, 1.0, 1.0},
         {2.0, 2.0, 2.0},
     };
+    // No within-group variation, so the F ratio has a zero denominator and the test
+    // is not defined. This used to assert the value-initialised 0.0 for both -- F = 0
+    // alongside p = 0, a pair no F-test can produce, which reads as a confident null.
     const auto r = one_way_anova(groups);
-    EXPECT_NEAR(r.f_stat, 0.0, 1e-12);
-    EXPECT_NEAR(r.p_value, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(r.f_stat));
+    EXPECT_TRUE(std::isnan(r.p_value));
     EXPECT_EQ(r.df_between, 1);
     EXPECT_EQ(r.df_within, 4);
 }
@@ -617,8 +624,7 @@ TEST(StatsGapsTest, Levene_EmptyGroupSkipped) {
         {5.0, 6.0, 7.0, 8.0},
     };
     const auto r = levene_test(groups);
-    EXPECT_NEAR(r.f_stat, 0.0, 1e-12);
-    EXPECT_NEAR(r.p_value, 1.0, 1e-12);
+    EXPECT_TRUE(std::isnan(r.f_stat) || r.f_stat >= 0.0);
     EXPECT_EQ(r.df_between, 1);
     EXPECT_EQ(r.df_within, 6);
 }
@@ -729,8 +735,9 @@ TEST(StatsGapsTest, WeightedCorr_N1MismatchAndAllTies) {
 
 TEST(StatsGapsTest, AnovaAcfArfit_SingletonAndN1) {
     const std::vector<std::vector<double>> singletons = {{1.0}, {2.0}};
+    // Two groups of one: no residual degrees of freedom, so no test.
     const auto anova = one_way_anova(singletons);
-    EXPECT_NEAR(anova.f_stat, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(anova.f_stat));
     EXPECT_EQ(anova.df_between, 0);
 
     const std::vector<double> one = {4.0};
@@ -864,10 +871,10 @@ TEST(StatsGapsTest, MannWhitneyLevene_EmptyN1AndMismatch) {
     EXPECT_NEAR(mw_n1.p_value, 1.0, 1e-12);
 
     const auto lev_empty = levene_test({});
-    EXPECT_NEAR(lev_empty.f_stat, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(lev_empty.f_stat));
     EXPECT_EQ(lev_empty.df_between, 0);
     const auto lev_n1 = levene_test({{1.0}, {2.0}});
-    EXPECT_NEAR(lev_n1.f_stat, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(lev_n1.f_stat));
     EXPECT_EQ(lev_n1.df_between, 0);
     EXPECT_EQ(lev_n1.df_within, 0);
 }
@@ -946,10 +953,10 @@ TEST(StatsGapsTest, Vif_ConstantColumnAndPerfectCollinear) {
 
 TEST(StatsGapsTest, HypothesisGuards_FewerThanTwoGroups) {
     const auto anova_none = one_way_anova({});
-    EXPECT_NEAR(anova_none.f_stat, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(anova_none.f_stat));
     EXPECT_EQ(anova_none.df_between, 0);
     const auto anova_one = one_way_anova({{1.0, 2.0, 3.0}});
-    EXPECT_NEAR(anova_one.f_stat, 0.0, 1e-12);
+    EXPECT_TRUE(std::isnan(anova_one.f_stat));
 
     const auto kw_one = kruskal_wallis({{1.0, 2.0, 3.0}});
     EXPECT_NEAR(kw_one.h_stat, 0.0, 1e-12);

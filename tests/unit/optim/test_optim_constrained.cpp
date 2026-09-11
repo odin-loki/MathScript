@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced Constrained Optimization Tests (Wave 53)
 // Tests for minimize_with_constraints and simplex_solver
 

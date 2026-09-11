@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -180,7 +182,12 @@ TEST(ReplCommandsTest, topo_fem_compress) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     EXPECT_GT(interp.state().matrices.at("u3").rows(), 0u);
 
     expect_ok(interp, "v = [1, 1, 2]");
@@ -215,7 +222,12 @@ TEST(ReplCommandsTest, fem_cfd_quantum) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     EXPECT_GT(interp.state().matrices.at("u2").rows(), 0u);
 
     expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
@@ -269,7 +281,12 @@ TEST(ReplCommandsTest, fem3d_quantum_rle) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     EXPECT_GT(interp.state().matrices.at("u3").rows(), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -339,7 +356,12 @@ TEST(ReplCommandsTest, fem_solve_cfdgrid) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 
     expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
@@ -381,7 +403,12 @@ TEST(ReplCommandsTest, fem3d_evolve) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -462,7 +489,12 @@ TEST(ReplCommandsTest, fem_solve_cfdgrid_2) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 
     expect_ok(interp, "g2 = cfd_grid2d(0, 1, 0, 1, 4, 4)");
@@ -504,7 +536,12 @@ TEST(ReplCommandsTest, fem3d_evolve_2) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -600,7 +637,12 @@ TEST(ReplCommandsTest, fem_solve) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -642,7 +684,12 @@ TEST(ReplCommandsTest, fem3d_evolve_3) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -738,7 +785,12 @@ TEST(ReplCommandsTest, fem_solve_2) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -780,7 +832,12 @@ TEST(ReplCommandsTest, fem3d_evolve_4) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -876,7 +933,12 @@ TEST(ReplCommandsTest, fem_solve_3) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -918,7 +980,12 @@ TEST(ReplCommandsTest, fem3d_evolve_5) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1014,7 +1081,12 @@ TEST(ReplCommandsTest, fem_solve_4) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1056,7 +1128,12 @@ TEST(ReplCommandsTest, fem3d_evolve_6) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1152,7 +1229,12 @@ TEST(ReplCommandsTest, fem_solve_5) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1194,7 +1276,12 @@ TEST(ReplCommandsTest, fem3d_evolve_7) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1290,7 +1377,12 @@ TEST(ReplCommandsTest, fem_solve_6) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1332,7 +1424,12 @@ TEST(ReplCommandsTest, fem3d_evolve_8) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1428,7 +1525,12 @@ TEST(ReplCommandsTest, fem_solve_7) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1470,7 +1572,12 @@ TEST(ReplCommandsTest, fem3d_evolve_9) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1566,7 +1673,12 @@ TEST(ReplCommandsTest, fem_solve_8) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1608,7 +1720,12 @@ TEST(ReplCommandsTest, fem3d_evolve_10) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1704,7 +1821,12 @@ TEST(ReplCommandsTest, fem_solve_9) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1746,7 +1868,12 @@ TEST(ReplCommandsTest, fem3d_evolve_11) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1842,7 +1969,12 @@ TEST(ReplCommandsTest, fem_solve_10) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -1884,7 +2016,12 @@ TEST(ReplCommandsTest, fem3d_evolve_12) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -1980,7 +2117,12 @@ TEST(ReplCommandsTest, fem_solve_11) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2022,7 +2164,12 @@ TEST(ReplCommandsTest, fem3d_evolve_13) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2118,7 +2265,12 @@ TEST(ReplCommandsTest, fem_solve_12) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2160,7 +2312,12 @@ TEST(ReplCommandsTest, fem3d_evolve_14) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2256,7 +2413,12 @@ TEST(ReplCommandsTest, fem_solve_13) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2298,7 +2460,12 @@ TEST(ReplCommandsTest, fem3d_evolve_15) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2394,7 +2561,12 @@ TEST(ReplCommandsTest, fem_solve_14) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2436,7 +2608,12 @@ TEST(ReplCommandsTest, fem3d_evolve_16) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2532,7 +2709,12 @@ TEST(ReplCommandsTest, fem_solve_15) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2574,7 +2756,12 @@ TEST(ReplCommandsTest, fem3d_evolve_17) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2670,7 +2857,12 @@ TEST(ReplCommandsTest, fem_solve_16) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2712,7 +2904,12 @@ TEST(ReplCommandsTest, fem3d_evolve_18) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2808,7 +3005,12 @@ TEST(ReplCommandsTest, fem_solve_17) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2850,7 +3052,12 @@ TEST(ReplCommandsTest, fem3d_evolve_19) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -2946,7 +3153,12 @@ TEST(ReplCommandsTest, fem_solve_18) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -2988,7 +3200,12 @@ TEST(ReplCommandsTest, fem3d_evolve_20) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3084,7 +3301,12 @@ TEST(ReplCommandsTest, fem_solve_19) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3126,7 +3348,12 @@ TEST(ReplCommandsTest, fem3d_evolve_21) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3222,7 +3449,12 @@ TEST(ReplCommandsTest, fem_solve_20) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3264,7 +3496,12 @@ TEST(ReplCommandsTest, fem3d_evolve_22) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3360,7 +3597,12 @@ TEST(ReplCommandsTest, fem_solve_21) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3402,7 +3644,12 @@ TEST(ReplCommandsTest, fem3d_evolve_23) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3498,7 +3745,12 @@ TEST(ReplCommandsTest, fem_solve_22) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3540,7 +3792,12 @@ TEST(ReplCommandsTest, fem3d_evolve_24) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3636,7 +3893,12 @@ TEST(ReplCommandsTest, fem_solve_23) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3678,7 +3940,12 @@ TEST(ReplCommandsTest, fem3d_evolve_25) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3774,7 +4041,12 @@ TEST(ReplCommandsTest, fem_solve_24) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3816,7 +4088,12 @@ TEST(ReplCommandsTest, fem3d_evolve_26) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -3912,7 +4189,12 @@ TEST(ReplCommandsTest, fem_solve_25) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -3954,7 +4236,12 @@ TEST(ReplCommandsTest, fem3d_evolve_27) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4050,7 +4337,12 @@ TEST(ReplCommandsTest, fem_solve_26) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4092,7 +4384,12 @@ TEST(ReplCommandsTest, fem3d_evolve_28) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4188,7 +4485,12 @@ TEST(ReplCommandsTest, fem_solve_27) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4230,7 +4532,12 @@ TEST(ReplCommandsTest, fem3d_evolve_29) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4326,7 +4633,12 @@ TEST(ReplCommandsTest, fem_solve_28) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4368,7 +4680,12 @@ TEST(ReplCommandsTest, fem3d_evolve_30) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4464,7 +4781,12 @@ TEST(ReplCommandsTest, fem_solve_29) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4506,7 +4828,12 @@ TEST(ReplCommandsTest, fem3d_evolve_31) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4602,7 +4929,12 @@ TEST(ReplCommandsTest, fem_solve_30) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4644,7 +4976,12 @@ TEST(ReplCommandsTest, fem3d_evolve_32) {
     expect_ok(interp, "m3 = fem_mesh3d_box(0, 0, 0, 1, 1, 1, 2, 2, 2)");
     expect_ok(interp, "K3 = fem_stiffness_3d(m3)");
     expect_ok(interp, "f3 = fem_load_3d(m3, 1)");
-    expect_ok(interp, "u3 = fem_solve_3d(K3, f3)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u3 = [0]");
+    expect_ok(interp, "val_u3 = [0]");
+    expect_ok(interp, "sys_u3 = fem_apply_dirichlet(K3, f3, idx_u3, val_u3)");
+    expect_ok(interp, "u3 = fem_solve(sys_u3)");
     ASSERT_GT(interp.state().matrices.count("u3"), 0u);
 
     expect_ok(interp, "ld = fem_lagrange_deriv(0.5)");
@@ -4740,7 +5077,12 @@ TEST(ReplCommandsTest, fem_solve_31) {
     expect_ok(interp, "m2 = fem_mesh2d_rectangular(0, 0, 1, 1, 3, 3)");
     expect_ok(interp, "K2 = fem_stiffness_2d(m2)");
     expect_ok(interp, "f2 = fem_load_2d(m2, 1)");
-    expect_ok(interp, "u2 = fem_solve(K2, f2)");
+    // The unconstrained P1 stiffness matrix is singular (K*ones = 0), so it needs a
+    // Dirichlet condition before it can be solved; pin node 0 to zero.
+    expect_ok(interp, "idx_u2 = [0]");
+    expect_ok(interp, "val_u2 = [0]");
+    expect_ok(interp, "sys_u2 = fem_apply_dirichlet(K2, f2, idx_u2, val_u2)");
+    expect_ok(interp, "u2 = fem_solve(sys_u2)");
     ASSERT_GT(interp.state().matrices.count("u2"), 0u);
 }
 
@@ -4748,7 +5090,7 @@ TEST(ReplCommandsTest, fem_poisson3d_senary_noassign) {
     Interpreter interp;
     expect_contains(interp, "fem_poisson3d(2, 2, 2, 0, 0, 0)", "u =");
     expect_error_contains(interp, "fem_poisson3d(1.5, 2, 2, 0, 0, 0)",
-                          "expected non-negative integer nx, ny, and nz");
+                          "expected non-negative integer nx");
 }
 
 TEST(ReplCommandsTest, fem_poisson3d_senary_parse_fail_noassign) {

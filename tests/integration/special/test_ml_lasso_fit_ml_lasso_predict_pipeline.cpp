@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  LassoFitPredictTail28) {
     EXPECT_NEAR(interp.state().matrices.at("lasso_p")(0, 0), 11.0, 0.5);
 }
 
-TEST(IntegrationSpecial,  BesselIScalar) {
+TEST(IntegrationSpecial, BesselIScalar_MlLassoFitMlLassoPredictPipeline) {
     Interpreter interp;
     expect_ok(interp, "bi = bessel_i(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bi"), ms::bessel_i(0, 1.0), 1e-8);

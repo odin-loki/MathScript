@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include "ms/core/sym.hpp"
@@ -10,6 +12,35 @@
 
 namespace ms::axiom {
 
+/// One evolved individual, together with the provenance of the operators that
+/// produced it. `representation` is the GP expression itself; the other three
+/// Syms are *labels*, filled in by `Axiom::Axiom` and re-stamped by
+/// `Axiom::evolve` for every generation, so each individual describes its own
+/// lineage:
+///
+///  - `evaluation`: the applied form actually evaluated for fitness,
+///    "f(<bound vars>)=<expression>" — e.g. "f(x0,x1)=(x0*sin(x1))",
+///    "f(x0)=cos(x0)", or "f()=3.5" for a constant-only tree. The variable list
+///    is exactly the set the expression references, ascending, matching
+///    `evaluate()`'s column-j -> "xj" binding.
+///  - `selection`: the selection operator with its parameter — "init(grow)" for
+///    the randomly grown initial population, "elitism(1)" for the single elite
+///    clone carried into each generation, and "tournament(k)" otherwise, where
+///    k is the effective tournament size min(tournament_size, population_size).
+///  - `mutation`: the variation chain applied, joined with '+' — "none" for the
+///    initial population, "clone(elite)" for the elite clone, then one of
+///    "clone" / "crossover", optionally followed by "+subtree(<rate>)" or
+///    "+point(<rate>)" and by "+regrow(<max_depth>)" when the depth cap forced a
+///    regrow. Example: "crossover+subtree(0.1)".
+///
+/// These three carry text, not arithmetic: `Sym::eval` on them returns 0.0 (the
+/// grammar has no '=' and no "tournament"/"subtree" function), which is the
+/// documented no-throw behaviour for a malformed Sym.
+///
+/// An `Algorithm` constructed directly by a caller (as the REPL's
+/// `axiom_evaluate` / `axiom_*_fitness` helpers do) leaves all four Syms
+/// default-empty; only `representation` is read by `evaluate()`,
+/// `gria_fitness()`, `mse_fitness()` and `rmse_fitness()`.
 struct Algorithm {
     ms::Sym representation;
     ms::Sym evaluation;

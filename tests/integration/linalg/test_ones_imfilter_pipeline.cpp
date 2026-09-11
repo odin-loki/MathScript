@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -46,7 +48,7 @@ TEST(IntegrationLinalg,  Image) {
     EXPECT_EQ(interp.state().matrices.at("D").rows(), 2u);
 }
 
-TEST(IntegrationLinalg,  SpecialScalar) {
+TEST(IntegrationLinalg, SpecialScalar_OnesImfilterPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "pl = polylog(2, 0.25)");

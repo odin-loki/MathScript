@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/topo/topo.hpp"
 #include "ms/geo/geo.hpp"
 #include <bit>
@@ -16,13 +18,17 @@ namespace topo {
 // ========================== SimplicialComplex ==========================
 
 bool SimplicialComplex::has_simplex(const Simplex& s) const {
-    for (auto& t : simplices_) if (t == s) return true;
-    return false;
+    // index_ mirrors simplices_ exactly; the lookup is behaviourally identical to the
+    // linear scan it replaces (see the member's comment in topo.hpp).
+    return index_.find(s) != index_.end();
 }
 
 void SimplicialComplex::add_point(int v) {
     Simplex s = {v};
-    if (!has_simplex(s)) simplices_.push_back(s);
+    if (!has_simplex(s)) {
+        simplices_.push_back(s);
+        index_.insert(s);
+    }
 }
 
 void SimplicialComplex::add_simplex(const Simplex& s_in) {
@@ -30,13 +36,17 @@ void SimplicialComplex::add_simplex(const Simplex& s_in) {
     std::sort(s.begin(), s.end());
     if (has_simplex(s)) return;
     simplices_.push_back(s);
+    index_.insert(s);
     // Add all faces (subsets)
     int n = static_cast<int>(s.size());
     for (int mask = 0; mask < (1<<n); ++mask) {
         if (std::popcount(static_cast<unsigned>(mask)) == n) continue;  // full set already added
         Simplex face;
         for (int i = 0; i < n; ++i) if (mask & (1<<i)) face.push_back(s[i]);
-        if (!face.empty() && !has_simplex(face)) simplices_.push_back(face);
+        if (!face.empty() && !has_simplex(face)) {
+            simplices_.push_back(face);
+            index_.insert(face);
+        }
     }
 }
 
@@ -201,10 +211,235 @@ static double min_enclosing_ball_radius_triangle(double a, double b, double c) {
     return (a * b * c) / (4.0 * area);
 }
 
+// ---------------- Minimum enclosing ball from distances alone ----------------
+//
+// Derivation (everything below is coordinate-free; only squared pairwise distances
+// D_ab = d(q_a,q_b)^2 are ever used).
+//
+// (I)  For a point c = Σ_a λ_a q_a of the affine hull of q_0..q_{s-1} (Σ_a λ_a = 1) and
+//      ANY point x, expanding |c - x|^2 = |Σ_a λ_a (q_a - x)|^2 and substituting
+//      (q_a - x)·(q_b - x) = (d(q_a,x)^2 + d(q_b,x)^2 - D_ab)/2 gives
+//          |c - x|^2 = Σ_a λ_a d(q_a,x)^2 - Q,     Q = Σ_{a<b} λ_a λ_b D_ab = ½ λᵀDλ.
+//
+// (II) Imposing |c - q_b|^2 = R^2 for every b and using (I) with x = q_b turns the
+//      circumsphere conditions into  Σ_a λ_a D_ab = R^2 + Q =: μ  for every b, which
+//      together with Σ_a λ_a = 1 is exactly the bordered Cayley-Menger system
+//          [ 0  1ᵀ ] [ v0 ]   [ 1 ]
+//          [ 1   D ] [ λ  ] = [ 0 ]         (row 0: Σλ = 1; row b+1: v0 + Σ_a λ_a D_ab = 0)
+//      so μ = -v0. Contracting the second block with λ gives λᵀDλ = μ, i.e. Q = μ/2,
+//      hence  R^2 = μ - Q = μ/2 = -v0/2  and λ is the barycentric circumcentre.
+//      (Equivalently, by Cramer's rule, R^2 = -det(D) / (2 det(CM)) — the classical
+//      determinant form. The linear solve is one pass and better conditioned, so that
+//      is what is implemented.)
+//      Sanity: a pair at distance d gives R = d/2; a unit equilateral triangle gives
+//      R = 1/√3; a unit regular tetrahedron gives R = √(3/8).
+//
+// (III) Substituting Q = R^2 back into (I): x lies in the circumball of T iff
+//          Σ_{a∈T} λ_a d(q_a,x)^2 <= 2 R^2.
+//
+// (IV) A ball B(c,R) ⊇ S is THE minimum enclosing ball of S iff c ∈ conv(S ∩ ∂B).
+//      So if a subset T ⊆ S has all λ_a >= 0 (c ∈ conv(T)) and its circumball contains
+//      every point of S, then T ⊆ S ∩ ∂B and c ∈ conv(T) ⊆ conv(S ∩ ∂B), i.e. that
+//      circumball IS the MEB. Every subset passing both tests therefore reports the
+//      same radius, so a search by increasing |T| may stop at the first size that hits.
+//      Carathéodory guarantees an affinely independent such T exists, and an affinely
+//      independent T has a non-singular Cayley-Menger system — so skipping the singular
+//      (affinely dependent) subsets never loses the answer.
+
+namespace {
+
+struct CircumSphere {
+    double r2 = 0.0;             // raw squared circumradius (may be a numerical -0)
+    std::vector<double> lambda;  // barycentric coordinates of the circumcentre
+    bool ok = false;             // false <=> singular (affinely dependent) system
+};
+
+// Solve the bordered Cayley-Menger system (II) for the subset `t` by Gauss-Jordan with
+// partial pivoting. Returns ok == false when the system is singular, which happens
+// exactly when the points of `t` are affinely dependent (duplicates, collinear triples,
+// coplanar quadruples, ...) and no unique circumsphere exists.
+CircumSphere cayley_menger_circumsphere(const std::vector<std::vector<double>>& d,
+                                        const std::vector<int>& t) {
+    CircumSphere out;
+    const std::size_t s = t.size();
+    if (s == 0) return out;
+    const std::size_t m = s + 1;
+
+    // Augmented (m) x (m+1) system: last column is the right-hand side e_0.
+    std::vector<std::vector<double>> a(m, std::vector<double>(m + 1, 0.0));
+    double scale = 1.0;
+    for (std::size_t j = 1; j < m; ++j) { a[0][j] = 1.0; a[j][0] = 1.0; }
+    for (std::size_t i = 0; i < s; ++i) {
+        const std::size_t ti = static_cast<std::size_t>(t[i]);
+        for (std::size_t j = 0; j < s; ++j) {
+            const double dij = d[ti][static_cast<std::size_t>(t[j])];
+            const double sq = dij * dij;
+            a[i + 1][j + 1] = sq;
+            if (sq > scale) scale = sq;
+        }
+    }
+    a[0][m] = 1.0;
+
+    for (std::size_t col = 0; col < m; ++col) {
+        std::size_t piv = col;
+        for (std::size_t r = col + 1; r < m; ++r)
+            if (std::abs(a[r][col]) > std::abs(a[piv][col])) piv = r;
+        // Scale-relative singularity test: the matrix entries are squared distances.
+        if (std::abs(a[piv][col]) <= 1e-12 * scale) return out;
+        std::swap(a[col], a[piv]);
+        const double p = a[col][col];
+        for (std::size_t k = col; k <= m; ++k) a[col][k] /= p;
+        for (std::size_t r = 0; r < m; ++r) {
+            if (r == col) continue;
+            const double f = a[r][col];
+            if (f == 0.0) continue;
+            for (std::size_t k = col; k <= m; ++k) a[r][k] -= f * a[col][k];
+        }
+    }
+
+    out.lambda.assign(s, 0.0);
+    for (std::size_t i = 0; i < s; ++i) out.lambda[i] = a[i + 1][m];
+    out.r2 = -0.5 * a[0][m];  // identity (II): R^2 = -v0/2
+    out.ok = true;
+    return out;
+}
+
+// |c - x|^2 from identity (I). `q` is Q = ½ λᵀDλ; for a circumcentre Q == R^2.
+// Clamped at 0 so that round-off cannot produce a negative squared distance.
+double bary_sq_dist_to(const std::vector<std::vector<double>>& d,
+                       const std::vector<int>& t,
+                       const std::vector<double>& lambda,
+                       double q, int x) {
+    double acc = 0.0;
+    const std::size_t xs = static_cast<std::size_t>(x);
+    for (std::size_t a = 0; a < t.size(); ++a) {
+        const double dax = d[static_cast<std::size_t>(t[a])][xs];
+        acc += lambda[a] * dax * dax;
+    }
+    const double v = acc - q;
+    return v > 0.0 ? v : 0.0;
+}
+
+// Badoiu-Clarkson core-set iteration, run entirely in barycentric coordinates via
+// identity (I) so it stays coordinate-free. Used only above kMaxMebExactPoints, where
+// the exact 2^m support search would blow up. Every candidate value is the covering
+// radius of a genuine enclosing ball, hence an upper bound on the true MEB radius (up
+// to round-off), so this does not under-report and the Čech complex built from it stays
+// a subcomplex of the true one. Badoiu-Clarkson converges to within (1 + 1/sqrt(T)) of
+// the optimum after T steps; the running minimum over the iterates is taken because the
+// iterates are not monotone and every one of them is individually a valid bound.
+double meb_radius_approx(const std::vector<std::vector<double>>& d,
+                         const std::vector<int>& idx) {
+    const std::size_t m = idx.size();
+    if (m == 0) return 0.0;
+    std::vector<double> lambda(m, 0.0);
+    lambda[0] = 1.0;
+    double best = std::numeric_limits<double>::infinity();
+    for (int it = 1; it <= kMebApproxIterations; ++it) {
+        double q = 0.0;  // Q = Σ_{a<b} λ_a λ_b D_ab
+        for (std::size_t a = 0; a < m; ++a)
+            for (std::size_t b = a + 1; b < m; ++b) {
+                const double dab = d[static_cast<std::size_t>(idx[a])]
+                                    [static_cast<std::size_t>(idx[b])];
+                q += lambda[a] * lambda[b] * dab * dab;
+            }
+        std::size_t far = 0;
+        double far_d2 = -1.0;
+        for (std::size_t a = 0; a < m; ++a) {
+            const double v = bary_sq_dist_to(d, idx, lambda, q, idx[a]);
+            if (v > far_d2) { far_d2 = v; far = a; }
+        }
+        // far_d2 is the squared covering radius of the current centre: a valid upper
+        // bound on the MEB radius, so the running minimum is valid too.
+        const double r = std::sqrt(far_d2 > 0.0 ? far_d2 : 0.0);
+        if (r < best) best = r;
+        const double w = 1.0 / static_cast<double>(it + 1);  // λ <- (1-w)λ + w·e_far
+        for (std::size_t a = 0; a < m; ++a) lambda[a] *= (1.0 - w);
+        lambda[far] += w;
+    }
+    return best == std::numeric_limits<double>::infinity() ? 0.0 : best;
+}
+
+} // namespace
+
+double meb_radius_from_distances(const std::vector<std::vector<double>>& dist_matrix,
+                                 const std::vector<int>& idx) {
+    // Defensive validation (this module returns plain values, never Result).
+    const std::size_t n = dist_matrix.size();
+    for (int v : idx) {
+        if (v < 0 || static_cast<std::size_t>(v) >= n) return 0.0;
+        if (dist_matrix[static_cast<std::size_t>(v)].size() < n) return 0.0;
+    }
+    const std::size_t m = idx.size();
+    if (m <= 1) return 0.0;
+
+    // Sizes 2 and 3 delegate to the exact closed forms this module already used, so
+    // every pre-existing threshold (including the triangle helper's absolute obtuseness
+    // tolerance) reproduces bit for bit.
+    const std::size_t i0 = static_cast<std::size_t>(idx[0]);
+    const std::size_t i1 = static_cast<std::size_t>(idx[1]);
+    if (m == 2) return dist_matrix[i0][i1] / 2.0;
+    if (m == 3) {
+        const std::size_t i2 = static_cast<std::size_t>(idx[2]);
+        return min_enclosing_ball_radius_triangle(dist_matrix[i0][i1],
+                                                  dist_matrix[i1][i2],
+                                                  dist_matrix[i0][i2]);
+    }
+    if (m > static_cast<std::size_t>(kMaxMebExactPoints))
+        return meb_radius_approx(dist_matrix, idx);
+
+    // Exact support-set search: smallest T whose circumcentre lies in conv(T) and whose
+    // circumball encloses every point of idx. By (IV) the first size that hits is the
+    // MEB, and every hit at that size reports the same radius.
+    const double tol = 1e-9;
+    std::vector<int> t;
+    t.reserve(m);
+    for (std::size_t sz = 1; sz <= m; ++sz) {
+        double best = std::numeric_limits<double>::infinity();
+        const unsigned long long limit = 1ull << m;
+        for (unsigned long long mask = 1; mask < limit; ++mask) {
+            if (static_cast<std::size_t>(std::popcount(mask)) != sz) continue;
+            t.clear();
+            for (std::size_t a = 0; a < m; ++a)
+                if (mask & (1ull << a)) t.push_back(idx[a]);
+            const CircumSphere cs = cayley_menger_circumsphere(dist_matrix, t);
+            if (!cs.ok) continue;          // affinely dependent: no unique circumsphere
+            if (cs.r2 < -tol) continue;    // numerically meaningless solution
+            const double r2 = cs.r2 > 0.0 ? cs.r2 : 0.0;
+            bool inside = true;
+            for (double l : cs.lambda) if (l < -tol) { inside = false; break; }
+            if (!inside) continue;         // circumcentre outside conv(T)
+            const double slack = tol * (1.0 + r2);
+            for (int x : idx) {
+                if (bary_sq_dist_to(dist_matrix, t, cs.lambda, r2, x) > r2 + slack) {
+                    inside = false;        // identity (III): x outside the circumball
+                    break;
+                }
+            }
+            if (!inside) continue;
+            const double r = std::sqrt(r2);
+            if (r < best) best = r;
+        }
+        if (best != std::numeric_limits<double>::infinity()) return best;
+    }
+
+    // Unreachable for metric input (some support set always qualifies); kept so the
+    // function stays total, returning a valid enclosing radius (at most 2x the MEB).
+    double fallback = std::numeric_limits<double>::infinity();
+    for (int i : idx) {
+        double far = 0.0;
+        for (int j : idx)
+            far = std::max(far, dist_matrix[static_cast<std::size_t>(i)]
+                                           [static_cast<std::size_t>(j)]);
+        fallback = std::min(fallback, far);
+    }
+    return fallback == std::numeric_limits<double>::infinity() ? 0.0 : fallback;
+}
+
 SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matrix,
                                 double epsilon, int max_dim) {
     int n = static_cast<int>(dist_matrix.size());
-    int dim_cap = std::min(max_dim, 2);  // see @note: k>=3 not supported from distances alone
+    int dim_cap = std::min(max_dim, kMaxCechDim);  // see @note on the enumeration caps
     SimplicialComplex sc;
 
     // dim 0: vertices are always included (a single ball trivially "intersects itself").
@@ -218,6 +453,7 @@ SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matr
 
     // dim 2: triangle {i,j,k} iff its minimum enclosing ball radius <= epsilon.
     // Checked independently per triple -- NOT inferred from the 1-skeleton.
+    std::vector<Simplex> prev;  // surviving simplices of the dimension just built
     if (dim_cap >= 2) {
         for (int i = 0; i < n; ++i)
             for (int j = i+1; j < n; ++j)
@@ -226,8 +462,55 @@ SimplicialComplex cech_complex(const std::vector<std::vector<double>>& dist_matr
                     double b = dist_matrix[j][k];
                     double c = dist_matrix[i][k];
                     double r = min_enclosing_ball_radius_triangle(a, b, c);
-                    if (r <= epsilon) sc.add_simplex({i, j, k});
+                    if (r <= epsilon) {
+                        sc.add_simplex({i, j, k});
+                        prev.push_back({i, j, k});
+                    }
                 }
+    }
+
+    // dim >= 3: incremental (Apriori-style) expansion. The MEB radius is monotone under
+    // taking supersets, so Čech(ε) is closed under faces and a (k+1)-subset can only
+    // qualify when every one of its k-subsets already qualified. Extend each surviving
+    // (k-1)-simplex by one strictly larger vertex index -- which both generates every
+    // candidate exactly once and keeps it sorted -- keep the candidate only when all of
+    // its facets survived, then test its true MEB radius.
+    std::set<Simplex> prev_set(prev.begin(), prev.end());
+    long long examined = 0;
+    std::vector<Simplex> cur;
+    Simplex cand;
+    Simplex facet;
+    for (int dim = 3; dim <= dim_cap && !prev.empty(); ++dim) {
+        cur.clear();
+        bool truncated = false;
+        for (const Simplex& s : prev) {
+            for (int v = s.back() + 1; v < n; ++v) {
+                bool ok = true;
+                for (std::size_t drop = 0; drop < s.size() && ok; ++drop) {
+                    facet.clear();
+                    for (std::size_t u = 0; u < s.size(); ++u)
+                        if (u != drop) facet.push_back(s[u]);
+                    facet.push_back(v);  // v > s.back(), so `facet` is already sorted
+                    ok = prev_set.find(facet) != prev_set.end();
+                }
+                if (!ok) continue;  // s itself is the remaining facet, and s is in prev
+                if (examined >= kMaxCechCandidates) { truncated = true; break; }
+                ++examined;
+                cand = s;
+                cand.push_back(v);
+                if (meb_radius_from_distances(dist_matrix, cand) <= epsilon)
+                    cur.push_back(cand);
+            }
+            if (truncated) break;
+        }
+        // Commit only whole dimensions: a dimension abandoned mid-way is dropped so that
+        // the returned complex is always COMPLETE through its own top dimension, keeping
+        // simplex_counts()/euler_characteristic()/betti_numbers() meaningful.
+        if (truncated) break;
+        for (const Simplex& top : cur) sc.add_simplex(top);
+        prev.swap(cur);
+        prev_set.clear();
+        prev_set.insert(prev.begin(), prev.end());
     }
 
     return sc;

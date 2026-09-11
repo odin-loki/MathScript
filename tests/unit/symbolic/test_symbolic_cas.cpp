@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <gtest/gtest.h>
 #include <map>
@@ -259,6 +261,65 @@ TEST(SymbolicSolveLinearTest, singular_system_fails) {
     ASSERT_FALSE(result.has_value());
 }
 
+// §8.4: `extract_linear_term` recognises `x^1` as the unknown x, and the check that
+// the exponent is 1 became a check that it is NOT 1 without a single test noticing.
+// Under that reading `x^2` is linear in x, and a quadratic is "solved" as though its
+// squared term were a plain one -- which is the same silent-wrong-answer shape as the
+// defect this function was already fixed for once, when it discarded terms it could
+// not read instead of refusing them. The six tests above all pass a system that IS
+// linear, so nothing exercised the refusal at all.
+TEST(SymbolicSolveLinearTest, refuses_a_system_that_is_not_linear) {
+    // x^2 + x - 1: linear in appearance if the exponent goes unchecked.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_var("x")),
+            sym_const(1.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "a quadratic was solved as a linear equation";
+    }
+    // x^3, so it is not only the exponent 2 that is caught.
+    {
+        auto eq = sym_sub(sym_pow(sym_var("x"), sym_const(3.0)), sym_const(8.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "a cubic was solved as a linear equation";
+    }
+    // A product of two unknowns is non-linear even though each factor is degree 1.
+    {
+        auto eq1 = sym_sub(sym_mul(sym_var("x"), sym_var("y")), sym_const(1.0));
+        auto eq2 = sym_sub(sym_add(sym_var("x"), sym_var("y")), sym_const(3.0));
+        const auto result =
+            sym_solve_linear(make_equations(std::move(eq1), std::move(eq2)), {"x", "y"});
+        EXPECT_FALSE(result.has_value()) << "x*y was solved as a linear term";
+    }
+    // An unknown inside a function.
+    {
+        auto eq = sym_sub(sym_sin(sym_var("x")), sym_const(0.5));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "sin(x) was solved as a linear term";
+    }
+    // And `x^1` written out longhand IS linear, which is the other half of the rule:
+    // refusing everything would pass all four cases above and be useless.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_mul(sym_const(3.0), sym_pow(sym_var("x"), sym_const(1.0))),
+                    sym_const(6.0)),
+            sym_const(0.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        ASSERT_TRUE(result.has_value()) << "x^1 was not recognised as linear in x";
+        EXPECT_NEAR(sym_eval(result->at("x"), {}), -2.0, 1e-12);
+    }
+    // A non-linear term in a variable that is NOT being solved for is a constant as
+    // far as this system is concerned, and must still be accepted.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_var("x"), sym_pow(sym_var("k"), sym_const(2.0))),
+            sym_const(0.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        ASSERT_TRUE(result.has_value()) << "k^2 was treated as non-linear in x";
+        EXPECT_NEAR(sym_eval(result->at("x"), {{"k", 3.0}}), -9.0, 1e-12);
+    }
+}
+
 TEST(SymbolicLimitTest, one_minus_cos_over_x_squared) {
     const auto expr = sym_div(
         sym_sub(sym_const(1.0), sym_cos(sym_var("x"))),
@@ -292,21 +353,36 @@ TEST(SymbolicLimitTest, log_at_one) {
     EXPECT_NEAR(sym_limit(sym_log(sym_var("x")), "x", 1.0), 0.0, 1e-9);
 }
 
+// Both of these used to skip themselves when the answer came back non-finite, which
+// was the author declining to assert either way about behaviour that was in fact wrong:
+// 1/x at 0 returned exactly 0.000000, because the two probes -1/h and +1/h were
+// averaged before either had settled and their mean is 0 at every h. There is no limit
+// to report, and now it says so.
 TEST(SymbolicLimitTest, reciprocal_two_sided_at_zero) {
     const double lim = sym_limit(sym_div(sym_const(1.0), sym_var("x")), "x", 0.0);
-    if (!std::isfinite(lim)) {
-        GTEST_SKIP() << "two-sided 1/x at 0 not finite";
-    }
-    EXPECT_NEAR(lim, 0.0, 1e-6);
+    EXPECT_FALSE(std::isfinite(lim)) << "1/x has no limit at 0, and 0 is not it: " << lim;
 }
 
 TEST(SymbolicLimitTest, reciprocal_square_at_zero) {
+    // 1/x^2 diverges to +infinity from both sides. Neither side settles on a value, so
+    // there is no finite limit to return.
     const auto expr = sym_div(sym_const(1.0), sym_pow(sym_var("x"), sym_const(2.0)));
     const double lim = sym_limit(expr, "x", 0.0);
-    if (!std::isfinite(lim)) {
-        GTEST_SKIP() << "1/x^2 at 0 not finite";
-    }
-    EXPECT_GT(lim, 1e6);
+    EXPECT_FALSE(std::isfinite(lim)) << lim;
+}
+
+// The two sides settle on different values, which is a different failure from neither
+// side settling and must also be reported.
+TEST(SymbolicLimitTest, sign_function_has_no_two_sided_limit) {
+    const auto expr = sym_div(sym_var("x"), sym_sqrt(sym_pow(sym_var("x"), sym_const(2.0))));
+    EXPECT_FALSE(std::isfinite(sym_limit(expr, "x", 0.0)));
+}
+
+// A one-sided domain still has a limit, and requiring both sides is what used to send
+// this into the loop that fabricated a zero.
+TEST(SymbolicLimitTest, one_sided_domain_still_has_a_limit) {
+    const auto expr = sym_add(sym_sqrt(sym_var("x")), sym_const(5.0));
+    EXPECT_NEAR(sym_limit(expr, "x", 0.0), 5.0, 1e-6);
 }
 
 TEST(SymbolicSeriesTest, truncated_cubic_drops_higher_terms) {
@@ -873,4 +949,34 @@ TEST(SymbolicTransformsTest, laplace_neg_of_power_and_ilaplace_t_fourth) {
     const auto inverse = sym_ilaplace(
         sym_div(sym_const(24.0), sym_pow(sym_var("s"), sym_const(5.0))), "s", "t");
     EXPECT_NEAR(sym_eval(inverse, {{"t", 2.0}}), 16.0, 1e-12);
+}
+
+// A Taylor series at an order anyone would actually want.
+//
+// `sym_series` differentiated a tree it never simplified. The coefficient was read off a
+// simplified COPY and the copy thrown away, so every unsimplified term of one derivative
+// was carried into the next and `sym_diff` of a product writes out the full Leibniz form:
+// the tree grew by about eight times an order. Measured: order 9 took 0.3 s, order 10
+// took 2.6 s, order 11 took 20.2 s. Order 25 -- twelve terms of sin -- did not finish.
+//
+// Simplifying the carried derivative is the same series by a shorter route, which is why
+// this test asserts the COEFFICIENTS rather than a duration: what it is really checking
+// is that nothing about the answer changed.
+TEST(SymbolicSeriesTest, sin_at_zero_order_twenty_five) {
+    const auto series = sym_series(sym_sin(sym_var("x")), "x", 0.0, 25);
+    // Twelve terms is far enough out that the truncation error is below 1e-12 across a
+    // radius where the individual terms are still O(1) -- which a series built from a
+    // corrupted derivative would not be.
+    for (const double x : {0.0, 0.5, 1.0, -1.25, 2.0, -3.0}) {
+        EXPECT_NEAR(std::sin(x), sym_eval(series, {{"x", x}}), 1e-12);
+    }
+}
+
+TEST(SymbolicSeriesTest, cos_and_exp_agree_far_out_too) {
+    const auto cosine = sym_series(sym_cos(sym_var("x")), "x", 0.0, 25);
+    const auto exponential = sym_series(sym_exp(sym_var("x")), "x", 0.0, 25);
+    for (const double x : {0.0, 0.5, -1.5, 2.5}) {
+        EXPECT_NEAR(std::cos(x), sym_eval(cosine, {{"x", x}}), 1e-12);
+        EXPECT_NEAR(std::exp(x), sym_eval(exponential, {{"x", x}}), 1e-12);
+    }
 }

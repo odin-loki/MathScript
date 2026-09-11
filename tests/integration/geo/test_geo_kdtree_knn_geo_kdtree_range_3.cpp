@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -42,7 +44,7 @@ TEST(IntegrationGeo,  KdtreeGaussTail19) {
     EXPECT_EQ(interp.state().matrices.at("B").rows(), 3u);
 }
 
-TEST(IntegrationGeo,  ProbTPpfScalar) {
+TEST(IntegrationGeo, ProbTPpfScalar_GeoKdtreeKnnGeoKdtreeRange3) {
     Interpreter interp;
     expect_ok(interp, "tq = prob_t_ppf(0.5, 5)");
     EXPECT_NEAR(interp.state().scalars.at("tq"), ms::t_ppf(0.5, 5), 1e-8);

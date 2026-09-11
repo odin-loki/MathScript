@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include <cstddef>
 #include <utility>
+#include <vector>
 
 namespace ms::distributed {
 

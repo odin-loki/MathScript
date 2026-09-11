@@ -1,0 +1,2 @@
+cellmemory_new(cm, 2, 4, [0.1, 1, 10])
+cellmemory_st]ep(cm, [1;0])

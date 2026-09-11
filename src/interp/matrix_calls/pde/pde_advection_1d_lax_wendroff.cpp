@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "matrix_call.hpp"
 #include "repl_engine_internal.hpp"
 
@@ -6,58 +8,39 @@ namespace ms::interp {
 Result<Matrix<double>> handle_pde_advection_1d_lax_wendroff(Interpreter& interp, const MatrixCallAssign& assign) {
     using namespace detail;
     MatrixCallCtx ctx(interp);
-    auto resolve_operand = [&ctx](const std::string& text) { return ctx.resolve_operand(text); };
-    auto parse_scalar_arg = [&ctx](const std::string& arg_text, const char* fn) -> Result<double> {
-        double value = 0.0;
-        if (parse_number(arg_text, value)) return value;
-        auto expr = eval_scalar_expr(ctx.state(), arg_text);
-        if (!expr) {
-            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
-        }
-        return *expr;
-    };
-    auto parse_positive_size_arg = [](double value, const char* fn, const char* label) -> Result<std::size_t> {
-        const int i = static_cast<int>(value);
-        if (i < 1 || value != static_cast<double>(i)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<std::size_t>(i);
-    };
-    auto parse_uint64_arg = [](double value, const char* fn, const char* label) -> Result<uint64_t> {
-        if (value < 0.0 || value != std::floor(value)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<uint64_t>(value);
-    };
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
     if (assign.callee == "pde_advection_1d_lax_wendroff" && assign.args.size() == 5) {
-        auto u0_m = resolve_operand(assign.args[0]);
+        auto u0_m = ctx.resolve_operand(assign.args[0]);
         if (!u0_m) {
             return std::unexpected(u0_m.error());
         }
-        auto v = parse_scalar_arg(assign.args[1], "pde_advection_1d_lax_wendroff");
+        auto v = ctx.parse_scalar_arg(assign.args[1], "pde_advection_1d_lax_wendroff");
         if (!v) {
             return std::unexpected(v.error());
         }
-        auto dx = parse_scalar_arg(assign.args[2], "pde_advection_1d_lax_wendroff");
+        auto dx = ctx.parse_scalar_arg(assign.args[2], "pde_advection_1d_lax_wendroff");
         if (!dx) {
             return std::unexpected(dx.error());
         }
-        auto dt = parse_scalar_arg(assign.args[3], "pde_advection_1d_lax_wendroff");
+        auto dt = ctx.parse_scalar_arg(assign.args[3], "pde_advection_1d_lax_wendroff");
         if (!dt) {
             return std::unexpected(dt.error());
         }
-        auto steps_val = parse_scalar_arg(assign.args[4], "pde_advection_1d_lax_wendroff");
+        auto steps_val = ctx.parse_scalar_arg(assign.args[4], "pde_advection_1d_lax_wendroff");
         if (!steps_val) {
             return std::unexpected(steps_val.error());
         }
-        const int steps_i = static_cast<int>(*steps_val);
-        if (steps_i < 0 || *steps_val != steps_i) {
-            return std::unexpected(DomainError{
-                "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
+        WorkBudget budget(assign.callee, 21.0);
+        // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+        // the solver keeps one grid per step and the REPL reads only the last.
+        budget.charge(u0_m->rows() * u0_m->cols());
+        auto steps_arg = budget.take("steps", *steps_val);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
         }
+        const int steps_i = *steps_arg;
         result = eval_pde_advection_1d_lax_wendroff(*u0_m, *v, *dx, *dt,
                                                     static_cast<std::size_t>(steps_i));
     }

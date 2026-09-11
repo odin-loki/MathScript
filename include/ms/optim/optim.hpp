@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include <functional>
@@ -29,7 +31,18 @@ struct GradientDescentResult {
 struct OptimResult {
     std::vector<double> x;
     double f_val;
+    /// How many iterations actually ran, not the budget. adam, nelder_mead,
+    /// simulated_annealing, differential_evolution and particle_swarm all used to
+    /// report max_iter here whatever they did: adam("(x0-1)^2", [1], 0.001, 1000)
+    /// stopped on iteration 1 and said 1000.
     size_t iterations;
+    /// Whether a stopping criterion fired -- not whether the answer is good. The five
+    /// above hard-coded this to true, so the REPL printed "converged = 1" for
+    /// adam("(x0-1000)^2", [0], 0.001, 1), a single step from a thousand away.
+    ///
+    /// simulated_annealing, differential_evolution and particle_swarm run a fixed
+    /// budget and test nothing, so they report false: there is no criterion for them to
+    /// have met, and saying so is not the same as saying the run went badly.
     bool converged;
 };
 

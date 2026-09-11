@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include <atomic>
@@ -130,8 +132,12 @@ std::string_view strip_outer_parens_view(std::string_view expr);
 
 bool is_binary_minus_view(std::string_view expr, size_t index);
 
+/// The top-level occurrence of any character in `ops`. `leftmost` is associativity:
+/// the last occurrence of a left-associative operator, the first of a right-associative
+/// one. 2^3^2 is 512 one way and 729 the other, so this is not a preference.
 std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view expr,
-                                                              const char* ops);
+                                                              const char* ops,
+                                                              bool leftmost = false);
 
 std::optional<std::pair<size_t, char>> find_scalar_binop_view(std::string_view rhs);
 
@@ -192,7 +198,11 @@ Matrix<double> rgb_image_to_matrix(const image::Image& img);
 
 Result<int> parse_morph_ksize(double ksize_d, const char* fn);
 
-compress::Bytes matrix_to_bytes(const Matrix<double>& m);
+/// Byte vector from a matrix, reporting anything that is not a byte.
+///
+/// It used to clamp, round, and rescale by 255 when the largest entry was <= 1.0 --
+/// so a legal byte vector like [0; 1] came back from a compress round trip as [0; 255].
+Result<compress::Bytes> matrix_to_bytes(const Matrix<double>& m, const char* fn);
 
 Matrix<double> bytes_to_matrix_col(const compress::Bytes& bytes);
 
@@ -208,7 +218,8 @@ Result<ml::Vec> matrix_to_ml_vec(const Matrix<double>& m, const char* fn);
 
 Result<ml::Mat> matrix_to_ml_mat(const Matrix<double>& m, const char* fn);
 
-Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn);
+Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn,
+                                          bool allow_non_positive = false);
 
 Result<graph::Graph> graph_from_adjacency_undirected(const Matrix<double>& adj, const char* fn);
 
@@ -1065,6 +1076,16 @@ Result<Matrix<double>> eval_graph_bridges(const Matrix<double>& adj_m);
 
 Result<Matrix<double>> eval_graph_maximum_matching(const Matrix<double>& adj_m);
 
+Result<Matrix<double>> eval_graph_max_weight_matching(const Matrix<double>& adj_m,
+                                                      bool maxcardinality);
+
+Result<double> eval_graph_max_weight_matching_value(const Matrix<double>& adj_m,
+                                                    bool maxcardinality);
+
+Result<Matrix<double>> eval_graph_planar_embedding(const Matrix<double>& adj_m);
+
+Result<Matrix<double>> eval_graph_kuratowski_subgraph(const Matrix<double>& adj_m);
+
 Result<Matrix<double>> eval_graph_transitive_closure(const Matrix<double>& adj_m);
 
 Result<Matrix<double>> eval_quantum_commutator(const Matrix<double>& A_m,
@@ -1119,6 +1140,27 @@ Result<Matrix<double>> eval_geo_delaunay_2d(const Matrix<double>& P_m);
 
 Matrix<double> points2d_to_matrix(const std::vector<geo::Point2D>& pts);
 
+/// Element access for the REPL's matrix session variables. `i` and `j` are
+/// 0-based, matching `Matrix::operator()`, and must be exact non-negative
+/// integers inside the matrix; anything else is a DomainError rather than an
+/// out-of-bounds read.
+Result<double> eval_mat_at(const Matrix<double>& A, double i, double j);
+
+/// One row of `A` as a 1xN matrix. `i` is 0-based, as in `eval_mat_at`.
+Result<Matrix<double>> eval_mat_row(const Matrix<double>& A, double i);
+
+/// One column of `A` as an Nx1 matrix. `j` is 0-based, as in `eval_mat_at`.
+Result<Matrix<double>> eval_mat_col(const Matrix<double>& A, double j);
+
+/// `A`'s elements re-laid out as `rows` x `cols`, reading and writing in row
+/// order. The element count has to match exactly.
+Result<Matrix<double>> eval_mat_reshape(const Matrix<double>& A, double rows, double cols);
+
+/// The `rows` x `cols` block of `A` whose top-left corner is `(r0, c0)`, all
+/// 0-based. The whole block has to lie inside `A`.
+Result<Matrix<double>> eval_mat_submatrix(const Matrix<double>& A, double r0, double c0,
+                                          double rows, double cols);
+
 Result<double> eval_geo_kdtree_nearest(const Matrix<double>& P_m, double qx, double qy);
 
 Result<double> eval_geo_kdtree_3d_nearest(const Matrix<double>& P_m, double qx, double qy,
@@ -1163,6 +1205,15 @@ Result<Matrix<double>> eval_geo_convex_hull_3d(const Matrix<double>& P_m);
 
 Result<Matrix<double>> eval_geo_poly_boolean(const char* fn, const Matrix<double>& a_m,
                                              const Matrix<double>& b_m);
+
+// General (non-convex) two-polygon boolean. Returns an Nx3 matrix whose rows are
+// (x, y, contour_index): the result of a general boolean can be several disjoint contours
+// and can contain holes, so a plain Nx2 vertex list cannot represent it. Contours are
+// numbered from 0 in the order `geo::poly_boolean` produces them; shells are CCW and holes
+// are CW, so summing each contour's signed area gives the region's area directly. An empty
+// result (e.g. the intersection of disjoint operands) is a 0x3 matrix.
+Result<Matrix<double>> eval_geo_poly_boolean_general(const char* fn, const Matrix<double>& a_m,
+                                                     const Matrix<double>& b_m);
 
 Result<Matrix<double>> eval_geo_minkowski_sum(const Matrix<double>& a_m,
                                               const Matrix<double>& b_m);
@@ -1896,6 +1947,8 @@ Result<Matrix<double>> eval_graph_bfs(const Matrix<double>& adj_m, int source);
 
 Result<double> eval_graph_is_tree(const Matrix<double>& adj_m);
 
+Result<double> eval_graph_is_planar_heuristic(const Matrix<double>& adj_m);
+
 Result<double> eval_graph_is_planar(const Matrix<double>& adj_m);
 
 Result<Matrix<double>> eval_graph_dfs(const Matrix<double>& adj_m, int source);
@@ -2358,6 +2411,13 @@ Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char*
 Result<std::string> eval_sym_diff_strings(const std::string& expr_arg, const std::string& var_arg);
 
 Result<std::string> eval_sym_simplify_string(const std::string& expr_arg);
+/// §11.1: the expression in another notation. `notation` is one of the names
+/// `ms::sym2::notation_from_name` accepts, and an unknown one is reported rather than
+/// falling back to a default the caller did not ask for.
+Result<std::string> eval_sym_export_strings(const std::string& expr_arg,
+                                            const std::string& notation_arg);
+Result<std::string> eval_sym_latex_string(const std::string& expr_arg);
+Result<std::string> eval_sym_from_latex_string(const std::string& tex_arg);
 
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg);
 
@@ -2468,7 +2528,7 @@ Result<double> parse_optional_positive_number(const std::string& text, const cha
                                               const char* label, double default_value);
 
 Result<int> parse_optional_positive_int(const std::string& text, const char* fn, const char* label,
-                                        int default_value);
+                                        int default_value, double max_value);
 
 Result<std::string> eval_bfgs_call(const std::string& formula_arg, const std::string& x0_arg,
                                    const std::string& tol_arg, const std::string& max_iter_arg);
@@ -2673,12 +2733,14 @@ std::optional<std::pair<std::string_view, std::string_view>> parse_scalar_unary_
 size_t split_scalar_call_args_view(std::string_view args_text, std::string_view* out, size_t cap);
 
 bool try_parse_bigint_assignment(const std::string& line, std::string& name, std::string& decimal);
+bool try_parse_bigint_call(const std::string& line, std::string& decimal);
 
 bool parse_scalar_operand(const std::string& text, ScalarOperand& out);
 
 bool is_binary_minus(const std::string& expr, size_t index);
 
-std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops);
+std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops,
+                                                         bool leftmost = false);
 
 std::optional<std::pair<size_t, char>> find_scalar_binop(const std::string& rhs);
 
@@ -2703,6 +2765,11 @@ std::optional<std::pair<std::string, std::vector<std::string>>> parse_scalar_cal
 bool is_scalar_expression_rhs(const std::string& rhs);
 
 Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOperand& operand);
+
+/// Reports an argument outside a libm function's real domain, rather than letting the
+/// call return a NaN that reads as a value. `ms::sym2::evaluate` declines the same
+/// arguments, so this is what keeps the REPL and the symbolic core agreeing.
+Result<void> check_scalar_domain(std::string_view fn, double arg);
 
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
 

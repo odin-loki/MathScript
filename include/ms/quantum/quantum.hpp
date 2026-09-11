@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include <complex>
 #include <functional>
@@ -59,6 +61,10 @@ DensityMatrix commutator(const DensityMatrix& A, const DensityMatrix& B);
 DensityMatrix anticommutator(const DensityMatrix& A, const DensityMatrix& B);
 
 // ---- Quantum Fourier transform gate (2^n × 2^n) ----
+/// @brief The 2^n x 2^n quantum Fourier transform matrix.
+/// @note n must be in [1, 12]: the result is 16 * 4^n bytes (268 MB at n = 12), and
+///   `1 << n` is undefined past 30. Anything else returns an EMPTY matrix -- qft_gate(24)
+///   used to allocate its way to 10 GB before the OOM killer intervened.
 DensityMatrix qft_gate(int n_qubits);
 
 // ---- Grover's search algorithm ----
@@ -81,6 +87,8 @@ DensityMatrix qft_gate(int n_qubits);
 // @note Explicit dense N x N matrices are constructed internally (same
 //       explicit-matrix scalability envelope as qft_gate), so this is only
 //       practical for small n_qubits.
+/// @note n_qubits must be in [1, 12]: this builds the 2^n x 2^n diffusion operator.
+///   Outside that range the result is an empty Ket.
 Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_iterations);
 
 // Helper: theoretically optimal number of Grover iterations to maximise the
@@ -89,14 +97,50 @@ Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_it
 int grover_optimal_iterations(int n_qubits, int n_marked);
 
 // ---- Entropy & information ----
+
+// von Neumann entropy S(rho) = -Tr(rho log rho) = -sum_i lambda_i log lambda_i,
+// in nats (natural logarithm), over the eigenvalues of rho.  Computed from the
+// full Hermitian eigendecomposition at every dimension -- there is no
+// dimension cap and no diagonal approximation.  S = 0 for a pure state and
+// log(d) for the maximally mixed state of dimension d.
 double von_neumann_entropy(const DensityMatrix& rho);
+
 double purity(const DensityMatrix& rho);  // Tr(rho^2)
+
+// Uhlmann fidelity in the square-root convention (Nielsen & Chuang / Uhlmann):
+//     F(rho, sigma) = Tr sqrt( sqrt(rho) sigma sqrt(rho) ).
+// Symmetric, F in [0, 1], with F(rho, rho) = 1 for mixed states as well as
+// pure ones, and F = 0 exactly when the supports are orthogonal.  For pure
+// states F = |<psi|phi>| -- the MODULUS of the overlap; the squared (Jozsa)
+// convention often written F_Jozsa = |<psi|phi>|^2 is the square of the value
+// returned here.  With this convention the Fuchs-van de Graaf inequalities
+//     1 - F <= trace_distance(rho, sigma) <= sqrt(1 - F^2)
+// hold against trace_distance() below.  Mismatched dimensions return 0.
 double fidelity(const DensityMatrix& rho, const DensityMatrix& sigma);
+
+// Trace distance T(rho, sigma) = (1/2) Tr|rho - sigma|, i.e. half the trace
+// (nuclear) norm -- half the sum of the absolute eigenvalues of rho - sigma,
+// not half the Frobenius norm.  T in [0, 1]; 0 for identical states, 1 for
+// states with orthogonal supports, and sqrt(1 - |<psi|phi>|^2) for pure states.
+// Mismatched dimensions return 0.
 double trace_distance(const DensityMatrix& rho, const DensityMatrix& sigma);
+
+// Wootters concurrence of a TWO-QUBIT state: with
+// rho_tilde = (sigma_y (x) sigma_y) conj(rho) (sigma_y (x) sigma_y) and
+// lambda_1 >= ... >= lambda_4 the square roots of the eigenvalues of
+// rho * rho_tilde,  C = max(0, lambda_1 - lambda_2 - lambda_3 - lambda_4).
+// C = 0 for separable states, 1 for any maximally entangled (Bell) state, and
+// 2|ad - bc| for a pure state a|00> + b|01> + c|10> + d|11>.
+// Defined only for 4x4 input; any other shape returns NaN (a 0 would be
+// indistinguishable from a genuine "separable" answer).
 double concurrence(const DensityMatrix& rho);   // for 2-qubit states
 
 // ---- Partial trace ----
-// Trace out subsystem of dimension d2 from (d1*d2) x (d1*d2) density matrix
+// Trace out a subsystem of a (d1*d2) x (d1*d2) density matrix: subsystem 0 traces out B
+// (the d2 factor) and returns d1 x d1, subsystem 1 traces out A and returns d2 x d2.
+// @note rho must be exactly (d1*d2) square. Any other shape, or a non-positive dimension,
+//   returns an EMPTY matrix: the loops index rho[i*d2 + k], so a factorisation that does
+//   not match rho's size used to read past it.
 DensityMatrix partial_trace(const DensityMatrix& rho, int d1, int d2, int subsystem);
 
 // ---- Entanglement entropy ----
@@ -107,6 +151,11 @@ double entanglement_entropy(const Ket& psi, int dim_a, int dim_b);
 // dim_a × dim_b coefficient matrix and take its complex SVD.  The Schmidt
 // coefficients (singular values) satisfy sum_i lambda_i^2 = 1 for a normalised
 // |psi>; their squares are the eigenvalues of either reduced density matrix.
+// dim_a coefficients are always returned; the ones beyond min(dim_a, dim_b),
+// and any that fall at the eigensolver's resolution floor, are exactly 0.
+// The singular values are obtained as square roots of the eigenvalues of
+// M M^dagger, so coefficients below roughly sqrt(eps) ~ 1e-8 are not resolvable
+// and are reported as exactly zero rather than as sqrt(round-off).
 struct SchmidtDecomposition {
     std::vector<double> coefficients;  // Schmidt coefficients (singular values), descending
     std::vector<Ket> basis_a;            // Left Schmidt vectors on subsystem A
@@ -114,12 +163,17 @@ struct SchmidtDecomposition {
 };
 
 SchmidtDecomposition schmidt_decomposition(const Ket& psi, int dim_a, int dim_b);
-// Number of Schmidt coefficients above tol (Schmidt rank / Schmidt number for pure states).
+// Number of Schmidt coefficients above tol (Schmidt rank / Schmidt number for
+// pure states).  Coefficients that are unresolvable (see above) are reported as
+// exactly zero, so any tol in (0, ~1e-8) gives the same count; a tol below that
+// window does NOT buy extra discrimination.
 int schmidt_rank(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
 int schmidt_number(const Ket& psi, int dim_a, int dim_b, double tol = 1e-10);
 
 // ---- Quantum states ----
 std::vector<Ket> bell_states();
+/// @note n_qubits must be in [1, 20]: these build a 2^n amplitude vector (16 MB at
+///   n = 20). Outside that range the result is an empty Ket.
 Ket ghz_state(int n_qubits);
 Ket w_state(int n_qubits);
 Ket coherent_state(C alpha, int n_max = 30);

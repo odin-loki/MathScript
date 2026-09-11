@@ -1,7 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/compress/compress.hpp"
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <queue>
@@ -96,10 +99,15 @@ Bytes huffman_decode(const HuffmanResult& hr, size_t orig_size) {
     std::string cur;
     cur.reserve(256);
     for (char b:bits) {
+        // Checked before the symbol rather than after it. Everywhere else the two are
+        // the same -- both stop with exactly `orig_size` symbols and differ only in how
+        // many trailing bits go unread -- but at zero they are not: checking afterwards
+        // pushed one symbol before noticing that none had been asked for, so a decoder
+        // handed a length of 0 returned a byte.
+        if (out.size()>=orig_size) break;
         cur+=b;
         auto it=decode_map.find(cur);
         if (it!=decode_map.end()){out.push_back(it->second);cur="";}
-        if (out.size()>=orig_size) break;
     }
     return out;
 }
@@ -258,6 +266,12 @@ ArithmeticResult arithmetic_encode(const Bytes& data) {
 Bytes arithmetic_decode(const ArithmeticResult& ar) {
     if (ar.original_size == 0) return {};
     RangeModel model = RangeModel::from_table(ar.freq_table);
+    // A model with no symbols cannot decode anything, and every line below assumes it
+    // has at least one: `model.total` would be zero and `rc.get_freq` divides by it,
+    // `sym[idx]` would index an empty vector. The table is the caller's -- for
+    // `ans_decode_vec` and its siblings, a matrix somebody typed -- so "no usable
+    // symbols" is an input, not an impossibility.
+    if (model.sym.empty() || model.total == 0) return {};
     ByteReader reader(ar.encoded);
     RngCoder rc;
     rc.start_decode(reader);
@@ -299,7 +313,17 @@ struct AnsModel {
     static AnsModel from_table(const std::vector<std::pair<uint8_t, uint32_t>>& ft) {
         std::vector<std::pair<uint8_t, int>> pairs;
         pairs.reserve(ft.size());
-        for (auto& [s, f] : ft) pairs.emplace_back(s, static_cast<int>(f));
+        // A frequency above INT_MAX became negative here, and a negative count then
+        // skewed every scaled frequency computed from the total. Clamping is safe: a
+        // count this large already saturates the 12-bit ANS scale, so it cannot change
+        // the model for any table that was not nonsense before the clamp.
+        for (auto& [s, f] : ft) {
+            const uint32_t bounded =
+                f > static_cast<uint32_t>(std::numeric_limits<int>::max())
+                    ? static_cast<uint32_t>(std::numeric_limits<int>::max())
+                    : f;
+            pairs.emplace_back(s, static_cast<int>(bounded));
+        }
         return from_counts(pairs);
     }
 
@@ -307,19 +331,48 @@ struct AnsModel {
         AnsModel m;
         if (pairs.empty()) return m;
 
-        int raw_total = 0;
-        for (auto& [_, c] : pairs) raw_total += c;
+        // `from_data` cannot produce a count below 1 -- it counts occurrences -- but
+        // `from_table` takes the counts from the caller, which for `ans_decode_vec` is
+        // a matrix somebody typed. A table of nothing but zeros made `raw_total` zero
+        // and the division four lines down raised SIGFPE: `ans_decode` on an all-zero
+        // frequency table ended the process.
+        //
+        // A symbol that occurs zero times has no place in a model, so it is dropped
+        // rather than given the frequency of 1 the `f == 0` bump below would have
+        // invented for it. That changes nothing for `from_data`, whose counts are all
+        // at least one, and it is the only reading of a zero count that is not a
+        // fabrication.
+        //
+        // `raw_total` is a `long long` because 256 counts of INT_MAX do not fit in an
+        // `int`, and a signed overflow there is undefined rather than merely large.
+        long long raw_total = 0;
+        for (auto& [symbol, count] : pairs) {
+            (void)symbol;
+            if (count > 0) {
+                raw_total += count;
+            }
+        }
+        if (raw_total <= 0) {
+            return m;
+        }
 
         m.sym.reserve(pairs.size());
         m.freq.reserve(pairs.size());
         uint32_t scaled_sum = 0;
         for (auto& [s, c] : pairs) {
+            if (c <= 0) {
+                continue;
+            }
             uint32_t f = static_cast<uint32_t>(
-                (static_cast<uint64_t>(c) * kAnsScale + raw_total / 2) / static_cast<uint64_t>(raw_total));
+                (static_cast<uint64_t>(c) * kAnsScale + static_cast<uint64_t>(raw_total) / 2) /
+                static_cast<uint64_t>(raw_total));
             if (f == 0) f = 1;
             m.sym.push_back(s);
             m.freq.push_back(f);
             scaled_sum += f;
+        }
+        if (m.sym.empty()) {
+            return m;
         }
 
         if (scaled_sum > kAnsScale) {
@@ -424,6 +477,7 @@ Bytes ans_decode(const AnsResult& ar) {
     if (ar.encoded.size() < 4) return {};
 
     AnsModel model = AnsModel::from_table(ar.freq_table);
+    if (model.sym.empty() || model.slot_to_sym.empty()) return {};
     uint32_t state = ans_read_state(ar.encoded);
     size_t pos = ar.encoded.size() - 4;
 
@@ -453,23 +507,59 @@ std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead)
             while (pos+len<n && data[start+len]==data[pos+len] && len<lookahead) ++len;
             if (len>best_len){best_len=len;best_off=(int)(pos-start);}
         }
-        uint8_t nc=pos+best_len<n?data[pos+best_len]:0;
+        // next_char must always be a REAL literal. Emitting a filler 0 when the
+        // match ran to the end of the input made the value 0 mean both "the byte
+        // 0x00" and "no literal", an ambiguity the decoder resolved by dropping
+        // the byte whenever length > 0 -- so any input containing 0x00 after a
+        // match round-tripped one byte short. Shortening a match that reaches
+        // the end by one byte keeps the format identical and makes every
+        // next_char meaningful.
+        if (best_len > 0 && pos + static_cast<size_t>(best_len) >= n) {
+            --best_len;
+        }
+        const uint8_t nc = data[pos + static_cast<size_t>(best_len)];
         tokens.push_back({(uint16_t)best_off,(uint16_t)best_len,nc});
-        pos+=best_len+1;
+        pos+=static_cast<size_t>(best_len)+1;
     }
     return tokens;
 }
+/// A token's `offset` is a distance BACK from the end of what has been decoded so far,
+/// so `offset > out.size()` names a byte before the start of the output. The offset
+/// comes straight from the caller's data, and `out.size() - t.offset` is unsigned
+/// arithmetic: the subtraction wrapped to an enormous index and `out[start + i]` read
+/// far outside the buffer. AddressSanitizer caught it on `lz77_decode_vec(M3)` -- a 3x3
+/// matrix of small numbers, which is to say on the first malformed stream anyone tried.
+///
+/// A stream that back-references a byte it never emitted is not one this can decode,
+/// and no prefix of it is meaningful either, so the answer is nothing rather than a
+/// guess. `eval_lz77_decode_vec` rejects such a stream by name before it gets here;
+/// this is the library's own floor, because a caller can be asked to pass a valid
+/// stream and cannot be asked to keep this function inside its buffer.
 Bytes lz77_decode(const std::vector<LZ77Token>& tokens) {
     Bytes out;
     size_t est = 0;
-    for (const auto& t : tokens) est += t.length + 1;
+    for (const auto& t : tokens) est += static_cast<size_t>(t.length) + 1;
     out.reserve(est);
     for (auto&t:tokens) {
         if (t.offset>0&&t.length>0) {
+            if (t.offset > out.size()) {
+                return {};
+            }
             size_t start=out.size()-t.offset;
-            for (uint16_t i=0;i<t.length;++i) out.push_back(out[start+i]);
+            for (uint16_t i=0;i<t.length;++i) {
+                // `out[start + i]` is a reference INTO the buffer `push_back` may
+                // reallocate. The reserve above makes a reallocation impossible here;
+                // copying the byte out first makes the loop correct without depending
+                // on that. An offset smaller than the length is the legitimate
+                // run-length overlap and reads bytes this loop has just written.
+                const std::uint8_t byte = out[start + i];
+                out.push_back(byte);
+            }
         }
-        if (t.next_char||t.length==0) out.push_back(t.next_char);
+        // lz77_encode guarantees next_char is always a real literal, so it is
+        // always emitted. The old `if (t.next_char || t.length == 0)` guard
+        // silently discarded a literal 0x00 that followed a match.
+        out.push_back(t.next_char);
     }
     return out;
 }
@@ -528,13 +618,13 @@ BWTResult bwt(const Bytes& data) {
     Bytes L(m);
     int primary = -1;
     for (int i = 0; i < m; i++) {
-        int last = (idx[i] + m - 1) % m;
-        uint16_t cv = ch(idx[i], m - 1);  // last character of sorted rotation i
-        // ch(idx[i], m-1) == ch at position (idx[i]+m-1)%m = (idx[i]-1+m)%m
-        // Recompute via direct access
+        // The last character of sorted rotation i, which `ch(idx[i], m - 1)` also gives
+        // -- it is the same position, (idx[i] + m - 1) % m. Reading `data` directly is
+        // the one that says so; the two lines that computed it the other way and threw
+        // the answer away, one of them silenced with a cast to void, said only that
+        // somebody had checked they agree.
         int lpos = (idx[i] + m - 1) % m;
         L[i] = (lpos == n) ? (uint8_t)0 : data[lpos];
-        (void)cv;
         if (idx[i] == 0) primary = i;
     }
     return {L, primary};
@@ -543,6 +633,19 @@ BWTResult bwt(const Bytes& data) {
 Bytes ibwt(const BWTResult& res) {
     const Bytes& L = res.data;
     int m = (int)L.size();  // n+1 (includes sentinel row)
+    // Neither of these is a wrong answer waiting to happen; both are memory safety.
+    //
+    // `bwt` always emits the sentinel row, so a genuine BWT is never empty. An empty
+    // one reached `out.reserve(m - 1)` with m = 0, and reserve(SIZE_MAX) throws
+    // std::length_error -- which, in a library built without exceptions, ends the
+    // process. `bzip2_like_decompress` fed it exactly that from a four-byte input.
+    //
+    // The primary index names one of the m rotations. Outside [0, m) it names nothing,
+    // and the loop below indexes `Fs` and `T_inv` with it directly, so an out-of-range
+    // value is an out-of-bounds read rather than a bad result. It arrives from a
+    // stream's own header, which is to say from the caller's data.
+    if (m <= 0) return {};
+    if (res.primary_index < 0 || res.primary_index >= m) return {};
     // Sorted L = F column
     Bytes Fs = L;
     std::sort(Fs.begin(), Fs.end());
@@ -568,7 +671,7 @@ Bytes ibwt(const BWTResult& res) {
     for (int i = 0; i < m; i++) T_inv[T[i]] = i;
 
     Bytes out;
-    out.reserve(m - 1);
+    out.reserve(static_cast<size_t>(m - 1));
     int r = res.primary_index;
     for (int i = 0; i < m; i++) {
         if (Fs[r] != 0) out.push_back(Fs[r]);  // skip sentinel character
@@ -731,12 +834,18 @@ Bytes bzip2_like_compress(const Bytes& data) {
     out.insert(out.end(),rle.begin(),rle.end());
     return out;
 }
-Bytes bzip2_like_decompress(const Bytes& data, int) {
+Bytes bzip2_like_decompress(const Bytes& data) {
     if (data.size()<4) return {};
     int pi=(data[0]<<24)|(data[1]<<16)|(data[2]<<8)|data[3];
     Bytes rle(data.begin()+4,data.end());
     auto mtf=rle_decode(rle);
     auto bwt_data=mtf_decode(mtf);
+    // The header is the caller's data, so `pi` is arbitrary until this says otherwise.
+    // `ibwt` refuses an index that names no rotation, but refusing it here is what lets
+    // the difference between "this stream decodes to nothing" and "this is not one of
+    // our streams" survive: only the empty-input encoding reaches ibwt with an empty
+    // BWT and a legal index.
+    if (bwt_data.empty() || pi < 0 || pi >= static_cast<int>(bwt_data.size())) return {};
     return ibwt({bwt_data,pi});
 }
 

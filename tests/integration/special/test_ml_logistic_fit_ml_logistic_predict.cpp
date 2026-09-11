@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  LogisticFitPredictTail28) {
     EXPECT_GT(interp.state().matrices.at("pred").rows(), 0u);
 }
 
-TEST(IntegrationSpecial,  BesselJScalar) {
+TEST(IntegrationSpecial, BesselJScalar_MlLogisticFitMlLogisticPredict) {
     Interpreter interp;
     expect_ok(interp, "bj = bessel_j(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("bj"), ms::bessel_j(0, 1.0), 1e-8);

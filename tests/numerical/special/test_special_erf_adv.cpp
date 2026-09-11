@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced Special Functions: erf, erfc, erfi, Fresnel, Dawson (Wave 55)
 
 #define _USE_MATH_DEFINES

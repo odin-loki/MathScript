@@ -1,0 +1,1 @@
+bx = geoSblzw_encode_vec([97;91, 2; 2, 0], 0.Ã)

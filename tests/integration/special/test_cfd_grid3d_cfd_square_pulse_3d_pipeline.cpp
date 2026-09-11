@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  Cfd3dGridPulseTail14) {
     EXPECT_EQ(interp.state().matrices.at("u0").cols(), 4u);
 }
 
-TEST(IntegrationSpecial,  BesselHScalar) {
+TEST(IntegrationSpecial, BesselHScalar_CfdGrid3dCfdSquarePulse3dPipeline) {
     Interpreter interp;
     expect_ok(interp, "h = bessel_h(1, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("h"), ms::bessel_h(1, 1.0), 1e-8);

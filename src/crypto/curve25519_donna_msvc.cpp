@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MSVC port of curve25519-donna (public domain); GCC/Clang use curve25519_donna.c
 #include <stdint.h>
 #include <string.h>

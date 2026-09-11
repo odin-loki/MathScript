@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/distributed/dist_matrix.hpp"
+#include "ms/core/format.hpp"
 #include <functional>
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
@@ -10,6 +13,7 @@
 #include "ms/frameworks/gria/gria.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/interp/repl_engine.hpp"
+#include "matrix_call.hpp"
 #include "ms/version.hpp"
 #include "ms/interp/plot_console.hpp"
 #include "ms/core/operations.hpp"
@@ -45,6 +49,9 @@
 #include "ms/poly/poly.hpp"
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
+#include "ms/sym2/bridge.hpp"
+#include "ms/sym2/latex_parse.hpp"
+#include "ms/sym2/notation.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
 #include "ms/crypto/crypto.hpp"
@@ -55,6 +62,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <charconv>
+#include <limits>
 #include <cmath>
 #include <complex>
 #include <cerrno>
@@ -66,8 +75,8 @@
 #include <optional>
 #include <regex>
 #include <span>
-#include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 #include <type_traits>
 
@@ -355,6 +364,25 @@ std::string_view strip_outer_parens_view(std::string_view expr) {
     }
 }
 
+// True when the '+' or '-' at `index` is the sign of an exponent rather than an
+// operator: the 'e' of 1e-09, with a digit or a decimal point before it.
+//
+// Without this, find_top_level_op_view splits 1e-09 at the minus and the REPL
+// reports "could not parse: 1e-09 * 2". That is not hypothetical -- `vars` already
+// prints small values in exponent form, so the session could print a value it could
+// not read back into any arithmetic expression.
+bool is_exponent_sign(std::string_view expr, size_t index) {
+    if (index < 2 || (expr[index] != '+' && expr[index] != '-')) {
+        return false;
+    }
+    const char marker = expr[index - 1];
+    if (marker != 'e' && marker != 'E') {
+        return false;
+    }
+    const char before = expr[index - 2];
+    return std::isdigit(static_cast<unsigned char>(before)) || before == '.';
+}
+
 bool is_binary_minus_view(std::string_view expr, size_t index) {
     size_t j = index;
     while (j > 0 && std::isspace(static_cast<unsigned char>(expr[j - 1]))) {
@@ -364,11 +392,14 @@ bool is_binary_minus_view(std::string_view expr, size_t index) {
         return false;
     }
     const char prev = expr[j - 1];
-    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '^' &&
+           prev != '(';
 }
 
+/// See `find_top_level_op`: `leftmost` is associativity, not a preference.
 std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view expr,
-                                                              const char* ops) {
+                                                              const char* ops,
+                                                              bool leftmost) {
     int depth = 0;
     std::optional<std::pair<size_t, char>> last;
     for (size_t i = 0; i < expr.size(); ++i) {
@@ -383,6 +414,14 @@ std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view e
                     if (c == '-' && !is_binary_minus_view(expr, i)) {
                         continue;
                     }
+                    // The sign inside an exponent literal belongs to the number,
+                    // not to the expression around it.
+                    if (is_exponent_sign(expr, i)) {
+                        continue;
+                    }
+                    if (leftmost) {
+                        return std::pair{i, *p};
+                    }
                     last = std::pair{i, *p};
                 }
             }
@@ -391,11 +430,17 @@ std::optional<std::pair<size_t, char>> find_top_level_op_view(std::string_view e
     return last;
 }
 
+// Loosest operator first: whichever binds least tightly is the one the expression
+// splits at, so it is the one to look for first. `^` is last and therefore binds
+// tightest, and it is the only right-associative level here.
 std::optional<std::pair<size_t, char>> find_scalar_binop_view(std::string_view rhs) {
-    if (auto add_sub = find_top_level_op_view(rhs, "+-")) {
+    if (auto add_sub = find_top_level_op_view(rhs, "+-", false)) {
         return add_sub;
     }
-    return find_top_level_op_view(rhs, "*/");
+    if (auto mul_div = find_top_level_op_view(rhs, "*/", false)) {
+        return mul_div;
+    }
+    return find_top_level_op_view(rhs, "^", true);
 }
 
 Result<double> eval_literal_arith(std::string_view expr_text);
@@ -404,6 +449,41 @@ Result<double> eval_literal_arith(std::string_view expr_text) {
     std::string_view expr = strip_outer_parens_view(expr_text);
     if (expr.empty()) {
         return std::unexpected(DomainError{"eval", "empty expression"});
+    }
+
+    double value = 0.0;
+    if (parse_number_view(expr, value)) {
+        return value;
+    }
+
+    // The binary operator has to be found BEFORE a leading sign is taken as unary.
+    // Peeling the sign off first applies it to everything that follows: -4 + 1 was
+    // read as -(4 + 1) and evaluated to -5, and -4 - 1 to -3. find_scalar_binop_view
+    // will not mistake the leading '-' for an operator -- is_binary_minus_view
+    // rejects a sign with nothing before it -- so this ordering is safe.
+    if (const auto op_pos = find_scalar_binop_view(expr)) {
+    // `-a^b` is `-(a^b)`, not `(-a)^b`. Unary minus binds looser than exponentiation --
+    // in mathematics and in every language that has a power operator -- and the two
+    // readings differ: -2^2 is -4 one way and 4 the other. The additive and
+    // multiplicative levels have to be searched BEFORE the sign is peeled, or `-4 + 1`
+    // becomes `-(4 + 1)`; the power level has to be searched AFTER it. So the sign is
+    // taken here, once the operator found turns out to be the power.
+        if (op_pos->second == '^' && (expr.front() == '-' || expr.front() == '+')) {
+            auto inner = eval_literal_arith(expr.substr(1));
+            if (!inner) {
+                return std::unexpected(inner.error());
+            }
+            return expr.front() == '-' ? -(*inner) : *inner;
+        }
+        auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = eval_literal_arith(trim_view(expr.substr(op_pos->first + 1)));
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
     }
 
     if (expr.front() == '-') {
@@ -416,26 +496,7 @@ Result<double> eval_literal_arith(std::string_view expr_text) {
     if (expr.front() == '+') {
         return eval_literal_arith(expr.substr(1));
     }
-
-    double value = 0.0;
-    if (parse_number_view(expr, value)) {
-        return value;
-    }
-
-    const auto op_pos = find_scalar_binop_view(expr);
-    if (!op_pos) {
-        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
-    }
-
-    auto left = eval_literal_arith(trim_view(expr.substr(0, op_pos->first)));
-    if (!left) {
-        return std::unexpected(left.error());
-    }
-    auto right = eval_literal_arith(trim_view(expr.substr(op_pos->first + 1)));
-    if (!right) {
-        return std::unexpected(right.error());
-    }
-    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
+    return std::unexpected(DomainError{"eval", "invalid scalar expression"});
 }
 
 struct ScalarFnCache {
@@ -476,7 +537,18 @@ thread_local ScalarFnCache g_scalar_fn_cache;
 thread_local std::vector<double> g_scalar_call_arg_buf;
 
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args);
+// Keep a callee out of its caller's frame. Used to stop the fat scratch buffers
+// of a call expression from being charged to every level of an operator chain.
+#if defined(_MSC_VER)
+#define MS_NOINLINE __declspec(noinline)
+#else
+#define MS_NOINLINE __attribute__((noinline))
+#endif
+
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text);
+MS_NOINLINE Result<double> eval_scalar_call_expr(
+    const SessionState& state, std::string_view expr,
+    const std::pair<std::string_view, std::string_view>& call);
 Result<void> require_session_rng(const char* fn);
 
 double matrix_max_value(const Matrix<double>& m) {
@@ -584,18 +656,24 @@ Result<int> parse_morph_ksize(double ksize_d, const char* fn) {
     return ksize;
 }
 
-compress::Bytes matrix_to_bytes(const Matrix<double>& m) {
+// Every compress::* command in the REPL takes a vector of bytes and gives one back, so
+// a round trip has to return what it was given. This used to clamp anything outside
+// [0, 255], round anything fractional, and -- worst -- multiply the whole matrix by 255
+// whenever its largest entry was <= 1.0, on the assumption that such a matrix must be a
+// normalised image. So `rle_decode_vec(rle_encode_vec([0; 1]))` returned [0; 255]: a
+// legal byte vector under the documented contract, silently rescaled and handed back as
+// different data. It validates instead, the same test matrix_col_to_bytes already used.
+Result<compress::Bytes> matrix_to_bytes(const Matrix<double>& m, const char* fn) {
     compress::Bytes bytes;
     bytes.reserve(m.rows() * m.cols());
-    const bool scale255 = matrix_max_value(m) <= 1.0;
     for (size_t i = 0; i < m.rows(); ++i) {
         for (size_t j = 0; j < m.cols(); ++j) {
-            double v = m(i, j);
-            if (scale255) {
-                v *= 255.0;
+            const double v = m(i, j);
+            if (!(v >= 0.0) || v > 255.0 || std::floor(v) != v) {
+                return std::unexpected(
+                    DomainError{fn, "byte values must be whole numbers in [0, 255]"});
             }
-            v = std::clamp(v, 0.0, 255.0);
-            bytes.push_back(static_cast<uint8_t>(std::lround(v)));
+            bytes.push_back(static_cast<uint8_t>(v));
         }
     }
     return bytes;
@@ -613,7 +691,16 @@ Result<double> eval_bigint_string(const std::string& decimal) {
     if (decimal.empty()) {
         return std::unexpected(DomainError{"bigint", "expected decimal string literal"});
     }
-    const bignum::BigInt value(decimal);
+    // BigInt's string constructor is the defensive one: it turns anything it cannot
+    // read into zero. So bigint(" 495"), bigint("495.0") and bigint("1e3") all answered
+    // 0 -- and the round-trip check below passed, because 0 does round-trip. BigInt
+    // provides a reporting parse; the REPL should be using it.
+    auto parsed = bignum::BigInt::parse(decimal);
+    if (!parsed) {
+        return std::unexpected(
+            DomainError{"bigint", "invalid decimal literal: " + decimal});
+    }
+    const bignum::BigInt value = *parsed;
     const double as_double = value.to_double();
     if (!std::isfinite(as_double)) {
         return std::unexpected(DomainError{"bigint", "value too large for scalar double"});
@@ -642,6 +729,14 @@ Result<double> bigint_to_scalar(const bignum::BigInt& value, const char* fn) {
 Result<bignum::BigInt> bigint_from_scalar(double arg, const char* fn) {
     if (!std::isfinite(arg) || std::floor(arg) != arg) {
         return std::unexpected(DomainError{fn, "expected integer argument"});
+    }
+    // A double past 2^63 has no `long long` to be cast to, and the cast is undefined
+    // behaviour rather than a saturating one -- so bigint_add(1e30, 1) produced whatever
+    // the hardware happened to leave in the register. 2^63 itself is the first double
+    // outside the range; -2^63 is inside it.
+    if (arg >= 9223372036854775808.0 || arg < -9223372036854775808.0) {
+        return std::unexpected(
+            DomainError{fn, "integer argument does not fit in 64 bits"});
     }
     return bignum::BigInt(static_cast<long long>(arg));
 }
@@ -690,7 +785,19 @@ Result<ml::Mat> matrix_to_ml_mat(const Matrix<double>& m, const char* fn) {
     return out;
 }
 
-Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn) {
+/// @param allow_non_positive  Whether an entry that is not > 0 can still be an edge.
+///
+/// A zero entry means "no edge", and for most of the graph commands a negative one is
+/// not meaningful either -- Dijkstra has no answer for it. But `w > 0.0` was the test
+/// for every caller, including graph_bellman_ford, whose entire reason to exist is
+/// negative weights: it never saw one, so it answered with the distances of a different
+/// graph and could not report the negative cycle it was asked about. The same held for
+/// graph_floyd_warshall and graph_min_arborescence.
+// The default is repeated here because this translation unit does not include
+// repl_engine_internal.hpp -- the declaration there is for repl_engine.cpp's benefit,
+// and the two have to agree. A TU that ever includes both will say so at once.
+Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char* fn,
+                                          bool allow_non_positive = false) {
     if (adj.rows() != adj.cols()) {
         return std::unexpected(DomainError{fn, "expected square adjacency matrix"});
     }
@@ -699,7 +806,10 @@ Result<graph::Graph> graph_from_adjacency(const Matrix<double>& adj, const char*
     for (int i = 0; i < n; ++i) {
         for (int j = 0; j < n; ++j) {
             const double w = adj(static_cast<size_t>(i), static_cast<size_t>(j));
-            if (w > 0.0) {
+            const bool is_edge = allow_non_positive
+                                     ? (i != j && w != 0.0 && std::isfinite(w))
+                                     : (w > 0.0);
+            if (is_edge) {
                 G.add_edge(i, j, w);
             }
         }
@@ -1016,8 +1126,29 @@ Result<Matrix<double>> eval_ml_pca_fit(const Matrix<double>& X_m, int n_componen
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_pca_fit", "expected n_components >= 1"});
+    // A principal component is a direction in feature space, and there are only
+    // min(samples, features) independent ones: asking for more is not an expensive
+    // request, it is a request with no answer. It used to be treated as the former --
+    // `ml_pca_fit(A, 100000000)` sized a component matrix from the count alone and the
+    // allocation ended the process, with no diagnostic, before anything noticed that a
+    // 2x2 matrix has two components in it.
+    const auto rank = static_cast<int>(std::min(X->size(), X->front().size()));
+    if (n_components < 1 || n_components > rank) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit", "expected 1 <= n_components <= " + format_scalar(rank) +
+                              ", the number of components this matrix has"});
+    }
+    // The model that comes back is n_components+1 rows of one weight per feature, and a
+    // 512 by 512 matrix at the full 512 components is 262656 of them -- just past the cap.
+    // `ml_pca_fit(ones(512,512), 512)` fitted for 3.5 s and was refused afterwards.
+    if (!repl_elems_allowed(static_cast<std::size_t>(n_components) + 1,
+                            X->front().size())) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit", "n_components " + describe_count(n_components) +
+                              " gives a " + describe_count(n_components + 1) + " by " +
+                              describe_count(static_cast<double>(X->front().size())) +
+                              " model, which is limited to " +
+                              std::to_string(kMaxReplMatrixElems) + " elements"});
     }
     ml::PCA pca(n_components);
     pca.fit(*X);
@@ -1042,8 +1173,11 @@ Result<Matrix<double>> eval_ml_pca_fit_transform(const Matrix<double>& X_m, int 
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_pca_fit_transform", "expected n_components >= 1"});
+    const auto rank = static_cast<int>(std::min(X->size(), X->front().size()));
+    if (n_components < 1 || n_components > rank) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit_transform", "expected 1 <= n_components <= " + format_scalar(rank) +
+                                        ", the number of components this matrix has"});
     }
     ml::PCA pca(n_components);
     return grid_to_matrix(pca.fit_transform(*X));
@@ -1054,8 +1188,24 @@ Result<Matrix<double>> eval_ml_kmeans_fit(const Matrix<double>& X_m, int k) {
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (k < 1) {
-        return std::unexpected(DomainError{"ml_kmeans_fit", "expected k >= 1"});
+    // k clusters need k points to put in them. The upper bound is what was missing:
+    // `ml_kmeans_fit(A, 100000000)` allocated a centroid per cluster and ended the
+    // process, for a matrix with two rows in it.
+    const auto samples = static_cast<int>(X->size());
+    if (k < 1 || k > samples) {
+        return std::unexpected(DomainError{
+            "ml_kmeans_fit", "expected 1 <= k <= " + format_scalar(samples) +
+                                 ", the number of rows"});
+    }
+    // k <= samples was the bound that was missing before; it is not the whole cost. Each
+    // Lloyd iteration compares every point to every centre, and more centres also mean
+    // more iterations before it settles, so k enters TWICE: 3000 points at k = 100 took
+    // 0.4 s and at k = 400 took 7.0 s, seventeen times for four. 15 ns a unit.
+    WorkBudget budget("ml_kmeans_fit", 15.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_k = budget.take_square("k", static_cast<double>(k));
+    if (!bounded_k) {
+        return std::unexpected(bounded_k.error());
     }
     ml::KMeans km(k);
     km.fit(*X);
@@ -1122,7 +1272,9 @@ Matrix<double> ml_standard_scaler_to_matrix(const ml::StandardScaler& sc) {
 }
 
 Result<ml::GaussianMixture> ml_gmm_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 3 || model.cols() < 1) {
+    // The header row is read at columns 0, 1 and 2 below, so the guard has to cover all
+    // three: it asked for one column, and a narrower model matrix read past the row.
+    if (model.rows() < 3 || model.cols() < 3) {
         return std::unexpected(DomainError{fn, "expected GMM model matrix"});
     }
     const int K = static_cast<int>(model(0, 0));
@@ -1161,8 +1313,27 @@ Result<Matrix<double>> eval_ml_gmm_fit(const Matrix<double>& X_m, int n_componen
     if (X->empty()) {
         return std::unexpected(DomainError{"ml_gmm_fit", "expected non-empty X"});
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_gmm_fit", "expected n_components >= 1"});
+    // A mixture component needs a point to be a mixture of, and the model that comes back
+    // is 2*K+2 rows by max(features, K, 3) columns -- so K enters the answer TWICE.
+    // `ml_gmm_fit(ones(100000,1), 100000)` is a 200002 by 100000 model, 160 GB, and it
+    // ABORTED the process in 2.0 s.
+    const auto samples = static_cast<int>(X->size());
+    if (n_components < 1 || n_components > samples) {
+        return std::unexpected(DomainError{
+            "ml_gmm_fit", "expected 1 <= n_components <= " + format_scalar(samples) +
+                              ", the number of rows"});
+    }
+    const double features = static_cast<double>(X->front().size());
+    const double model_cols =
+        std::max({features, static_cast<double>(n_components), 3.0});
+    if (!repl_elems_allowed(static_cast<std::size_t>(2 * n_components + 2),
+                            static_cast<std::size_t>(model_cols))) {
+        return std::unexpected(DomainError{
+            "ml_gmm_fit", "n_components " + describe_count(n_components) +
+                              " gives a " + describe_count(2.0 * n_components + 2.0) +
+                              " by " + describe_count(model_cols) +
+                              " model, which is limited to " +
+                              std::to_string(kMaxReplMatrixElems) + " elements"});
     }
     ml::GaussianMixture gmm;
     gmm.config.n_components = static_cast<size_t>(n_components);
@@ -1223,8 +1394,28 @@ Result<Matrix<double>> eval_ml_spectral_clustering(const Matrix<double>& X_m, in
         return std::unexpected(
             DomainError{"ml_spectral_clustering", "expected non-empty X"});
     }
-    if (k < 1) {
-        return std::unexpected(DomainError{"ml_spectral_clustering", "expected k >= 1"});
+    const auto samples = static_cast<int>(X->size());
+    if (k < 1 || k > samples) {
+        return std::unexpected(DomainError{
+            "ml_spectral_clustering", "expected 1 <= k <= " + format_scalar(samples) +
+                                          ", the number of rows"});
+    }
+    // Two costs with very different constants, so two bounds. The affinity matrix is
+    // n by n and its eigendecomposition is cubic -- 8 ns per n^3, which is what a small k
+    // spends all its time on -- and the k-means over the embedding is the same n * k^2 as
+    // `ml_kmeans_fit` but on vectors k wide rather than two, at about 350 ns. 400 points
+    // at k = 100 took 1.4 s; at k = 400, the sweep's probe, it did not finish in 25 s.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_spectral_clustering", "the row count", static_cast<double>(samples), 3, 8.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
+    }
+    WorkBudget clustering("ml_spectral_clustering", 350.0, kMaxReplSimulationWorkNanos);
+    clustering.charge(X->size());
+    auto bounded_k = clustering.take_square("k", static_cast<double>(k));
+    if (!bounded_k) {
+        return std::unexpected(bounded_k.error());
     }
     auto labels = ml::spectral_clustering(*X, k, sigma, n_neighbors);
     return int_vector_to_column(labels);
@@ -1310,6 +1501,15 @@ Result<std::string> parse_ml_linkage(const std::string& text, const char* fn) {
         DomainError{fn, "expected linkage ward|single|average|complete"});
 }
 
+// A tree ensemble's size is a plain count from the command line, and nothing
+// bounded it: `ml_random_forest_fit(X, y, 3000000000)` grew trees until the
+// process was killed, and `ml_isolation_forest_fit(X, 1e18)` asked for an
+// allocation the -fno-exceptions build aborts on rather than reports. These
+// caps are far above any useful ensemble and keep the failure a reported error.
+constexpr size_t kMaxEnsembleSize = 10000;
+constexpr size_t kMaxTreeDepth = 512;
+constexpr size_t kMaxForestSampleSize = 1000000;
+
 Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, size_t n_trees,
                                                      size_t sample_size, unsigned seed) {
     auto X = matrix_to_ml_mat(X_m, "ml_isolation_forest_fit");
@@ -1325,6 +1525,24 @@ Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, s
     if (sample_size < 1) {
         return std::unexpected(
             DomainError{"ml_isolation_forest_fit", "expected sample_size >= 1"});
+    }
+    if (n_trees > kMaxEnsembleSize) {
+        return std::unexpected(DomainError{"ml_isolation_forest_fit",
+                                           "n_trees exceeds the supported maximum of 10000"});
+    }
+    if (sample_size > kMaxForestSampleSize) {
+        return std::unexpected(DomainError{
+            "ml_isolation_forest_fit", "sample_size exceeds the supported maximum of 1000000"});
+    }
+    // Both ceilings above are per-argument, and what it costs is the two of them
+    // multiplied: 10000 trees over a 10000-row subsample is 1e8 and took 6.4 s, right
+    // past the simulation budget, with both arguments inside their own maximum.
+    // 60 ns a sampled row.
+    WorkBudget budget("ml_isolation_forest_fit", 60.0, kMaxReplSimulationWorkNanos);
+    budget.charge(std::min(sample_size, X->size()));
+    auto bounded_trees = budget.take("n_trees", static_cast<double>(n_trees));
+    if (!bounded_trees) {
+        return std::unexpected(bounded_trees.error());
     }
     ml::IsolationForest iso(n_trees, sample_size, seed);
     iso.fit(*X);
@@ -1356,6 +1574,15 @@ Result<Matrix<double>> eval_ml_agglomerative_fit(const Matrix<double>& X_m, int 
     if (n_clusters < 1) {
         return std::unexpected(DomainError{"ml_agglomerative_fit", "expected n_clusters >= 1"});
     }
+    // The same, one power further up: each of the n merges rescans the whole pairwise
+    // distance table, so the row count is cubed. 300 rows took 0.7 s, 600 took 5.9 s and
+    // 900 took 21.3 s -- 30 ns per row^3, and 8x and 27x are what a cube looks like.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_agglomerative_fit", "the row count", static_cast<double>(X->size()), 3, 30.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
+    }
     ml::AgglomerativeClustering ac(n_clusters, linkage);
     ac.fit(*X);
     return vector_to_column(ac.labels_);
@@ -1375,6 +1602,17 @@ Result<Matrix<double>> eval_ml_tsne_fit(const Matrix<double>& X_m, double perple
     }
     if (n_iter < 1) {
         return std::unexpected(DomainError{"ml_tsne_fit", "expected n_iter >= 1"});
+    }
+    // Barnes-Hut still rebuilds the tree and walks every point on every iteration, so the
+    // cost is the product: 200 points over 250 iterations took 1.0 s and 400 points over
+    // the same 250 took 2.5 s -- about 25 us per point-iteration either way. A longer run
+    // is a request rather than a slip, so it is budgeted against the simulation policy;
+    // the sweep asked for two billion iterations.
+    WorkBudget budget("ml_tsne_fit", 25000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_iter = budget.take("n_iter", static_cast<double>(n_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
     }
     ml::TSNE tsne(2, perplexity, 200.0, n_iter, seed);
     return grid_to_matrix(tsne.fit_transform(*X));
@@ -1609,7 +1847,9 @@ Result<Matrix<double>> eval_ml_elastic_net_predict(const Matrix<double>& X_m,
 Matrix<double> ml_knn_to_matrix(const ml::KNN& knn) {
     const size_t n = knn.X_train.size();
     const size_t p = n > 0 ? knn.X_train[0].size() : 0;
-    Matrix<double> out(n + 1, p + 1);
+    // The header row below writes columns 0, 1 and 2, so p + 1 columns are not
+    // enough for a model with fewer than two features.
+    Matrix<double> out(n + 1, std::max(p + 1, size_t{3}));
     out(0, 0) = static_cast<double>(knn.k);
     out(0, 1) = static_cast<double>(p);
     out(0, 2) = static_cast<double>(n);
@@ -1623,7 +1863,8 @@ Matrix<double> ml_knn_to_matrix(const ml::KNN& knn) {
 }
 
 Result<ml::KNN> ml_knn_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 2 || model.cols() < 2) {
+    // The header row is read at columns 0, 1 and 2 below.
+    if (model.rows() < 2 || model.cols() < 3) {
         return std::unexpected(
             DomainError{fn, "expected KNN model with header row and training data"});
     }
@@ -1631,7 +1872,7 @@ Result<ml::KNN> ml_knn_from_matrix(const Matrix<double>& model, const char* fn) 
     const int p = static_cast<int>(model(0, 1));
     const int n = static_cast<int>(model(0, 2));
     if (k < 1 || p < 1 || n < 1 || model.rows() != static_cast<size_t>(n + 1) ||
-        model.cols() != static_cast<size_t>(p + 1)) {
+        model.cols() < static_cast<size_t>(p + 1)) {
         return std::unexpected(DomainError{fn, "invalid KNN model layout"});
     }
     ml::KNN knn(k);
@@ -1682,7 +1923,9 @@ Result<Matrix<double>> eval_ml_knn_predict(const Matrix<double>& X_m,
 Matrix<double> ml_naive_bayes_to_matrix(const ml::NaiveBayes& nb) {
     const size_t C = nb.classes.size();
     const size_t p = C > 0 && !nb.mean.empty() ? nb.mean[0].size() : 0;
-    Matrix<double> out(1 + 4 * C, std::max(p, size_t{1}));
+    // The header row below writes columns 0 and 1, so a one-feature model still
+    // needs two columns: max(p, 1) wrote past the end of a p == 1 matrix.
+    Matrix<double> out(1 + 4 * C, std::max(p, size_t{2}));
     out(0, 0) = static_cast<double>(C);
     out(0, 1) = static_cast<double>(p);
     for (size_t c = 0; c < C; ++c) {
@@ -1697,13 +1940,14 @@ Matrix<double> ml_naive_bayes_to_matrix(const ml::NaiveBayes& nb) {
 }
 
 Result<ml::NaiveBayes> ml_naive_bayes_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 5) {
+    // The header row is read at columns 0 and 1 below, and nothing checked the width.
+    if (model.rows() < 5 || model.cols() < 2) {
         return std::unexpected(DomainError{fn, "expected NaiveBayes model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
     const int p = static_cast<int>(model(0, 1));
     if (C < 1 || p < 1 || model.rows() != static_cast<size_t>(1 + 4 * C) ||
-        model.cols() != static_cast<size_t>(p)) {
+        model.cols() < static_cast<size_t>(p)) {
         return std::unexpected(DomainError{fn, "invalid NaiveBayes model layout"});
     }
     ml::NaiveBayes nb;
@@ -1756,8 +2000,14 @@ Result<Matrix<double>> eval_ml_naive_bayes_predict(const Matrix<double>& X_m,
 }
 
 Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
-    const size_t C = lda.classes.size();
-    const size_t p = C > 0 && !lda.mean.empty() ? lda.mean[0].size() : 0;
+    // LDA::fit gives up on a single-class problem after it has already filled
+    // `classes`, leaving the per-class arrays empty. Sizing the loop below by
+    // classes.size() alone then indexed empty vectors, so take the size every
+    // array agrees on: an incomplete model packs as a header with no classes,
+    // which ml_lda_from_matrix rejects.
+    const size_t C = std::min({lda.classes.size(), lda.mean.size(), lda.discrim_coef.size(),
+                               lda.discrim_const.size()});
+    const size_t p = C > 0 ? lda.mean[0].size() : 0;
     const size_t n_comp = lda.projection.size();
     const size_t n_cols = std::max(p, size_t{4});
     Matrix<double> out(1 + 4 * C + n_comp + 1, n_cols);
@@ -1778,14 +2028,15 @@ Matrix<double> ml_lda_to_matrix(const ml::LDA& lda) {
             out(1 + 4 * C + r, j) = lda.projection[r][j];
         }
     }
-    for (size_t j = 0; j < p; ++j) {
+    for (size_t j = 0; j < p && j < lda.overall_mean.size(); ++j) {
         out(1 + 4 * C + n_comp, j) = lda.overall_mean[j];
     }
     return out;
 }
 
 Result<ml::LDA> ml_lda_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 6) {
+    // The header row is read at columns 0 through 3 below, and nothing checked the width.
+    if (model.rows() < 6 || model.cols() < 4) {
         return std::unexpected(DomainError{fn, "expected LDA model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
@@ -1841,6 +2092,10 @@ Result<Matrix<double>> eval_ml_lda_fit(const Matrix<double>& X_m, const Matrix<d
     }
     ml::LDA lda(1e-6, n_components);
     lda.fit(*X, *y);
+    if (lda.discrim_coef.empty()) {
+        return std::unexpected(DomainError{
+            "ml_lda_fit", "expected at least two distinct class labels in y"});
+    }
     return ml_lda_to_matrix(lda);
 }
 
@@ -1892,8 +2147,12 @@ Result<Matrix<double>> eval_ml_lda_transform(const Matrix<double>& X_m,
 }
 
 Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
-    const size_t C = qda.classes.size();
-    const size_t p = C > 0 && !qda.mean.empty() ? qda.mean[0].size() : 0;
+    // Sized by the array with the fewest entries, for the reason spelled out in
+    // ml_lda_to_matrix: a fit that gave up part way leaves these disagreeing.
+    const size_t C = std::min({qda.classes.size(), qda.mean.size(), qda.linear_coef.size(),
+                               qda.discrim_const.size(), qda.class_prior.size(),
+                               qda.quad_coef.size()});
+    const size_t p = C > 0 ? qda.mean[0].size() : 0;
     const size_t pp = p * p;
     const size_t n_cols = std::max({p, pp, size_t{3}});
     Matrix<double> out(1 + 5 * C, n_cols);
@@ -1916,7 +2175,8 @@ Matrix<double> ml_qda_to_matrix(const ml::QDA& qda) {
 }
 
 Result<ml::QDA> ml_qda_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 6) {
+    // The header row is read at columns 0, 1 and 2 below, and nothing checked the width.
+    if (model.rows() < 6 || model.cols() < 3) {
         return std::unexpected(DomainError{fn, "expected QDA model matrix"});
     }
     const int C = static_cast<int>(model(0, 0));
@@ -2006,7 +2266,8 @@ Matrix<double> ml_svm_to_matrix(const ml::SVM& svm) {
 }
 
 Result<ml::SVM> ml_svm_from_matrix(const Matrix<double>& model, const char* fn) {
-    if (model.rows() < 2 || model.cols() < 3) {
+    // The header row is read at columns 0 through 7 below; the guard asked for three.
+    if (model.rows() < 2 || model.cols() < 8) {
         return std::unexpected(
             DomainError{fn, "expected SVM model with header row and support vectors"});
     }
@@ -2058,6 +2319,16 @@ Result<Matrix<double>> eval_ml_svm_fit(const Matrix<double>& X_m, const Matrix<d
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    // Nothing in this call is a size argument. The SMO loop evaluates the kernel between
+    // every pair on every pass, so the row count alone decides what it costs: 400 rows
+    // took 3.5 s and 800 took 13.9 s, four times for double. 21700 ns per row^2 -- a
+    // large constant because a pass is many sweeps, not one.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_svm_fit", "the row count", static_cast<double>(X->size()), 2, 21700.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
     }
     ml::SVM svm;
     svm.config.C = C;
@@ -2395,6 +2666,10 @@ Result<Matrix<double>> eval_ml_decision_tree_fit(const Matrix<double>& X_m, cons
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
     }
+    if (max_depth > static_cast<int>(kMaxTreeDepth)) {
+        return std::unexpected(
+            DomainError{"ml_decision_tree_fit", "max_depth exceeds the supported maximum of 512"});
+    }
     ml::DecisionTree tree(max_depth);
     tree.fit(*X, *y);
     return ml_decision_tree_to_matrix(tree);
@@ -2425,6 +2700,19 @@ Result<Matrix<double>> eval_ml_random_forest_fit(const Matrix<double>& X_m, cons
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_trees > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_random_forest_fit",
+            "n_trees exceeds the supported maximum of 10000, or max_depth of 512"});
+    }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_random_forest_fit", 450.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_trees", static_cast<double>(n_trees));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
     }
     ml::RandomForest rf;
     rf.config.n_trees = n_trees;
@@ -2459,6 +2747,19 @@ Result<Matrix<double>> eval_ml_adaboost_fit(const Matrix<double>& X_m, const Mat
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_estimators > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_adaboost_fit",
+            "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
+    }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_adaboost_fit", 85.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_estimators", static_cast<double>(n_estimators));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
     }
     ml::AdaBoost ab;
     ab.config.n_estimators = n_estimators;
@@ -2495,6 +2796,19 @@ Result<Matrix<double>> eval_ml_gradient_boosting_fit(const Matrix<double>& X_m,
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    if (n_estimators > kMaxEnsembleSize || max_depth > kMaxTreeDepth) {
+        return std::unexpected(DomainError{
+            "ml_gradient_boosting_fit",
+            "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
+    }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_gradient_boosting_fit", 50.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_estimators", static_cast<double>(n_estimators));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
     }
     ml::GradientBoosting gb;
     gb.config.n_trees = n_estimators;
@@ -2893,7 +3207,15 @@ Result<double> eval_numthy_tonelli_shanks(double n_d, double p_d) {
         return std::unexpected(
             DomainError{"numthy_tonelli_shanks", "expected n >= 0 and p > 0"});
     }
-    auto root = numthy::tonelli_shanks(static_cast<uint64_t>(n_d), static_cast<uint64_t>(p_d));
+    auto n_u = checked_u64_argument("numthy_tonelli_shanks", "n", n_d, kMaxU64AsDouble);
+    if (!n_u) {
+        return std::unexpected(n_u.error());
+    }
+    auto p_u = checked_u64_argument("numthy_tonelli_shanks", "p", p_d, kMaxU64AsDouble);
+    if (!p_u) {
+        return std::unexpected(p_u.error());
+    }
+    auto root = numthy::tonelli_shanks(*n_u, *p_u);
     if (!root) {
         return std::unexpected(root.error());
     }
@@ -2909,7 +3231,15 @@ Result<double> eval_numthy_mod_inv(double a_d, double m_d) {
         return std::unexpected(
             DomainError{"numthy_mod_inv", "expected a >= 0 and m > 0"});
     }
-    auto inv = numthy::mod_inv(static_cast<uint64_t>(a_d), static_cast<uint64_t>(m_d));
+    auto a_u = checked_u64_argument("numthy_mod_inv", "a", a_d, kMaxU64AsDouble);
+    if (!a_u) {
+        return std::unexpected(a_u.error());
+    }
+    auto m_u = checked_u64_argument("numthy_mod_inv", "m", m_d, kMaxU64AsDouble);
+    if (!m_u) {
+        return std::unexpected(m_u.error());
+    }
+    auto inv = numthy::mod_inv(*a_u, *m_u);
     if (!inv) {
         return std::unexpected(inv.error());
     }
@@ -2925,8 +3255,19 @@ Result<double> eval_numthy_discrete_log(double g_d, double h_d, double p_d) {
         return std::unexpected(
             DomainError{"numthy_discrete_log", "expected g >= 0, h >= 0, p > 0"});
     }
-    auto x = numthy::discrete_log(static_cast<uint64_t>(g_d), static_cast<uint64_t>(h_d),
-                                   static_cast<uint64_t>(p_d));
+    auto g_u = checked_u64_argument("numthy_discrete_log", "g", g_d, kMaxU64AsDouble);
+    if (!g_u) {
+        return std::unexpected(g_u.error());
+    }
+    auto h_u = checked_u64_argument("numthy_discrete_log", "h", h_d, kMaxU64AsDouble);
+    if (!h_u) {
+        return std::unexpected(h_u.error());
+    }
+    auto p_u = checked_u64_argument("numthy_discrete_log", "p", p_d, kMaxU64AsDouble);
+    if (!p_u) {
+        return std::unexpected(p_u.error());
+    }
+    auto x = numthy::discrete_log(*g_u, *h_u, *p_u);
     if (!x) {
         return std::unexpected(x.error());
     }
@@ -3362,6 +3703,11 @@ Result<double> eval_info_joint_entropy(const Matrix<double>& joint_m, int rows, 
             flat.push_back(joint_m(i, j));
         }
     }
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > flat.size()) {
+        return std::unexpected(DomainError{
+            "info_joint_entropy", "rows*cols exceeds the joint PMF matrix"});
+    }
     return info::joint_entropy(flat, rows, cols, 2.0);
 }
 
@@ -3376,6 +3722,11 @@ Result<double> eval_info_conditional_entropy(const Matrix<double>& joint_m, int 
         for (size_t j = 0; j < joint_m.cols(); ++j) {
             flat.push_back(joint_m(i, j));
         }
+    }
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > flat.size()) {
+        return std::unexpected(DomainError{
+            "info_conditional_entropy", "rows*cols exceeds the joint PMF matrix"});
     }
     return info::conditional_entropy(flat, rows, cols, 2.0);
 }
@@ -3420,6 +3771,24 @@ Result<double> eval_info_transfer_entropy(const Matrix<double>& x_m, const Matri
     }
     if (x->size() != y->size()) {
         return std::unexpected(DomainError{"info_transfer_entropy", "vector length mismatch"});
+    }
+    // The joint distribution is bins x bins x bins. Nothing bounded it, and the
+    // product was formed in `int`, so `info_transfer_entropy(V, V, 10000000, 1)` --
+    // an ordinary integer, well inside the linear cap -- was an overflowing multiply
+    // followed by a vector longer than max_size(), and the process ended there.
+    //
+    // 64 is not only what fits: 64^3 is exactly kMaxReplMatrixElems, and a REPL
+    // matrix holds at most that many samples, so past 64 bins there is less than one
+    // observation per cell and the estimate is noise however long you wait for it.
+    const double cells = static_cast<double>(bins) * static_cast<double>(bins) *
+                         static_cast<double>(bins);
+    if (bins < 1 || cells > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            "info_transfer_entropy",
+            "bins " + describe_count(static_cast<double>(bins)) +
+                " gives a bins x bins x bins joint distribution of " +
+                describe_count(cells) + " cells, which is limited to " +
+                std::to_string(kMaxReplMatrixElems)});
     }
     return info::transfer_entropy(*x, *y, bins, lag);
 }
@@ -3557,6 +3926,15 @@ Result<double> eval_info_tsallis_entropy(double q_param, const Matrix<double>& p
 
 Result<double> eval_quantum_entanglement_entropy(const Matrix<double>& psi_m, int dim_a,
                                                  int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_entanglement_entropy` at dim_a = 4096 is 6.9e10 units: 82 s, measured
+    // from 0.65 s at dim_a = 1024. A ten-qubit subsystem stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument("quantum_entanglement_entropy", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_entanglement_entropy");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -3605,6 +3983,13 @@ Result<Matrix<double>> eval_quantum_fock_state(int n, int n_max) {
     if (n < 0 || n > n_max) {
         return std::unexpected(DomainError{"quantum_fock_state", "expected 0 <= n <= n_max"});
     }
+    // The ket has one amplitude per level from 0 to n_max, as a (real, imaginary)
+    // pair, and it is built before the matrix cap sees it.
+    auto bounded = checked_result_length("quantum_fock_state", "n_max",
+                                         static_cast<double>(n_max) + 1.0, 2);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return ket_to_column_matrix(quantum::fock_state(n, n_max));
 }
 
@@ -3616,6 +4001,15 @@ Result<double> eval_quantum_fidelity(const Matrix<double>& rho_m, const Matrix<d
     auto sigma = matrix_to_density_matrix(sigma_m, "quantum_fidelity");
     if (!sigma) {
         return std::unexpected(sigma.error());
+    }
+    // quantum::fidelity answers 0.0 when the two states have different dimensions,
+    // and 0.0 is also the fidelity of two orthogonal states -- so a caller that passed
+    // a 2x2 and a 4x4 got a number that reads as "these states are perfectly
+    // distinguishable" rather than "these are not two states of the same system".
+    // eval_quantum_expectation_dm below already checks this; these two did not.
+    if (rho->size() != sigma->size()) {
+        return std::unexpected(
+            DomainError{"quantum_fidelity", "density matrices must have same dimension"});
     }
     return quantum::fidelity(*rho, *sigma);
 }
@@ -3677,6 +4071,12 @@ Result<double> eval_quantum_trace_distance(const Matrix<double>& rho_m,
     auto sigma = matrix_to_density_matrix(sigma_m, "quantum_trace_distance");
     if (!sigma) {
         return std::unexpected(sigma.error());
+    }
+    // Same shape of leak: 0.0 is the trace distance of two identical states, so a
+    // dimension mismatch came back as "these states are the same".
+    if (rho->size() != sigma->size()) {
+        return std::unexpected(
+            DomainError{"quantum_trace_distance", "density matrices must have same dimension"});
     }
     return quantum::trace_distance(*rho, *sigma);
 }
@@ -3937,6 +4337,13 @@ Result<Matrix<double>> eval_geo_bspline_eval(const Matrix<double>& ctrl_m,
         return std::unexpected(DomainError{
             "geo_bspline_eval", "expected knot vector length >= n+degree+2"});
     }
+    // de Boor evaluates a triangle of degree^2 affine combinations for a single point:
+    // degree 8000 took 0.4 s, so 7 ns per degree^2. The sweep asked for 131071.
+    auto bounded_degree = checked_superlinear_argument("geo_bspline_eval", "degree",
+                                                       static_cast<double>(degree), 2, 7.0);
+    if (!bounded_degree) {
+        return std::unexpected(bounded_degree.error());
+    }
     const geo::Point2D p = geo::bspline_eval(*ctrl, *knots, degree, t);
     Matrix<double> out(1, 2);
     out(0, 0) = p.x;
@@ -4131,8 +4538,16 @@ Result<double> eval_numthy_crt(const Matrix<double>& r_m, const Matrix<double>& 
             return std::unexpected(
                 DomainError{"numthy_crt", "expected non-negative remainders and positive moduli"});
         }
-        r.push_back(static_cast<uint64_t>((*r_vec)[i]));
-        m.push_back(static_cast<uint64_t>((*m_vec)[i]));
+        auto r_u = checked_u64_argument("numthy_crt", "remainder", (*r_vec)[i], kMaxU64AsDouble);
+        if (!r_u) {
+            return std::unexpected(r_u.error());
+        }
+        auto m_u = checked_u64_argument("numthy_crt", "modulus", (*m_vec)[i], kMaxU64AsDouble);
+        if (!m_u) {
+            return std::unexpected(m_u.error());
+        }
+        r.push_back(*r_u);
+        m.push_back(*m_u);
     }
     auto x = numthy::crt(r, m);
     if (!x) {
@@ -4225,8 +4640,11 @@ Result<compress::Bytes> matrix_col_to_bytes(const Matrix<double>& m, const char*
 }
 
 Result<double> eval_bwt_primary_index(const Matrix<double>& m) {
-    const auto bytes = matrix_to_bytes(m);
-    const compress::BWTResult result = compress::bwt(bytes);
+    auto bytes = matrix_to_bytes(m, "bwt_primary_index");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::BWTResult result = compress::bwt(*bytes);
     return static_cast<double>(result.primary_index);
 }
 
@@ -4292,7 +4710,12 @@ Result<double> eval_combo_multinomial(double n_d, const Matrix<double>& ks_m) {
         }
         ks.push_back(static_cast<uint32_t>(k));
     }
-    return static_cast<double>(combo::multinomial(static_cast<uint32_t>(n_d), ks));
+    const uint64_t count = combo::multinomial(static_cast<uint32_t>(n_d), ks);
+    if (count == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_multinomial", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(count);
 }
 
 Result<Matrix<double>> eval_numthy_factor_vec(int n) {
@@ -4322,10 +4745,49 @@ Result<Matrix<double>> eval_numthy_factor_exp(int n) {
     return out;
 }
 
+/// `F_n` holds `1 + sum_{k=1..n} phi(k)` fractions, which is about `0.304 n^2`. The
+/// length is QUADRATIC in an argument the REPL reads as an ordinary count, so
+/// `numthy_farey(1000000)` asks for three hundred billion rows -- and `numthy::farey`
+/// builds the whole sequence before it returns, so with `-fno-exceptions` that
+/// allocation ended the process without printing anything at all.
+///
+/// The length is COMPUTED rather than estimated. An estimate would have to be
+/// conservative, and a conservative estimate refuses an `n` whose sequence actually
+/// fits. Computing it needs a totient sieve of size `n`, so the trivial `|F_n| >= n`
+/// goes first: it bounds the sieve by the same budget as the result.
 Result<Matrix<double>> eval_numthy_farey(int n) {
     if (n < 1) {
         return std::unexpected(
             DomainError{"numthy_farey", "expected positive integer n"});
+    }
+    constexpr std::size_t kMaxRows = kMaxReplMatrixElems / 2;  // a numerator and a denominator
+    const auto order = static_cast<std::size_t>(n);
+    const bool counted = order <= kMaxRows;
+    std::size_t terms = kMaxRows + 1;
+    if (counted) {
+        std::vector<std::uint32_t> phi(order + 1);
+        for (std::uint32_t i = 0; i <= order; ++i) {
+            phi[i] = i;
+        }
+        for (std::uint32_t i = 2; i <= order; ++i) {
+            if (phi[i] == i) {  // i is prime, so it has not been touched yet
+                for (std::uint32_t j = i; j <= order; j += i) {
+                    phi[j] -= phi[j] / i;
+                }
+            }
+        }
+        terms = 1;
+        for (std::uint32_t k = 1; k <= order; ++k) {
+            terms += phi[k];
+        }
+    }
+    if (terms > kMaxRows) {
+        return std::unexpected(DomainError{
+            "numthy_farey",
+            "the Farey sequence of order " + format_scalar(n) + " has " +
+                (counted ? format_scalar(terms) : "more than " + format_scalar(kMaxRows)) +
+                " fractions in it; the result is limited to " + format_scalar(kMaxRows) +
+                " rows"});
     }
     const auto fr = numthy::farey(static_cast<uint32_t>(n));
     Matrix<double> out(fr.size(), 2);
@@ -4353,8 +4815,15 @@ Result<double> eval_numthy_multiplicative_order(double a_d, double n_d) {
         return std::unexpected(
             DomainError{"numthy_multiplicative_order", "expected a >= 0 and n >= 0"});
     }
-    auto ord = numthy::multiplicative_order(static_cast<uint64_t>(a_d),
-                                             static_cast<uint64_t>(n_d));
+    auto a_u = checked_u64_argument("numthy_multiplicative_order", "a", a_d, kMaxU64AsDouble);
+    if (!a_u) {
+        return std::unexpected(a_u.error());
+    }
+    auto n_u = checked_u64_argument("numthy_multiplicative_order", "n", n_d, kMaxU64AsDouble);
+    if (!n_u) {
+        return std::unexpected(n_u.error());
+    }
+    auto ord = numthy::multiplicative_order(*a_u, *n_u);
     if (!ord) {
         return std::unexpected(ord.error());
     }
@@ -4370,9 +4839,12 @@ Matrix<double> codes_to_matrix_col(const std::vector<uint32_t>& codes) {
 }
 
 Result<Matrix<double>> eval_numthy_stern_brocot(int n) {
-    if (n < 0) {
-        return std::unexpected(
-            DomainError{"numthy_stern_brocot", "expected non-negative integer n"});
+    // The tree has one row per level and two columns, and it is built in full
+    // before the matrix cap gets to see it: n = 1e7 took 16.6 s to be refused.
+    auto bounded_n = checked_result_length("numthy_stern_brocot", "n",
+                                           static_cast<double>(n), 2);
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
     }
     const auto sb = numthy::stern_brocot(static_cast<uint64_t>(n));
     Matrix<double> out(sb.size(), 2);
@@ -4432,7 +4904,11 @@ Result<Matrix<double>> eval_numthy_quadratic_residues(int p) {
 }
 
 Result<Matrix<double>> eval_lzw_encode_vec(const Matrix<double>& m) {
-    return codes_to_matrix_col(compress::lzw_encode(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "lzw_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return codes_to_matrix_col(compress::lzw_encode(*bytes));
 }
 
 Result<Matrix<double>> eval_lzw_decode_vec(const Matrix<double>& codes_m) {
@@ -4454,38 +4930,59 @@ Result<Matrix<double>> eval_lzw_decode_vec(const Matrix<double>& codes_m) {
 }
 
 Result<Matrix<double>> eval_huffman_encode_vec(const Matrix<double>& m) {
-    const compress::HuffmanResult hr = compress::huffman_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "huffman_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::HuffmanResult hr = compress::huffman_encode(*bytes);
     return bytes_to_matrix_col(hr.encoded);
 }
 
 Result<Matrix<double>> eval_huffman_decode_vec(const Matrix<double>& orig_m,
                                                const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::HuffmanResult hr = compress::huffman_encode(bytes);
-    return bytes_to_matrix_col(compress::huffman_decode(hr, bytes.size()));
+    auto bytes = matrix_to_bytes(orig_m, "huffman_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::HuffmanResult hr = compress::huffman_encode(*bytes);
+    return bytes_to_matrix_col(compress::huffman_decode(hr, bytes->size()));
 }
 
 Result<Matrix<double>> eval_arithmetic_encode_vec(const Matrix<double>& m) {
-    const compress::ArithmeticResult ar = compress::arithmetic_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "arithmetic_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(*bytes);
     return bytes_to_matrix_col(ar.encoded);
 }
 
 Result<Matrix<double>> eval_arithmetic_decode_vec(const Matrix<double>& orig_m,
                                                   const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::ArithmeticResult ar = compress::arithmetic_encode(bytes);
+    auto bytes = matrix_to_bytes(orig_m, "arithmetic_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::ArithmeticResult ar = compress::arithmetic_encode(*bytes);
     return bytes_to_matrix_col(compress::arithmetic_decode(ar));
 }
 
 Result<Matrix<double>> eval_ans_encode_vec(const Matrix<double>& m) {
-    const compress::AnsResult ar = compress::ans_encode(matrix_to_bytes(m));
+    auto bytes = matrix_to_bytes(m, "ans_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::AnsResult ar = compress::ans_encode(*bytes);
     return bytes_to_matrix_col(ar.encoded);
 }
 
 Result<Matrix<double>> eval_ans_decode_vec(const Matrix<double>& orig_m,
                                            const Matrix<double>& /*encoded_m*/) {
-    const compress::Bytes bytes = matrix_to_bytes(orig_m);
-    const compress::AnsResult ar = compress::ans_encode(bytes);
+    auto bytes = matrix_to_bytes(orig_m, "ans_decode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    const compress::AnsResult ar = compress::ans_encode(*bytes);
     return bytes_to_matrix_col(compress::ans_decode(ar));
 }
 
@@ -4606,7 +5103,11 @@ Result<double> eval_gria_settling_time(const Matrix<double>& a_m, const Matrix<d
 
 Result<Matrix<double>> eval_wavelet_compress_vec(const Matrix<double>& m,
                                                  double threshold = 0.0) {
-    return bytes_to_matrix_col(compress::wavelet_compress(matrix_to_bytes(m), threshold));
+    auto bytes = matrix_to_bytes(m, "wavelet_compress_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::wavelet_compress(*bytes, threshold));
 }
 
 Result<Matrix<double>> eval_wavelet_decompress_vec(const Matrix<double>& compressed_m) {
@@ -4621,6 +5122,11 @@ Result<Matrix<double>> eval_quantum_coherent_state(double alpha_re, double alpha
     if (n_max < 0) {
         return std::unexpected(
             DomainError{"quantum_coherent_state", "expected n_max >= 0"});
+    }
+    auto bounded = checked_result_length("quantum_coherent_state", "n_max",
+                                         static_cast<double>(n_max) + 1.0, 2);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     return ket_to_column_matrix(
         quantum::coherent_state(quantum::C(alpha_re, alpha_im), n_max));
@@ -4879,7 +5385,12 @@ Result<double> eval_combo_rank_permutation(const Matrix<double>& v_m) {
         }
         v.push_back(static_cast<int>(entry));
     }
-    return static_cast<double>(combo::rank_permutation(v));
+    const uint64_t rank = combo::rank_permutation(v);
+    if (rank == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_rank_permutation", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(rank);
 }
 
 Result<Matrix<double>> eval_combo_unrank_permutation(int n, uint64_t rank) {
@@ -4888,6 +5399,10 @@ Result<Matrix<double>> eval_combo_unrank_permutation(int n, uint64_t rank) {
             DomainError{"combo_unrank_permutation", "expected non-negative integer n"});
     }
     const auto v = combo::unrank_permutation(n, rank);
+    if (v.empty() && n != 0) {
+        return std::unexpected(
+            DomainError{"combo_unrank_permutation", "no permutation with that rank"});
+    }
     Matrix<double> out(v.size(), 1);
     for (size_t i = 0; i < v.size(); ++i) {
         out(i, 0) = static_cast<double>(v[i]);
@@ -4987,12 +5502,31 @@ Result<double> eval_combo_rank_combination(const Matrix<double>& v_m, int n) {
         return std::unexpected(
             DomainError{"combo_rank_combination", "expected non-negative integer n"});
     }
-    return static_cast<double>(combo::rank_combination(v, n));
+    const uint64_t rank = combo::rank_combination(v, n);
+    if (rank == UINT64_MAX) {
+        return std::unexpected(
+            DomainError{"combo_rank_combination", "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(rank);
 }
 
 Result<Matrix<double>> eval_lz77_encode_vec(const Matrix<double>& m, int window = 255,
                                             int lookahead = 15) {
-    const auto tokens = compress::lz77_encode(matrix_to_bytes(m), window, lookahead);
+    auto bytes = matrix_to_bytes(m, "lz77_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    // The match search rescans the whole window at every position, so the cost is the
+    // input times the window: 65536 bytes at a 16384-byte window took 5.3 s, about 6 ns a
+    // comparison. The sweep's 262144-byte window over 262144 bytes is 6.9e10 of them.
+    // A larger window is a better ratio, which makes it a request rather than a slip.
+    WorkBudget budget("lz77_encode_vec", 6.0, kMaxReplSimulationWorkNanos);
+    budget.charge(bytes->size());
+    auto bounded_window = budget.take("window", static_cast<double>(window));
+    if (!bounded_window) {
+        return std::unexpected(bounded_window.error());
+    }
+    const auto tokens = compress::lz77_encode(*bytes, window, lookahead);
     Matrix<double> out(tokens.size(), 3);
     for (size_t i = 0; i < tokens.size(); ++i) {
         out(i, 0) = static_cast<double>(tokens[i].offset);
@@ -5009,15 +5543,35 @@ Result<Matrix<double>> eval_lz77_decode_vec(const Matrix<double>& tokens_m) {
     }
     std::vector<compress::LZ77Token> tokens;
     tokens.reserve(tokens_m.rows());
+    std::size_t decoded_so_far = 0;
     for (size_t i = 0; i < tokens_m.rows(); ++i) {
         const double off = tokens_m(i, 0);
         const double len = tokens_m(i, 1);
         const double nc = tokens_m(i, 2);
+        // The range check is new and is not a nicety: `static_cast<uint16_t>(70000)` is
+        // 4464, so an offset past the type's range used to become a DIFFERENT, valid
+        // offset and decode silently to the wrong bytes.
         if (off < 0.0 || len < 0.0 || nc < 0.0 || nc > 255.0 || std::floor(off) != off ||
-            std::floor(len) != len || std::floor(nc) != nc) {
+            std::floor(len) != len || std::floor(nc) != nc || off > 65535.0 ||
+            len > 65535.0) {
             return std::unexpected(
-                DomainError{"lz77_decode_vec", "token values must be non-negative integers; next_char in [0,255]"});
+                DomainError{"lz77_decode_vec", "token values must be non-negative integers; offset and length in [0,65535]; next_char in [0,255]"});
         }
+        // An offset is a distance BACK from the end of what has been decoded so far, so
+        // one larger than the bytes emitted names a byte before the start of the output.
+        // `lz77_decode` computed `out.size() - offset` in unsigned arithmetic and read
+        // roughly four billion bytes past its buffer; it refuses such a stream now, and
+        // this says which token was wrong rather than returning an empty result.
+        if (off > 0.0 && len > 0.0 && static_cast<std::size_t>(off) > decoded_so_far) {
+            return std::unexpected(DomainError{
+                "lz77_decode_vec", "token " + format_scalar(i) + " looks back " +
+                                       format_scalar(off) + " bytes into an output of " +
+                                       format_scalar(decoded_so_far)});
+        }
+        if (off > 0.0 && len > 0.0) {
+            decoded_so_far += static_cast<std::size_t>(len);
+        }
+        ++decoded_so_far;  // the literal every token ends with
         tokens.push_back({static_cast<uint16_t>(off), static_cast<uint16_t>(len),
                           static_cast<uint8_t>(nc)});
     }
@@ -5077,7 +5631,23 @@ Result<Matrix<double>> eval_combo_unrank_combination(int n, int k, uint64_t rank
         return std::unexpected(
             DomainError{"combo_unrank_combination", "expected non-negative integer n and k"});
     }
+    // The answer is k numbers, but reaching it walks the candidates subtracting binomials,
+    // and a rank near the top of the range walks nearly all of them: the cost is n per
+    // position. `combo_unrank_combination(50000000, 2, C(n,2)-1)` took 1.0 s, which is 10
+    // ns a step; the sweep asked for n = 2147483647, about forty seconds of subtracting.
+    // The bound has to be the worst case, because which ranks are cheap is not something
+    // the caller can be expected to know.
+    WorkBudget budget("combo_unrank_combination", 10.0);
+    budget.charge(static_cast<std::size_t>(k));
+    auto bounded_n = budget.take("n", static_cast<double>(n));
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
+    }
     const auto v = combo::unrank_combination(n, k, rank);
+    if (v.empty() && k != 0) {
+        return std::unexpected(
+            DomainError{"combo_unrank_combination", "no combination with that rank"});
+    }
     Matrix<double> out(v.size(), 1);
     for (size_t i = 0; i < v.size(); ++i) {
         out(i, 0) = static_cast<double>(v[i]);
@@ -5513,12 +6083,22 @@ Result<double> eval_cplx_blaschke_product(double zre, double zim, const Matrix<d
     return std::abs(cplx::blaschke_product(z, zeros));
 }
 
+// Symmetrised, like eval_graph_radius next door. They are a pair -- the radius of a
+// graph is never greater than its diameter -- and reading one as directed and the other
+// as undirected can make the pair contradict itself on the same input. Reading it as
+// directed also made the diameter of a chain infinite, which is true of a directed
+// chain and not what anyone means by the diameter of an adjacency matrix.
 Result<double> eval_graph_diameter(const Matrix<double>& adj_m) {
-    auto G = graph_from_adjacency(adj_m, "graph_diameter");
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_diameter");
     if (!G) {
         return std::unexpected(G.error());
     }
-    return static_cast<double>(graph::diameter(*G));
+    const int value = graph::diameter(*G);
+    if (value < 0) {
+        return std::unexpected(
+            DomainError{"graph_diameter", "the graph is disconnected: no finite diameter"});
+    }
+    return static_cast<double>(value);
 }
 
 Result<Matrix<double>> eval_compress_bytes_to_bits(const Matrix<double>& bytes_m) {
@@ -5554,7 +6134,12 @@ Result<double> eval_graph_radius(const Matrix<double>& adj_m) {
     if (!G) {
         return std::unexpected(G.error());
     }
-    return static_cast<double>(graph::radius(*G));
+    const int value = graph::radius(*G);
+    if (value < 0) {
+        return std::unexpected(
+            DomainError{"graph_radius", "the graph is disconnected: no finite radius"});
+    }
+    return static_cast<double>(value);
 }
 
 Result<Matrix<double>> eval_combo_all_subsets(int n) {
@@ -6085,6 +6670,16 @@ Result<Matrix<double>> eval_quantum_grover_search(int n_qubits, const Matrix<dou
 }
 
 Result<double> eval_quantum_schmidt_rank(const Matrix<double>& psi_m, int dim_a, int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_rank` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) is an ordinary thing to
+    // decompose and stays well inside the bound; a twelve-qubit one does not.
+    auto dim_bounded = checked_superlinear_argument("quantum_schmidt_rank", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_schmidt_rank");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -6198,6 +6793,32 @@ Result<Matrix<double>> eval_hough_lines(const Matrix<double>& m, double edge_thr
     if (!gray) {
         return std::unexpected(gray.error());
     }
+    // The accumulator holds one cell per (theta, rho) pair, so what it costs is the
+    // PRODUCT of the two resolutions. Each on its own reads as an ordinary count --
+    // `hough_lines(A, 0.5, 100000000, 100000000, 1)` names two of them and asks for ten
+    // quadrillion cells, and the allocation ended the process.
+    if (n_theta < 1 || n_rho < 1) {
+        return std::unexpected(
+            DomainError{"hough_lines", "expected n_theta >= 1 and n_rho >= 1"});
+    }
+    if (!repl_elems_allowed(static_cast<std::size_t>(n_theta),
+                            static_cast<std::size_t>(n_rho))) {
+        return std::unexpected(DomainError{
+            "hough_lines", "the accumulator is n_theta x n_rho cells and is limited to " +
+                               format_scalar(kMaxReplMatrixElems)});
+    }
+    // A cap on the accumulator is not a cap on the work. Every edge pixel votes once per
+    // ANGLE, so the cost is the image times n_theta and says nothing about n_rho:
+    // `hough_lines(ones(512,512), 0.5, 262144, 1, 1)` is a 262144 x 1 accumulator, inside
+    // the cap above, and 6.9e10 votes. Measured at 18 ns a vote (256x256 at 2000 angles
+    // took 2.3 s). Angular resolution is something a user asks for deliberately, so this
+    // is budgeted as a request rather than as a slip.
+    WorkBudget budget("hough_lines", 18.0, kMaxReplSimulationWorkNanos);
+    budget.charge(m.rows() * m.cols());
+    auto bounded_theta = budget.take("n_theta", static_cast<double>(n_theta));
+    if (!bounded_theta) {
+        return std::unexpected(bounded_theta.error());
+    }
     return hough_lines_to_matrix(
         image::hough_lines(*gray, edge_threshold, n_theta, n_rho, vote_threshold));
 }
@@ -6208,6 +6829,43 @@ Result<Matrix<double>> eval_hough_circles(const Matrix<double>& m, double edge_t
     auto gray = matrix_to_gray_image(m);
     if (!gray) {
         return std::unexpected(gray.error());
+    }
+    // The accumulator is one cell per (radius, row, column): the radius count MULTIPLIES
+    // the image rather than adding to it, so `hough_circles(A, 1, 100000000)` names a
+    // radius that looks like any other number and asks for a hundred million planes of
+    // a bounded image. `image::hough_circles` also builds its radius list with
+    // `(int)std::ceil(r_min)`, and that cast of a double outside int's range is
+    // undefined behaviour rather than a wrap, so the range is settled here on the double.
+    if (!std::isfinite(r_min) || !std::isfinite(r_max)) {
+        return std::unexpected(
+            DomainError{"hough_circles", "expected finite r_min and r_max"});
+    }
+    if (r_step < 1) {
+        return std::unexpected(DomainError{"hough_circles", "expected r_step >= 1"});
+    }
+    const double span = std::floor(r_max) - std::ceil(r_min);
+    const double planes = span < 0.0 ? 0.0 : std::floor(span / r_step) + 1.0;
+    const double cells =
+        planes * static_cast<double>(m.rows()) * static_cast<double>(m.cols());
+    if (cells > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            "hough_circles", "r_min to r_max spans " + describe_count(planes) +
+                                 " radii and the accumulator is one cell per radius per "
+                                 "pixel, which is limited to " +
+                                 format_scalar(kMaxReplMatrixElems) + " cells"});
+    }
+    // And the same again one level further in. Each edge pixel walks the CIRCUMFERENCE of
+    // every candidate radius -- `max(8, round(2*pi*r))` samples -- so the radius is a work
+    // factor even when there is only one of them. `hough_circles(ones(512,512), 3e8, 3e8)`
+    // is a single plane, well inside the accumulator cap just above, and 4.9e17 votes.
+    // Measured at 23 ns a vote: a 64x64 image over three radii near 2000 took 3.5 s.
+    const double samples_per_pixel =
+        std::ceil(planes * std::max(8.0, 2.0 * M_PI * std::abs(r_max)));
+    WorkBudget work("hough_circles", 23.0, kMaxReplSimulationWorkNanos);
+    work.charge(m.rows() * m.cols());
+    auto bounded_votes = work.take("the votes each edge pixel casts", samples_per_pixel);
+    if (!bounded_votes) {
+        return std::unexpected(bounded_votes.error());
     }
     return hough_circles_to_matrix(image::hough_circles(*gray, edge_threshold, r_min, r_max,
                                                         r_step, vote_threshold));
@@ -6332,6 +6990,68 @@ Result<Matrix<double>> eval_graph_maximum_matching(const Matrix<double>& adj_m) 
     for (size_t i = 0; i < edges.size(); ++i) {
         out(i, 0) = static_cast<double>(edges[i].first);
         out(i, 1) = static_cast<double>(edges[i].second);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_max_weight_matching(const Matrix<double>& adj_m,
+                                                      bool maxcardinality) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_max_weight_matching");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::max_weight_matching(*G, maxcardinality);
+    Matrix<double> out(edges.size(), 2);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].first);
+        out(i, 1) = static_cast<double>(edges[i].second);
+    }
+    return out;
+}
+
+Result<double> eval_graph_max_weight_matching_value(const Matrix<double>& adj_m,
+                                                    bool maxcardinality) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_max_weight_matching_value");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    return graph::max_weight_matching_value(*G, maxcardinality);
+}
+
+Result<Matrix<double>> eval_graph_planar_embedding(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_planar_embedding");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    auto emb = graph::planar_embedding(*G);
+    if (!emb) {
+        return std::unexpected(emb.error());
+    }
+    // Ragged rows (vertex degree varies), so pad to the widest with -1.
+    size_t width = 0;
+    for (const auto& row : *emb) {
+        width = std::max(width, row.size());
+    }
+    Matrix<double> out(emb->size(), width, -1.0);
+    for (size_t i = 0; i < emb->size(); ++i) {
+        for (size_t j = 0; j < (*emb)[i].size(); ++j) {
+            out(i, j) = static_cast<double>((*emb)[i][j]);
+        }
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_graph_kuratowski_subgraph(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_kuratowski_subgraph");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
+    const auto edges = graph::kuratowski_subgraph(*G);
+    Matrix<double> out(edges.size(), 3);
+    for (size_t i = 0; i < edges.size(); ++i) {
+        out(i, 0) = static_cast<double>(edges[i].from);
+        out(i, 1) = static_cast<double>(edges[i].to);
+        out(i, 2) = edges[i].weight;
     }
     return out;
 }
@@ -6497,6 +7217,20 @@ Result<Matrix<double>> eval_signal_resample(const Matrix<double>& x_m, int p, in
         return std::unexpected(
             DomainError{"signal_resample", "expected q >= 1"});
     }
+    // The result is len(x) * p / q samples. `q` only ever divides, so the pair that can
+    // be asked for an output the input does not bound is the length and `p`, and
+    // signal_resample(ones(1000,1), 1000000, 1000000) is 1e9 samples before the division
+    // -- measured aborting the process. The guard is here rather than at the dispatch
+    // because three separate call paths reach this function.
+    ExtentBudget budget("signal_resample");
+    auto length = budget.take("the input length", static_cast<double>(x->size()));
+    if (!length) {
+        return std::unexpected(length.error());
+    }
+    auto p_bounded = budget.take("p", static_cast<double>(p));
+    if (!p_bounded) {
+        return std::unexpected(p_bounded.error());
+    }
     return vector_to_column(resample(*x, p, q));
 }
 
@@ -6513,6 +7247,23 @@ Result<Matrix<double>> eval_signal_integer_factor(const std::string& fn,
     auto n = require_positive_int_arg(factor, fn.c_str(), arg_name);
     if (!n) {
         return std::unexpected(n.error());
+    }
+    // `upsample` and `interpolate` MULTIPLY the length -- the result is len(x) * n
+    // samples -- while `downsample` and `decimate` divide it. Only the first two can be
+    // asked for an output the input does not bound, and
+    // `signal_upsample(ones(1000,1), 10000000)` is 1e10 samples: measured aborting the
+    // process, since under -fno-exceptions the bad_alloc reaches std::terminate.
+    if (fn == "signal_upsample" || fn == "signal_interpolate") {
+        ExtentBudget budget(fn.c_str());
+        auto length = budget.take("the input length",
+                                  static_cast<double>(x_m.rows() * x_m.cols()));
+        if (!length) {
+            return std::unexpected(length.error());
+        }
+        auto bounded = budget.take(arg_name, static_cast<double>(*n));
+        if (!bounded) {
+            return std::unexpected(bounded.error());
+        }
     }
     if (fn == "signal_upsample") {
         return eval_signal_upsample(x_m, *n);
@@ -6573,6 +7324,18 @@ Result<Matrix<double>> eval_signal_savgol(const Matrix<double>& x_m, int window_
         return std::unexpected(
             DomainError{"signal_savgol", "expected signal length >= window_length"});
     }
+    // The convolution itself is `correlate`, which is FFT-based and so does not grow with
+    // the window at all -- window 11 and window 1001 over 200000 samples both take 0.3 s.
+    // What grows is the COEFFICIENT solve: the normal equations are accumulated in
+    // window * (polyorder+1)^2 and solved in (polyorder+1)^3, so the two together are
+    // (window + polyorder) * polyorder^2. Measured at 6 ns a unit -- window 999 with
+    // polyorder 600 is 2.5 s.
+    WorkBudget budget("signal_savgol", 6.0);
+    budget.charge(static_cast<std::size_t>(window_length) + static_cast<std::size_t>(polyorder));
+    auto bounded_order = budget.take_square("polyorder", static_cast<double>(polyorder));
+    if (!bounded_order) {
+        return std::unexpected(bounded_order.error());
+    }
     return vector_to_column(savgol(*x, window_length, polyorder));
 }
 
@@ -6608,6 +7371,15 @@ Result<Matrix<double>> eval_signal_median_filter(const Matrix<double>& x_m, int 
     if (x->size() < static_cast<size_t>(window_length)) {
         return std::unexpected(
             DomainError{"signal_median_filter", "expected signal length >= window_length"});
+    }
+    // One selection per sample over a window of `window_length`: 262144 samples at window
+    // 5001 is 1.3e9 and took 3.3 s, so 4 ns a unit. The sweep's
+    // `signal_median_filter(ones(262144,1), 174763)` is 4.6e10 of them.
+    WorkBudget budget("signal_median_filter", 4.0);
+    budget.charge(x->size());
+    auto bounded_window = budget.take("window_length", static_cast<double>(window_length));
+    if (!bounded_window) {
+        return std::unexpected(bounded_window.error());
     }
     return vector_to_column(median_filter(*x, window_length));
 }
@@ -6645,6 +7417,14 @@ Result<LMSResult> run_signal_lms(const Matrix<double>& x_m, const Matrix<double>
     if (x->size() < static_cast<size_t>(filter_length)) {
         return std::unexpected(
             DomainError{fn, "expected signal length >= filter_length"});
+    }
+    // Every tap is touched twice per sample, so the cost is the product: 100000 samples
+    // through 1000 taps is 1e8 and took 0.9 s.
+    WorkBudget budget(fn, 9.0);
+    budget.charge(x->size());
+    auto bounded_taps = budget.take("filter_length", static_cast<double>(filter_length));
+    if (!bounded_taps) {
+        return std::unexpected(bounded_taps.error());
     }
     auto result = lms_adaptive_filter(*x, *d, filter_length, mu);
     if (result.output.empty() || result.error.size() != result.output.size() ||
@@ -6702,6 +7482,149 @@ Matrix<double> points2d_to_matrix(const std::vector<geo::Point2D>& pts) {
     for (size_t i = 0; i < pts.size(); ++i) {
         out(i, 0) = pts[i].x;
         out(i, 1) = pts[i].y;
+    }
+    return out;
+}
+
+namespace {
+
+// A REPL index arrives as a double, because that is the only numeric type the
+// session has. Accept it only when it is an exact non-negative integer that is
+// actually inside the matrix -- a fractional or out-of-range index is a user
+// error, never a silently truncated read.
+// Any index this large is out of range for every matrix the REPL can hold, and
+// stopping here keeps the size_t conversion below well defined: converting a
+// double that does not fit in size_t is undefined behaviour.
+constexpr double kMaxAccessorExtent = 1e7;
+
+Result<size_t> checked_index(const char* fn, const char* what, double value, size_t bound) {
+    if (!std::isfinite(value) || std::trunc(value) != value || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected a non-negative integer ") + what});
+    }
+    if (value > kMaxAccessorExtent) {
+        return std::unexpected(DomainError{fn, std::string(what) + " is too large"});
+    }
+    const auto index = static_cast<size_t>(value);
+    if (index >= bound) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + format_scalar(index) + " is out of range (matrix has " +
+                    format_scalar(bound) + ")"});
+    }
+    return index;
+}
+
+}  // namespace
+
+Result<double> eval_mat_at(const Matrix<double>& A, double i, double j) {
+    auto row = checked_index("mat_at", "row index", i, A.rows());
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    auto col = checked_index("mat_at", "column index", j, A.cols());
+    if (!col) {
+        return std::unexpected(col.error());
+    }
+    return A(*row, *col);
+}
+
+Result<Matrix<double>> eval_mat_row(const Matrix<double>& A, double i) {
+    auto row = checked_index("mat_row", "row index", i, A.rows());
+    if (!row) {
+        return std::unexpected(row.error());
+    }
+    Matrix<double> out(1, A.cols());
+    for (size_t c = 0; c < A.cols(); ++c) {
+        out(0, c) = A(*row, c);
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_mat_col(const Matrix<double>& A, double j) {
+    auto col = checked_index("mat_col", "column index", j, A.cols());
+    if (!col) {
+        return std::unexpected(col.error());
+    }
+    Matrix<double> out(A.rows(), 1);
+    for (size_t r = 0; r < A.rows(); ++r) {
+        out(r, 0) = A(r, *col);
+    }
+    return out;
+}
+
+namespace {
+
+// A count (a row/column total, not an index) must be an exact non-negative
+// integer; zero is allowed so an empty block stays expressible.
+// Bounded by kMaxAccessorExtent for the same reason as an index, and because a
+// count past it would ask for an allocation the -fno-exceptions build aborts on
+// rather than reports.
+Result<size_t> checked_count(const char* fn, const char* what, double value) {
+    if (!std::isfinite(value) || std::trunc(value) != value || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected a non-negative integer ") + what});
+    }
+    if (value > kMaxAccessorExtent) {
+        return std::unexpected(DomainError{fn, std::string(what) + " is too large"});
+    }
+    return static_cast<size_t>(value);
+}
+
+}  // namespace
+
+Result<Matrix<double>> eval_mat_reshape(const Matrix<double>& A, double rows, double cols) {
+    auto r = checked_count("mat_reshape", "row count", rows);
+    if (!r) {
+        return std::unexpected(r.error());
+    }
+    auto c = checked_count("mat_reshape", "column count", cols);
+    if (!c) {
+        return std::unexpected(c.error());
+    }
+    const size_t total = A.rows() * A.cols();
+    // Both extents are bounded by kMaxAccessorExtent, so this product cannot
+    // overflow; the check below is the honest shape mismatch, not a guard.
+    if (*r * *c != total) {
+        return std::unexpected(DomainError{
+            "mat_reshape", "element count " + format_scalar(total) + " does not fit " +
+                               format_scalar(*r) + "x" + format_scalar(*c)});
+    }
+    Matrix<double> out(*r, *c);
+    for (size_t k = 0; k < total; ++k) {
+        out(k / *c, k % *c) = A(k / A.cols(), k % A.cols());
+    }
+    return out;
+}
+
+Result<Matrix<double>> eval_mat_submatrix(const Matrix<double>& A, double r0, double c0,
+                                          double rows, double cols) {
+    auto row0 = checked_count("mat_submatrix", "row offset", r0);
+    if (!row0) {
+        return std::unexpected(row0.error());
+    }
+    auto col0 = checked_count("mat_submatrix", "column offset", c0);
+    if (!col0) {
+        return std::unexpected(col0.error());
+    }
+    auto nr = checked_count("mat_submatrix", "row count", rows);
+    if (!nr) {
+        return std::unexpected(nr.error());
+    }
+    auto nc = checked_count("mat_submatrix", "column count", cols);
+    if (!nc) {
+        return std::unexpected(nc.error());
+    }
+    if (*nr > A.rows() || *row0 > A.rows() - *nr || *nc > A.cols() ||
+        *col0 > A.cols() - *nc) {
+        return std::unexpected(DomainError{
+            "mat_submatrix", "block runs past the end of a " + format_scalar(A.rows()) + "x" +
+                                 format_scalar(A.cols()) + " matrix"});
+    }
+    Matrix<double> out(*nr, *nc);
+    for (size_t i = 0; i < *nr; ++i) {
+        for (size_t j = 0; j < *nc; ++j) {
+            out(i, j) = A(*row0 + i, *col0 + j);
+        }
     }
     return out;
 }
@@ -6776,6 +7699,22 @@ Result<Matrix<double>> eval_topo_pairwise_distances(const Matrix<double>& P_m) {
     if (pts->empty()) {
         return std::unexpected(
             DomainError{"topo_pairwise_distances", "expected non-empty Nx2 point matrix"});
+    }
+    // The result is one distance per ORDERED PAIR, so it is points by points. A
+    // 131072 x 2 matrix is inside the element budget -- it IS the element budget -- and
+    // asks for 1.7e10 distances: measured aborting the process. The guard is here rather
+    // than at the dispatch because the assignment form and the bare form reach this
+    // function by different routes, and only one of them goes through the registry.
+    {
+        ExtentBudget budget("topo_pairwise_distances");
+        auto count = budget.take("the point count", static_cast<double>(pts->size()));
+        if (!count) {
+            return std::unexpected(count.error());
+        }
+        auto order = budget.charge_dense_order("the point set", pts->size());
+        if (!order) {
+            return std::unexpected(order.error());
+        }
     }
     std::vector<std::vector<double>> pts_vec;
     pts_vec.reserve(pts->size());
@@ -7026,6 +7965,48 @@ Result<Matrix<double>> eval_geo_poly_boolean(const char* fn, const Matrix<double
         return std::unexpected(DomainError{fn, "unknown geo polygon boolean"});
     }
     return points2d_to_matrix(out);
+}
+
+Result<Matrix<double>> eval_geo_poly_boolean_general(const char* fn, const Matrix<double>& a_m,
+                                                     const Matrix<double>& b_m) {
+    auto a = matrix_to_points2d(a_m, fn);
+    if (!a) {
+        return std::unexpected(a.error());
+    }
+    auto b = matrix_to_points2d(b_m, fn);
+    if (!b) {
+        return std::unexpected(b.error());
+    }
+    const std::string_view name{fn};
+    geo::BooleanOp op{};
+    if (name == "geo_boolean_union") {
+        op = geo::BooleanOp::Union;
+    } else if (name == "geo_boolean_intersect") {
+        op = geo::BooleanOp::Intersection;
+    } else if (name == "geo_boolean_diff") {
+        op = geo::BooleanOp::Difference;
+    } else if (name == "geo_boolean_xor") {
+        op = geo::BooleanOp::SymmetricDifference;
+    } else {
+        return std::unexpected(DomainError{fn, "unknown geo general polygon boolean"});
+    }
+
+    const geo::PolygonSet set = geo::poly_boolean(*a, *b, op);
+    std::size_t rows = 0;
+    for (const auto& contour : set) {
+        rows += contour.size();
+    }
+    Matrix<double> out(rows, 3);
+    std::size_t r = 0;
+    for (std::size_t c = 0; c < set.size(); ++c) {
+        for (const auto& p : set[c]) {
+            out(r, 0) = p.x;
+            out(r, 1) = p.y;
+            out(r, 2) = static_cast<double>(c);
+            ++r;
+        }
+    }
+    return out;
 }
 
 Result<Matrix<double>> eval_geo_minkowski_sum(const Matrix<double>& a_m,
@@ -7501,6 +8482,9 @@ Result<Matrix<double>> eval_ml_mat_mul(const Matrix<double>& A_m, const Matrix<d
     if (!B) {
         return std::unexpected(B.error());
     }
+    if (A_m.cols() != B_m.rows()) {
+        return std::unexpected(DimensionMismatch{A_m.cols(), B_m.rows()});
+    }
     return nested_to_matrix(ml::mat_mul(*A, *B));
 }
 
@@ -7589,10 +8573,21 @@ Result<Matrix<double>> eval_ifftshift(const Matrix<double>& S_m) {
 }
 
 Result<Matrix<double>> eval_fftfreq(size_t n, double d) {
+    auto bounded = checked_result_length("fftfreq", "n", static_cast<double>(n));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(fftfreq(n, d));
 }
 
 Result<Matrix<double>> eval_rfftfreq(size_t n, double d) {
+    // rfftfreq returns n/2 + 1 bins, so the bound is on that rather than on n --
+    // exactly twice as many bin centres fit as for the two-sided transform.
+    auto bounded = checked_result_length("rfftfreq", "n",
+                                         std::floor(static_cast<double>(n) / 2.0) + 1.0);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(rfftfreq(n, d));
 }
 
@@ -7861,6 +8856,18 @@ Result<Matrix<double>> eval_pde_poisson_2d(const Matrix<double>& f_m, double dx,
     if (!f) {
         return std::unexpected(f.error());
     }
+    // One relaxation sweep of the whole grid per iteration, the same shape as the ten PDE
+    // solvers bounded in the previous pass -- this one was missed because its earlier
+    // probe CONVERGED and came back in 1.66 s. With a tolerance it cannot reach it runs
+    // the full count: 34 ns a cell-sweep, so 200x200 for 1e7 iterations is 4e11.
+    const double cells = f->empty() ? 0.0 : static_cast<double>(f->size()) *
+                                                static_cast<double>(f->front().size());
+    WorkBudget budget("pde_poisson_2d", 34.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(cells));
+    auto bounded_iters = budget.take("max_iterations", static_cast<double>(max_iterations));
+    if (!bounded_iters) {
+        return std::unexpected(bounded_iters.error());
+    }
     const auto value = pde_poisson_2d(*f, dx, dy, max_iterations, tolerance);
     if (value.u.empty()) {
         return std::unexpected(DomainError{
@@ -7910,6 +8917,19 @@ Result<Matrix<double>> eval_pde_helmholtz_2d(const Matrix<double>& f_m, double k
             return std::unexpected(g_grid.error());
         }
         g = std::move(*g_grid);
+    }
+    // The five-point stencil is assembled DENSELY, one row per interior point, so what
+    // this costs is set by the grid and never appears as an argument: a 100 by 100 grid
+    // is a 9604-unknown system, 738 MB of coefficients, and it did not finish in 25 s.
+    // Measured 2.7 ns per side^3 -- 20x20 took 0.1 s, 30x30 took 1.3 s, 40x40 took 8.2 s.
+    const double interior_x = f->empty() ? 0.0 : static_cast<double>(f->front().size()) - 2.0;
+    const double interior_y = static_cast<double>(f->size()) - 2.0;
+    auto bounded_side = checked_dense_system_side(
+        "pde_helmholtz_2d",
+        (interior_x <= 0.0 || interior_y <= 0.0) ? 0.0 : interior_x * interior_y,
+        "the grid's interior");
+    if (!bounded_side) {
+        return std::unexpected(bounded_side.error());
     }
     const auto value = pde_helmholtz_2d(*f, k, dx, dy, g);
     if (value.u.empty()) {
@@ -8733,6 +9753,18 @@ Result<std::string> eval_crypto_pbkdf2_sha256(const std::string& pass_arg,
     if (salt->empty()) {
         return std::unexpected(DomainError{fn, "salt must not be empty"});
     }
+    // PBKDF2 is slow on purpose, which is exactly why the iteration count needs a bound
+    // rather than being exempt from one: it is a deliberate request, so it is budgeted
+    // against the simulation policy, and every iteration of every output block is one
+    // HMAC. Measured at 7 ns an iteration (32-byte blocks, 400000 iterations).
+    // `crypto_pbkdf2_sha256(..., 4294967295, 32)` is four billion of them.
+    const double blocks = std::ceil(static_cast<double>(dklen_i) / 32.0);
+    WorkBudget budget(fn, 7000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(blocks < 1.0 ? 1.0 : blocks));
+    auto bounded_iter = budget.take("iteration count", static_cast<double>(iter_i));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
     const auto dk = crypto::pbkdf2_hmac_sha256(*password, *salt, iter_i, dklen_i);
     if (dk.size() != dklen_i) {
         return std::unexpected(DomainError{fn, "PBKDF2 derivation failed"});
@@ -8774,6 +9806,18 @@ Result<std::string> eval_crypto_pbkdf2_hmac_sha512(const std::string& pass_arg,
     }
     if (salt->empty()) {
         return std::unexpected(DomainError{fn, "salt must not be empty"});
+    }
+    // PBKDF2 is slow on purpose, which is exactly why the iteration count needs a bound
+    // rather than being exempt from one: it is a deliberate request, so it is budgeted
+    // against the simulation policy, and every iteration of every output block is one
+    // HMAC. Measured at 95 ns an iteration (64-byte blocks, 400000 iterations).
+    // `crypto_pbkdf2_hmac_sha512(..., 4294967295, 64)` is four billion of them.
+    const double blocks = std::ceil(static_cast<double>(dklen_i) / 64.0);
+    WorkBudget budget(fn, 9500.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(blocks < 1.0 ? 1.0 : blocks));
+    auto bounded_iter = budget.take("iteration count", static_cast<double>(iter_i));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
     }
     const auto dk = crypto::pbkdf2_hmac_sha512(*password, *salt, iter_i, dklen_i);
     if (dk.size() != dklen_i) {
@@ -8910,6 +9954,14 @@ Result<std::string> eval_crypto_random_bytes(const std::string& n_arg) {
     const auto n = static_cast<std::size_t>(n_d);
     if (n_d < 0.0 || n_d != static_cast<double>(n)) {
         return std::unexpected(DomainError{fn, "expected non-negative integer byte count"});
+    }
+    // The result is printed as hex, so it costs three bytes of process memory per byte
+    // asked for. crypto_random_bytes(3e9) allocated its way into a std::bad_alloc, which
+    // under -fno-exceptions aborts; a count no terminal could consume is refused instead.
+    constexpr std::size_t kMaxRandomBytes = 1u << 20;
+    if (n > kMaxRandomBytes) {
+        return std::unexpected(DomainError{
+            fn, "byte count above the 1048576 limit for a printed result"});
     }
     return crypto::to_hex(crypto::random_bytes(n)) + "\n";
 }
@@ -9376,7 +10428,7 @@ Result<std::string> eval_cplx_cauchy_principal_value_call(const std::string& for
     cplx::RealFunc f = [expr_ptr](double x) {
         return sym_eval(*expr_ptr, {{"x", x}});
     };
-    return std::to_string(
+    return format_scalar(
                cplx::cauchy_principal_value(f, a, c, b, n_pts_i)) +
            "\n";
 }
@@ -9572,6 +10624,19 @@ Result<Matrix<double>> eval_cfd_advection1d(std::size_t nx, double vx, double t_
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
     }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection1d(1000, 1.0, 1.0, 1e-9)` asks for 1e9
+    // sweeps of the grid, with one whole grid retained per step. Measured at 70.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because three paths
+    // reach this function.
+    WorkBudget budget("cfd_advection1d", 70.0);
+    budget.charge(nx);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const cfd::Grid1D grid = cfd::grid1d(0.0, 1.0, nx);
     if (grid.n == 0) {
         return std::unexpected(DomainError{fn, "invalid grid dimensions"});
@@ -9595,6 +10660,19 @@ Result<Matrix<double>> eval_cfd_advection2d(std::size_t nx, std::size_t ny, doub
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection2d(100, 100, 1, 0, 1.0, 1e-7)` asks for 1e7
+    // sweeps of the grid, with one whole grid retained per step. Measured at 200.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because three paths
+    // reach this function.
+    WorkBudget budget("cfd_advection2d", 200.0);
+    budget.charge(nx * ny);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const cfd::Grid2D grid = cfd::grid2d(0.0, 1.0, 0.0, 1.0, nx, ny);
     if (grid.nx == 0 || grid.ny == 0) {
@@ -9622,6 +10700,19 @@ Result<Matrix<double>> eval_cfd_advection3d(std::size_t nx, std::size_t ny, std:
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection3d(30, 30, 30, 1, 0, 0, 1.0, 1e-6)` asks for 1e6
+    // sweeps of the grid, with one whole grid retained per step. Measured at 370.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because two paths
+    // reach this function.
+    WorkBudget budget("cfd_advection3d", 370.0);
+    budget.charge(nx * ny * nz);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const cfd::Grid3D grid = cfd::grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, nx, ny, nz);
     if (grid.nx == 0 || grid.ny == 0 || grid.nz == 0) {
@@ -9728,6 +10819,19 @@ Result<Matrix<double>> eval_cfd_run_advection(const Matrix<double>& grid_m,
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection(g, u0, 1.0, 1.0, 1e-9)` asks for 1e9
+    // sweeps of the grid, with one whole grid retained per step. Measured at 70.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because two paths
+    // reach this function.
+    WorkBudget budget("cfd_run_advection", 70.0);
+    budget.charge(u0->size());
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const auto vx = cfd::constant_velocity(u0->size(), v);
     const auto result = cfd::run_advection(*u0, vx, t_end, dt, grid->dx);
@@ -9950,6 +11054,10 @@ Result<Matrix<double>> eval_cfd_constant_velocity(std::size_t n, double v) {
     if (n < 1) {
         return std::unexpected(DomainError{fn, "expected n >= 1"});
     }
+    auto bounded = checked_result_length(fn, "n", static_cast<double>(n));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     return vector_to_column(cfd::constant_velocity(n, v));
 }
 
@@ -10005,6 +11113,17 @@ Result<Matrix<double>> eval_cfd_run_advection_2d(const Matrix<double>& grid_m,
     const std::size_t n_cells = grid->nx * grid->ny;
     const auto vx_field = cfd::constant_velocity(n_cells, vx);
     const auto vy_field = cfd::constant_velocity(n_cells, vy);
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection_2d(g, u0, 1, 0, 1.0, 1e-7)` asks for 1e7 sweeps of the
+    // grid, with one whole grid retained per step. Measured at 200.0 ns per cell-step. The
+    // guard is on the quotient, which is the only place the size actually appears.
+    WorkBudget budget("cfd_run_advection_2d", 200.0);
+    budget.charge(grid->nx * grid->ny);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const auto result = cfd::run_advection_2d(
         *u0, vx_field, vy_field, t_end, dt, grid->dx, grid->dy);
     if (result.u.empty()) {
@@ -10355,6 +11474,15 @@ Result<Matrix<double>> eval_quantum_anticommutator(const Matrix<double>& A_m,
 Result<Matrix<double>> eval_quantum_schmidt_decomposition(const Matrix<double>& psi_m, int dim_a,
                                                           int dim_b) {
     constexpr const char* fn = "quantum_schmidt_decomposition";
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_decomposition` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument(fn, "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, fn);
     if (!psi) {
         return std::unexpected(psi.error());
@@ -10416,8 +11544,18 @@ Result<double> eval_mpc_reconstruct(const Matrix<double>& shares_m) {
         if (x_d != std::floor(x_d) || y_lo != std::floor(y_lo) || y_hi != std::floor(y_hi)) {
             return std::unexpected(DomainError{fn, "share components must be integers"});
         }
-        const uint64_t y =
-            (static_cast<uint64_t>(y_hi) << 32) | static_cast<uint64_t>(y_lo);
+        // Each column is one 32-bit half of a 64-bit share, so the bound is 2^32-1 and
+        // not the representable range: a y_hi of 1e10 would shift its top bits straight
+        // out of the result and reconstruct a different secret without saying so.
+        auto hi_u = checked_u64_argument("mpc_reconstruct", "y_hi", y_hi, kMaxU32AsDouble);
+        if (!hi_u) {
+            return std::unexpected(hi_u.error());
+        }
+        auto lo_u = checked_u64_argument("mpc_reconstruct", "y_lo", y_lo, kMaxU32AsDouble);
+        if (!lo_u) {
+            return std::unexpected(lo_u.error());
+        }
+        const uint64_t y = (*hi_u << 32) | *lo_u;
         shares.push_back({static_cast<int>(x_d), y});
     }
     auto secret = izaac::mpc::reconstruct_secret(shares);
@@ -10816,6 +11954,16 @@ Result<Matrix<double>> eval_izaac_randn_matrix(size_t rows, size_t cols) {
 }
 
 Result<double> eval_quantum_schmidt_number(const Matrix<double>& psi_m, int dim_a, int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_number` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) is an ordinary thing to
+    // decompose and stays well inside the bound; a twelve-qubit one does not.
+    auto dim_bounded = checked_superlinear_argument("quantum_schmidt_number", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_schmidt_number");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -10865,6 +12013,17 @@ Result<Matrix<double>> eval_cfd_run_advection_3d(const Matrix<double>& grid_m,
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
     }
     const std::size_t n_cells = grid->nx * grid->ny * grid->nz;
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection_3d(g, u0, 1, 0, 0, 1.0, 1e-6)` asks for 1e6 sweeps of the
+    // grid, with one whole grid retained per step. Measured at 370.0 ns per cell-step. The
+    // guard is on the quotient, which is the only place the size actually appears.
+    WorkBudget budget("cfd_run_advection_3d", 370.0);
+    budget.charge(n_cells);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const auto vx_field = cfd::constant_velocity(n_cells, vx);
     const auto vy_field = cfd::constant_velocity(n_cells, vy);
     const auto vz_field = cfd::constant_velocity(n_cells, vz);
@@ -10921,6 +12080,15 @@ constexpr double kQuantumSchmidtBasesTag = 282.0;
 Result<Matrix<double>> eval_quantum_schmidt_bases(const Matrix<double>& psi_m, int dim_a,
                                                   int dim_b) {
     constexpr const char* fn = "quantum_schmidt_bases";
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_bases` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument(fn, "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, fn);
     if (!psi) {
         return std::unexpected(psi.error());
@@ -10971,7 +12139,7 @@ Result<Matrix<double>> eval_quantum_bell_states() {
 }
 
 Result<Matrix<double>> eval_graph_floyd_warshall(const Matrix<double>& adj_m) {
-    auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall");
+    auto G = graph_from_adjacency(adj_m, "graph_floyd_warshall", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -11145,6 +12313,16 @@ Result<Matrix<double>> eval_poly_fit(const Matrix<double>& xs_m, const Matrix<do
     }
     if (degree < 0) {
         return std::unexpected(DomainError{"poly_fit", "expected non-negative degree"});
+    }
+    // The normal equations are accumulated in nodes * (degree+1)^2 and solved in
+    // (degree+1)^3, so (nodes + degree) * degree^2 covers both. 18 ns a unit: 700 nodes at
+    // degree 600 took 3.0 s and 1000 at degree 900 took 9.2 s. `poly_fit` over three
+    // points at degree 3000 -- what the sweep asked for -- is 2.7e10.
+    WorkBudget budget("poly_fit", 18.0);
+    budget.charge(xs->size() + static_cast<std::size_t>(degree) + 1);
+    auto bounded_degree = budget.take_square("degree", static_cast<double>(degree));
+    if (!bounded_degree) {
+        return std::unexpected(bounded_degree.error());
     }
     const auto coeffs = poly::poly_fit(*xs, *ys, degree);
     if (coeffs.empty()) {
@@ -11364,6 +12542,14 @@ Result<Matrix<double>> eval_poly_cheb_expand(const Matrix<double>& coeffs_m, int
     if (n < 0) {
         return std::unexpected(DomainError{fn, "expected non-negative integer n"});
     }
+    // Every one of the n+1 coefficients is a sum over all n+1 Chebyshev nodes, each term a
+    // cos(j*acos(x)): 30 ns for the pair, so n = 3000 takes 0.2 s and n = 1e7 is 3e15.
+    // At n = 2147483647 the n+1 samples alone are 17 GB and the allocation ABORTED the
+    // process before any of the summing started.
+    auto bounded_n = checked_superlinear_argument(fn, "n", static_cast<double>(n), 2, 30.0);
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
+    }
     const std::vector<double> p = *coeffs;
     auto f = [p](double x) {
         const auto value = poly::poly_eval(p, x);
@@ -11432,6 +12618,17 @@ Result<Matrix<double>> eval_poly_pow(const Matrix<double>& coeffs_m, int n) {
     if (n < 0) {
         return std::unexpected(
             DomainError{"poly_pow", "poly_pow: negative exponent unsupported"});
+    }
+    // The answer has (len-1)*n + 1 coefficients and is reached by repeated multiplication,
+    // which is quadratic in that length: 120001 coefficients took 8.5 s and 130001 took
+    // 10.0 s, both 0.6 ns per length^2. The exponent looks like an ordinary integer and
+    // `poly_pow([0;1], 1e7)` asks for ten million coefficients it could not print either.
+    const double result_length =
+        (static_cast<double>(coeffs->size()) - 1.0) * static_cast<double>(n) + 1.0;
+    WorkBudget budget("poly_pow", 0.6);
+    auto bounded_length = budget.take_square("the product's coefficient count", result_length);
+    if (!bounded_length) {
+        return std::unexpected(bounded_length.error());
     }
     auto powered = poly::poly_pow(*coeffs, n);
     if (!powered)
@@ -11665,6 +12862,16 @@ Result<double> eval_stats_bootstrap_mean(const Matrix<double>& x_m, int n_boot, 
         return std::unexpected(
             DomainError{"stats_bootstrap_mean", "expected positive integer n_boot"});
     }
+    // Each resample draws the whole vector again, so the cost is the product: 1000
+    // elements over 100000 resamples took 2.3 s, about 23 ns a draw. The resample count
+    // is a request -- the standard error falls like 1/sqrt(n_boot) -- so it is budgeted
+    // against the simulation policy; ten million of them is 1e10 draws.
+    WorkBudget budget("stats_bootstrap_mean", 23.0, kMaxReplSimulationWorkNanos);
+    budget.charge(x->size());
+    auto bounded_boot = budget.take("n_boot", static_cast<double>(n_boot));
+    if (!bounded_boot) {
+        return std::unexpected(bounded_boot.error());
+    }
     return bootstrap_mean(*x, n_boot, seed);
 }
 
@@ -11708,6 +12915,10 @@ Result<Matrix<double>> eval_stats_arfit(const Matrix<double>& x_m, int p) {
     if (p < 1) {
         return std::unexpected(DomainError{"stats_arfit", "expected positive integer p"});
     }
+    auto bounded_p = checked_dense_system_side("stats_arfit", static_cast<double>(p), "p");
+    if (!bounded_p) {
+        return std::unexpected(bounded_p.error());
+    }
     auto phi = arfit(*x, p);
     if (phi.empty()) {
         return std::unexpected(
@@ -11730,6 +12941,16 @@ Result<Matrix<double>> eval_stats_multiple_regression(const Matrix<double>& X_m,
         return std::unexpected(DomainError{
             "stats_multiple_regression",
             "y length must equal number of rows in X"});
+    }
+    // A design matrix that fits is not a normal-equations system that fits. X^T X is
+    // columns by columns and is then COPIED for the elimination, so `ones(1, 262144)` --
+    // a design matrix of exactly kMaxReplMatrixElems, inside every bound the REPL has --
+    // asks for 1.1 TB and ABORTED the process in 2.6 s.
+    auto bounded_cols = checked_dense_system_side(
+        "stats_multiple_regression", static_cast<double>(X_m.cols()),
+        "the design matrix's column count");
+    if (!bounded_cols) {
+        return std::unexpected(bounded_cols.error());
     }
     std::vector<std::vector<double>> X(X_m.rows(), std::vector<double>(X_m.cols()));
     for (size_t i = 0; i < X_m.rows(); ++i) {
@@ -11794,6 +13015,12 @@ Result<Matrix<double>> eval_signal_xcorr(const Matrix<double>& a_m, const Matrix
         return std::unexpected(
             DomainError{"signal_xcorr", "expected non-negative integer max_lag"});
     }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_xcorr", "the number of lags", 2.0 * static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     auto out = xcorr(*a, *b, max_lag);
     if (out.empty()) {
         return std::unexpected(DomainError{"signal_xcorr", "xcorr failed"});
@@ -11818,6 +13045,12 @@ Result<Matrix<double>> eval_signal_xcov(const Matrix<double>& a_m, const Matrix<
         return std::unexpected(
             DomainError{"signal_xcov", "expected non-negative integer max_lag"});
     }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_xcov", "the number of lags", 2.0 * static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     auto out = xcov(*a, *b, max_lag);
     if (out.empty()) {
         return std::unexpected(DomainError{"signal_xcov", "xcov failed"});
@@ -11837,6 +13070,12 @@ Result<Matrix<double>> eval_signal_autocorr(const Matrix<double>& x_m, int max_l
     if (max_lag < 0) {
         return std::unexpected(
             DomainError{"signal_autocorr", "expected non-negative integer max_lag"});
+    }
+    // One row per lag, and the whole correlation is computed before the matrix cap
+    // sees it: 7 s at max_lag = 1e7, to be refused for the length it asked for.
+    auto bounded_lag = checked_result_length("signal_autocorr", "the number of lags", static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
     }
     auto out = autocorr(*x, max_lag);
     if (out.empty()) {
@@ -11904,7 +13143,7 @@ Result<Matrix<double>> eval_graph_mst_prim(const Matrix<double>& adj_m) {
 }
 
 Result<Matrix<double>> eval_graph_min_arborescence(const Matrix<double>& adj_m, int root) {
-    auto G = graph_from_adjacency(adj_m, "graph_min_arborescence");
+    auto G = graph_from_adjacency(adj_m, "graph_min_arborescence", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -12018,6 +13257,14 @@ Result<double> eval_graph_is_planar(const Matrix<double>& adj_m) {
     if (!G) {
         return std::unexpected(G.error());
     }
+    return graph::is_planar(*G) ? 1.0 : 0.0;
+}
+
+Result<double> eval_graph_is_planar_heuristic(const Matrix<double>& adj_m) {
+    auto G = graph_from_adjacency_undirected(adj_m, "graph_is_planar_heuristic");
+    if (!G) {
+        return std::unexpected(G.error());
+    }
     return graph::is_planar_k5_k33_check(*G) ? 1.0 : 0.0;
 }
 
@@ -12082,7 +13329,7 @@ Result<Matrix<double>> eval_graph_dijkstra(const Matrix<double>& adj_m, int sour
 }
 
 Result<Matrix<double>> eval_graph_bellman_ford(const Matrix<double>& adj_m, int source) {
-    auto G = graph_from_adjacency(adj_m, "graph_bellman_ford");
+    auto G = graph_from_adjacency(adj_m, "graph_bellman_ford", /*allow_non_positive=*/true);
     if (!G) {
         return std::unexpected(G.error());
     }
@@ -12176,6 +13423,14 @@ Result<Matrix<double>> eval_signal_cheby1(int order, double rp_db, double cutoff
     if (order < 1) {
         return std::unexpected(DomainError{"signal_cheby1", "expected order >= 1"});
     }
+    // Expanding the pole product into numerator and denominator coefficients is quadratic
+    // in the order: 8000 takes 1.0 s and 20000 takes 6.4 s, which is 16 ns per order^2.
+    // A realistic IIR order is under twenty; the sweep asked for a million.
+    auto bounded_order = checked_superlinear_argument("signal_cheby1", "order",
+                                                      static_cast<double>(order), 2, 16.0);
+    if (!bounded_order) {
+        return std::unexpected(bounded_order.error());
+    }
     const auto coeffs = cheby1(order, rp_db, cutoff, fs, type);
     if (coeffs.b.empty()) {
         return std::unexpected(
@@ -12187,6 +13442,13 @@ Result<Matrix<double>> eval_signal_cheby1(int order, double rp_db, double cutoff
 Result<Matrix<double>> eval_signal_firwin(int n_taps, double cutoff, FirWindow window) {
     if (n_taps < 1) {
         return std::unexpected(DomainError{"signal_firwin", "expected n_taps >= 1"});
+    }
+    // Ten million taps take 52 s to design and are then refused for being ten
+    // million elements. The refusal is right; the 52 s was the problem.
+    auto bounded_taps = checked_result_length("signal_firwin", "n_taps",
+                                              static_cast<double>(n_taps));
+    if (!bounded_taps) {
+        return std::unexpected(bounded_taps.error());
     }
     const auto taps = firwin(n_taps, cutoff, window);
     if (taps.empty()) {
@@ -12435,6 +13697,16 @@ Result<Matrix<double>> eval_signal_czt_zoom(const Matrix<double>& x_m, double f_
     if (m < 1) {
         return std::unexpected(DomainError{"signal_czt_zoom", "expected positive integer m"});
     }
+    // The answer is one row of (real, imaginary) per output bin, so `m` past half the
+    // matrix cap is work for something that could never be shown: m = 1e7 spends its time
+    // in a 2^24-point Bluestein transform and is then refused for being 2e7 elements wide.
+    if (!repl_elems_allowed(static_cast<std::size_t>(m), 2)) {
+        return std::unexpected(DomainError{
+            "signal_czt_zoom", "m " + describe_count(static_cast<double>(m)) +
+                                   " is too large; the result is one (real, imaginary) row "
+                                   "per bin and is limited to " +
+                                   std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
     return complex_vec_to_re_im_matrix(czt_zoom_fft(*x, f_start, f_stop, m, fs),
                                        "signal_czt_zoom");
 }
@@ -12605,6 +13877,12 @@ Result<Matrix<double>> eval_stats_acf(const Matrix<double>& x_m, int max_lag) {
     if (max_lag < 0) {
         return std::unexpected(DomainError{"stats_acf", "expected non-negative integer max_lag"});
     }
+    // One row per lag from 0 to max_lag inclusive.
+    auto bounded_lag = checked_result_length("stats_acf", "the number of lags",
+                                             static_cast<double>(max_lag) + 1.0);
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     return vector_to_column(acf(*x, max_lag));
 }
 
@@ -12646,6 +13924,11 @@ Result<Matrix<double>> eval_stats_pacf(const Matrix<double>& x_m, int max_lag) {
         return std::unexpected(
             DomainError{"stats_pacf", "expected non-negative integer max_lag"});
     }
+    auto bounded_lag = checked_dense_system_side(
+        "stats_pacf", static_cast<double>(max_lag) + 1.0, "max_lag");
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     return vector_to_column(pacf(*x, max_lag));
 }
 
@@ -12668,6 +13951,15 @@ Result<Matrix<double>> eval_stats_kde(const Matrix<double>& samples_m,
     }
     if (!(h > 0.0)) {
         return std::unexpected(DomainError{"stats_kde", "expected positive bandwidth h"});
+    }
+    // Every grid point sums a kernel over every sample, so neither vector's length is the
+    // cost -- the product is. 8000 of each took 0.9 s, about 14 ns a kernel evaluation,
+    // and 100000 of each is 1e10 of them.
+    WorkBudget budget("stats_kde", 14.0, kMaxReplSimulationWorkNanos);
+    budget.charge(samples->size());
+    auto bounded_grid = budget.take("the grid length", static_cast<double>(grid->size()));
+    if (!bounded_grid) {
+        return std::unexpected(bounded_grid.error());
     }
     return vector_to_column(kde(*samples, *grid, h, kernel));
 }
@@ -12965,6 +14257,12 @@ Result<Matrix<double>> eval_stats_one_way_anova(const Matrix<double>& groups_m) 
         return std::unexpected(groups.error());
     }
     const auto result = one_way_anova(*groups);
+    if (!std::isfinite(result.f_stat)) {
+        return std::unexpected(DomainError{
+            "stats_one_way_anova", "the test is not defined for these groups: fewer than two "
+                       "non-empty groups, no residual degrees of freedom, or no "
+                       "within-group variation"});
+    }
     Matrix<double> out(1, 4);
     out(0, 0) = result.f_stat;
     out(0, 1) = result.p_value;
@@ -12980,6 +14278,12 @@ Result<Matrix<double>> eval_stats_levene(const Matrix<double>& groups_m) {
         return std::unexpected(groups.error());
     }
     const auto result = levene_test(*groups);
+    if (!std::isfinite(result.f_stat)) {
+        return std::unexpected(DomainError{
+            "stats_levene", "the test is not defined for these groups: fewer than two "
+                       "non-empty groups, no residual degrees of freedom, or no "
+                       "within-group variation"});
+    }
     Matrix<double> out(1, 4);
     out(0, 0) = result.f_stat;
     out(0, 1) = result.p_value;
@@ -13238,6 +14542,10 @@ Result<Matrix<double>> eval_combo_restricted_partitions(int n, int k) {
         return std::unexpected(
             DomainError{"combo_restricted_partitions", "expected non-negative integer k"});
     }
+    if (n > combo::kMaxEnumPartitionN) {
+        return std::unexpected(
+            DomainError{"combo_restricted_partitions", "n too large (max 40)"});
+    }
     return combo_enum_rows_to_matrix(combo::restricted_partitions(n, k));
 }
 
@@ -13418,7 +14726,11 @@ Result<Matrix<double>> eval_quantum_time_evolution_matrix(const Matrix<double>& 
 }
 
 Result<Matrix<double>> eval_run_length_encode_vec(const Matrix<double>& m) {
-  return bytes_to_matrix_col(compress::run_length_encode(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "rle_encode_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::run_length_encode(*bytes));
 }
 
 Result<Matrix<double>> eval_run_length_decode_vec(const Matrix<double>& m) {
@@ -13450,9 +14762,28 @@ Result<Matrix<double>> eval_topo_betti_curve(const Matrix<double>& dist_m,
     if (!thresholds) {
         return std::unexpected(thresholds.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_betti_curve", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_betti_curve", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
+    }
+    // Unlike the two complex-building commands, this one's answer is tiny -- one row of
+    // max_dim+1 Betti numbers per threshold -- so bounding the result bounds nothing. What
+    // it costs is a complex REBUILT AND REDUCED at every threshold, and the reduction is
+    // quadratic in the simplex count: 4525 simplices took 0.17 s and 10700 took 0.87 s,
+    // both about 9 ns per simplex^2. The sweep's 60 points at max_dim 2 over 1000
+    // thresholds is 1.3e12 of those.
+    const double simplices =
+        simplex_count_upper_bound(nested->size(), max_dim,
+                                  kMaxReplSimulationWorkNanos / 9.0);
+    WorkBudget budget("topo_betti_curve", 9.0, kMaxReplSimulationWorkNanos);
+    auto bounded_count = budget.take_square("the complex's simplex count", simplices);
+    if (!bounded_count) {
+        return std::unexpected(bounded_count.error());
+    }
+    auto bounded_thresholds = budget.take("threshold count",
+                                          static_cast<double>(thresholds->size()));
+    if (!bounded_thresholds) {
+        return std::unexpected(bounded_thresholds.error());
     }
     const auto curve = topo::betti_curve(*nested, *thresholds, max_dim);
     const size_t cols = static_cast<size_t>(max_dim + 1);
@@ -13508,9 +14839,9 @@ Result<Matrix<double>> eval_topo_cech_complex(const Matrix<double>& dist_m, doub
     if (!nested) {
         return std::unexpected(nested.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_cech_complex", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_cech_complex", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
     }
     return simplicial_complex_to_matrix(topo::cech_complex(*nested, epsilon, max_dim));
 }
@@ -13521,9 +14852,9 @@ Result<Matrix<double>> eval_topo_vietoris_rips(const Matrix<double>& dist_m, dou
     if (!nested) {
         return std::unexpected(nested.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_vietoris_rips", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_vietoris_rips", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
     }
     return simplicial_complex_to_matrix(topo::vietoris_rips(*nested, r, max_dim));
 }
@@ -13623,6 +14954,10 @@ Result<Matrix<double>> eval_topo_alpha_complex(const Matrix<double>& P_m, double
         return std::unexpected(
             DomainError{"topo_alpha_complex", "expected non-negative integer max_dim"});
     }
+    auto bounded_dim = checked_simplex_dimension("topo_alpha_complex", pts->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
+    }
     return simplicial_complex_to_matrix(topo::alpha_complex(*pts, alpha, max_dim));
 }
 
@@ -13635,6 +14970,15 @@ Result<Matrix<double>> eval_topo_select_landmarks(const Matrix<double>& P_m, int
     if (n_landmarks < 1) {
         return std::unexpected(
             DomainError{"topo_select_landmarks", "expected positive integer n"});
+    }
+    // maxmin rescans every point against every landmark chosen so far, so the landmark
+    // count enters the product TWICE: 2000 points and 300 landmarks took 2.7 s, and 600
+    // landmarks took 9.7 s -- four times for double, which is the signature. 15 ns a unit.
+    WorkBudget budget("topo_select_landmarks", 15.0, kMaxReplSimulationWorkNanos);
+    budget.charge(pts->size());
+    auto bounded = budget.take_square("n", static_cast<double>(n_landmarks));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     return int_vector_to_column(topo::select_landmarks_maxmin(*pts, n_landmarks, seed_index));
 }
@@ -13692,18 +15036,37 @@ Result<Matrix<double>> eval_quantum_bell_state(int index) {
 }
 
 Result<Matrix<double>> eval_bzip2_compress_vec(const Matrix<double>& m) {
-    return bytes_to_matrix_col(compress::bzip2_like_compress(matrix_to_bytes(m)));
+    auto bytes = matrix_to_bytes(m, "bzip2_compress_vec");
+    if (!bytes) {
+        return std::unexpected(bytes.error());
+    }
+    return bytes_to_matrix_col(compress::bzip2_like_compress(*bytes));
 }
 
 Result<Matrix<double>> eval_bzip2_decompress_vec(const Matrix<double>& c_m) {
-    const compress::Bytes bytes = matrix_to_bytes(c_m);
+    auto bytes_or_error = matrix_to_bytes(c_m, "bzip2_decompress_vec");
+    if (!bytes_or_error) {
+        return std::unexpected(bytes_or_error.error());
+    }
+    const compress::Bytes bytes = *bytes_or_error;
     if (bytes.size() < 4) {
         return std::unexpected(
             DomainError{"bzip2_decompress_vec", "expected at least 4-byte compressed vector"});
     }
-    const int pi = (static_cast<int>(bytes[0]) << 24) | (static_cast<int>(bytes[1]) << 16) |
-                   (static_cast<int>(bytes[2]) << 8) | static_cast<int>(bytes[3]);
-    return bytes_to_matrix_col(compress::bzip2_like_decompress(bytes, pi));
+    const compress::Bytes decompressed = compress::bzip2_like_decompress(bytes);
+    // An empty result means one of two things, and the user needs to be told which.
+    // Compressing nothing produces a specific short stream, and that is the only input
+    // for which nothing is the answer; every other empty result is the decompressor
+    // saying it could not read what it was given. Returning a 0x0 matrix for both would
+    // hand back an answer to a question that was never understood -- and before the
+    // bounds fix underneath this, `bzip2_decompress_vec(ones(2, 2))` did not return at
+    // all: it ended the process inside `ibwt`.
+    if (decompressed.empty() && bytes != compress::bzip2_like_compress({})) {
+        return std::unexpected(DomainError{
+            "bzip2_decompress_vec",
+            "input is not a stream produced by bzip2_compress_vec"});
+    }
+    return bytes_to_matrix_col(decompressed);
 }
 
 Result<Matrix<double>> eval_control_place(const Matrix<double>& A_m,
@@ -13970,12 +15333,24 @@ Result<Matrix<double>> eval_unary_scalar_matrix_call(const std::string& fn, doub
         return density_matrix_to_matrix(quantum::qft_gate(n_qubits));
     }
     if (fn == "quantum_identity_n") {
-        const int dim = static_cast<int>(arg);
-        if (dim < 1 || arg != dim) {
+        // The identity of dimension `dim` is a dim x dim density matrix, so what is
+        // allocated is the square: quantum_identity_n(1000000) is 1e12 entries, measured
+        // aborting the process. The cast also used to come before the check, which is
+        // undefined rather than wrapped for a double outside int.
+        if (!(arg >= 1.0) || arg != std::floor(arg)) {
             return std::unexpected(
                 DomainError{"quantum_identity_n", "expected integer dim >= 1"});
         }
-        return density_matrix_to_matrix(quantum::identity(dim));
+        ExtentBudget budget("quantum_identity_n");
+        auto dim_bounded = budget.take("dim", arg);
+        if (!dim_bounded) {
+            return std::unexpected(dim_bounded.error());
+        }
+        auto order = budget.charge_dense_order("dim", *dim_bounded);
+        if (!order) {
+            return std::unexpected(order.error());
+        }
+        return density_matrix_to_matrix(quantum::identity(static_cast<int>(*dim_bounded)));
     }
     if (fn == "quantum_ghz_state") {
         const int n_qubits = static_cast<int>(arg);
@@ -14074,44 +15449,39 @@ Result<Matrix<double>> eval_unary_scalar_matrix_call(const std::string& fn, doub
         return eval_quantum_bell_state(index);
     }
     if (fn == "signal_hamming") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_hamming", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_hamming", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(hamming(static_cast<size_t>(n)));
+        return vector_to_column(hamming(*n));
     }
     if (fn == "signal_hanning") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_hanning", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_hanning", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(hanning(static_cast<size_t>(n)));
+        return vector_to_column(hanning(*n));
     }
     if (fn == "signal_blackman") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_blackman", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_blackman", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(blackman(static_cast<size_t>(n)));
+        return vector_to_column(blackman(*n));
     }
     if (fn == "signal_parzen") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_parzen", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_parzen", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(parzen(static_cast<size_t>(n)));
+        return vector_to_column(parzen(*n));
     }
     if (fn == "signal_triangular") {
-        const int n = static_cast<int>(arg);
-        if (n < 0 || arg != n) {
-            return std::unexpected(
-                DomainError{"signal_triangular", "expected non-negative integer n"});
+        auto n = checked_result_length("signal_triangular", "n", arg);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        return vector_to_column(triangular(static_cast<size_t>(n)));
+        return vector_to_column(triangular(*n));
     }
     return std::unexpected(DomainError{"eval", "unknown unary scalar matrix function: " + fn});
 }
@@ -14312,6 +15682,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "poly_interp_newton" || callee == "quantum_tensor_product" ||
            callee == "ml_mat_mul" ||
            callee == "ml_linear_fit" || callee == "ml_linear_predict" ||
+           callee == "ml_kmeans_predict" || callee == "ml_pca_transform" ||
+           callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
+           callee == "ml_isolation_forest_score" ||
            callee == "ml_ridge_predict" || callee == "ml_logistic_fit" ||
            callee == "ml_logistic_predict" ||
            callee == "ml_lasso_predict" || callee == "ml_elastic_net_predict" ||
@@ -14324,7 +15697,9 @@ bool is_matrix_dual_matrix_call_callee(const std::string& callee) {
            callee == "signal_convolve" || callee == "signal_correlate" ||
            callee == "signal_sosfilt" || callee == "signal_conv2" ||
            callee == "geo_poly_union" || callee == "geo_poly_intersect" ||
-           callee == "geo_poly_diff" || callee == "geo_minkowski_sum" ||
+           callee == "geo_poly_diff" || callee == "geo_boolean_union" ||
+           callee == "geo_boolean_intersect" || callee == "geo_boolean_diff" ||
+           callee == "geo_boolean_xor" || callee == "geo_minkowski_sum" ||
            callee == "geo_clip_polygon";
 }
 
@@ -14727,7 +16102,19 @@ bool try_parse_bigint_unary_call(const std::string& line, std::string& name, std
     }
     name = match[1].str();
     fn = lower(match[2].str());
-    n = std::stoi(match[3].str());
+    // The regex only guarantees an optional sign and digits, not that they fit an int:
+    // std::stoi throws std::out_of_range on a long run of them, and this library is built
+    // with -fno-exceptions, so that call aborted the process.
+    const std::string digits_text = match[3].str();
+    long long parsed = 0;
+    const char* first = digits_text.data();
+    const char* last = first + digits_text.size();
+    const auto conv = std::from_chars(first, last, parsed);
+    if (conv.ec != std::errc{} || conv.ptr != last || parsed < 0 ||
+        parsed > static_cast<long long>(std::numeric_limits<int>::max())) {
+        return false;
+    }
+    n = static_cast<int>(parsed);
     return is_identifier(name) && n >= 0;
 }
 
@@ -14751,6 +16138,20 @@ Result<double> eval_bigint_unary(const std::string& fn, int n) {
     if (n < 0) {
         return std::unexpected(DomainError{fn.c_str(), "expected non-negative integer"});
     }
+    // Both are quadratic in n -- each of the n steps multiplies or adds a number that is
+    // itself growing -- and `bigint_fib(200000)` spent 15.3 s building an exact BigInt
+    // that `bigint_to_scalar` below then refused, because the REPL's scalar is a double
+    // and the answer has to round-trip through one exactly. So the work was not merely
+    // slow, it was work for an answer that could never be shown.
+    //
+    // The bound is deliberately far ABOVE where that round trip stops succeeding -- 21!
+    // already fails, and so does fib(79) -- so it refuses nothing that could have
+    // worked. All it does is stop the computing.
+    auto bounded = checked_superlinear_argument(fn, "n", static_cast<double>(n), 2,
+                                                fn == "bigint_factorial" ? 3.5 : 0.4);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
+    }
     const bignum::BigInt value =
         fn == "bigint_factorial" ? bignum::bigint_factorial(n) : bignum::bigint_fibonacci(n);
     return bigint_to_scalar(value, fn.c_str());
@@ -14760,7 +16161,17 @@ Result<double> eval_bigint_gcd_strings(const std::string& a, const std::string& 
     if (a.empty() || b.empty()) {
         return std::unexpected(DomainError{"bigint_gcd", "expected decimal string literals"});
     }
-    return bigint_to_scalar(bignum::bigint_gcd(bignum::BigInt(a), bignum::BigInt(b)), "bigint_gcd");
+    // Same reason as eval_bigint_string: an unreadable literal used to become 0, and
+    // gcd(0, b) is b, so bigint_gcd("12x", "18") answered 18.
+    auto left = bignum::BigInt::parse(a);
+    if (!left) {
+        return std::unexpected(DomainError{"bigint_gcd", "invalid decimal literal: " + a});
+    }
+    auto right = bignum::BigInt::parse(b);
+    if (!right) {
+        return std::unexpected(DomainError{"bigint_gcd", "invalid decimal literal: " + b});
+    }
+    return bigint_to_scalar(bignum::bigint_gcd(*left, *right), "bigint_gcd");
 }
 
 Result<SymExpr> parse_sym_quoted_expr(const std::string& quoted_arg, const char* fn) {
@@ -14797,6 +16208,65 @@ Result<std::string> eval_sym_simplify_string(const std::string& expr_arg) {
     return sym_to_string(result) + "\n";
 }
 
+// §11.1. The notation printers live on `ms::sym2`, so this parses through the bridge
+// rather than printing the legacy tree: the legacy printer parenthesises every node and
+// formats every number with six decimals, and a LaTeX printer built on it would have
+// inherited both faults in a notation where they are harder to see.
+Result<std::string> eval_sym_export_strings(const std::string& expr_arg,
+                                            const std::string& notation_arg) {
+    std::string notation_text;
+    if (!parse_quoted_string(notation_arg, notation_text) || notation_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_export", "expected sym_export(\"expr\", \"notation\")"});
+    }
+    const auto notation = sym2::notation_from_name(notation_text);
+    if (!notation) {
+        return std::unexpected(notation.error());
+    }
+    std::string expr_text;
+    if (!parse_quoted_string(expr_arg, expr_text) || expr_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_export", "expected sym_export(\"expr\", \"notation\")"});
+    }
+    const auto expr = sym2::parse(expr_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_notation(*expr, *notation) + "\n";
+}
+
+Result<std::string> eval_sym_latex_string(const std::string& expr_arg) {
+    std::string expr_text;
+    if (!parse_quoted_string(expr_arg, expr_text) || expr_text.empty()) {
+        return std::unexpected(DomainError{"sym_latex", "expected sym_latex(\"expr\")"});
+    }
+    const auto expr = sym2::parse(expr_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_latex(*expr) + "\n";
+}
+
+/// §11.2's inverse of `sym_latex`.
+///
+/// The result is shown with `sym2::to_string` -- the ASCII form -- rather than echoed
+/// back as LaTeX. Echoing the input would confirm nothing: what the user needs to see is
+/// the EXPRESSION that was read, and that `\\frac{x}{y}` came back as `x/y` is the whole
+/// of that. A reader who typed something the subset refuses gets the diagnostic with its
+/// code and position instead, which is the other half of the same confirmation.
+Result<std::string> eval_sym_from_latex_string(const std::string& tex_arg) {
+    std::string tex_text;
+    if (!parse_quoted_string(tex_arg, tex_text) || tex_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_from_latex", "expected sym_from_latex(\"tex\")"});
+    }
+    const auto expr = sym2::parse_latex(tex_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_string(*expr) + "\n";
+}
+
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg) {
     auto expr = parse_sym_quoted_expr(expr_arg, "sym_integrate");
     if (!expr) {
@@ -14808,7 +16278,38 @@ Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, cons
             DomainError{"sym_integrate", "expected sym_integrate(\"expr\", \"var\")"});
     }
     const auto result = sym_integrate(*expr, var_text);
+    // sym_integrate signals "no closed form" by returning sym_deriv(expr, var).
+    // Printing that gives the user "d/dx(...)" where they asked for an integral,
+    // and feeding it to sym_eval yields the derivative's value with no error
+    // anywhere. Report it instead.
+    if (sym_is_unsupported(result, var_text)) {
+        return std::unexpected(DomainError{
+            "sym_integrate", "no closed form found for this expression"});
+    }
     return sym_to_string(result) + "\n";
+}
+
+/// Refuse a formula whose variables are not the ones the caller will bind.
+///
+/// sym_eval returns 0.0 for an unbound name, which cannot be told from an answer:
+/// `sym_eval("x*y", "x=3")` printed 0.000000, and `bfgs("(x-3)^2", [0])` reported
+/// `converged = 1` at `x_opt = 0` because the objective was the constant 9 -- the
+/// optimiser binds x0, not x, so the whole expression was a number.
+Result<void> require_bound_variables(const SymExpr& expr,
+                                     const std::vector<std::string>& bound,
+                                     const char* fn) {
+    for (const std::string& name : sym_free_variables(expr)) {
+        if (std::find(bound.begin(), bound.end(), name) == bound.end()) {
+            std::string expected;
+            for (const std::string& allowed : bound) {
+                expected += (expected.empty() ? "" : ", ") + allowed;
+            }
+            return std::unexpected(DomainError{
+                fn, "unknown variable '" + name + "'" +
+                        (expected.empty() ? "" : " (this call binds " + expected + ")")});
+        }
+    }
+    return {};
 }
 
 Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std::string& binding_arg) {
@@ -14830,7 +16331,10 @@ Result<std::string> eval_sym_eval_strings(const std::string& expr_arg, const std
     if (!parse_number(value_text, value)) {
         return std::unexpected(DomainError{"sym_eval", "expected numeric value in var=value binding"});
     }
-    return std::to_string(sym_eval(*expr, {{var, value}})) + "\n";
+    if (auto bound = require_bound_variables(*expr, {var}, "sym_eval"); !bound) {
+        return std::unexpected(bound.error());
+    }
+    return format_scalar(sym_eval(*expr, {{var, value}})) + "\n";
 }
 
 Result<std::string> eval_sym_expand_string(const std::string& expr_arg) {
@@ -14858,7 +16362,15 @@ Result<std::string> eval_sym_transform_strings(const std::string& expr_arg, cons
         return std::unexpected(
             DomainError{fn, std::string("expected ") + fn + "(\"expr\", \"var1\", \"var2\")"});
     }
-    const auto result = sym_simplify(transform(*expr, var_a, var_b));
+    // Check the raw result: sym_simplify may rewrite the sentinel's own operand, and
+    // the scan looks for a Deriv node rather than for a match against the input, so
+    // there is nothing to gain by simplifying first and something to lose.
+    auto raw = transform(*expr, var_a, var_b);
+    if (sym_is_unsupported(raw, var_a)) {
+        return std::unexpected(DomainError{
+            fn, "no closed form found for this expression"});
+    }
+    const auto result = sym_simplify(std::move(raw));
     return sym_to_string(result) + "\n";
 }
 
@@ -14908,7 +16420,15 @@ Result<std::string> eval_sym_limit_strings(const std::string& expr_arg, const st
     if (!parse_number(trim_copy(point_arg), point)) {
         return std::unexpected(DomainError{"sym_limit", "expected numeric limit point"});
     }
-    return std::to_string(sym_limit(*expr, var_text, point)) + "\n";
+    // sym_limit returns NaN when it could not obtain a finite value from either side.
+    // Printing that as a number would be the same failure the limit code used to have
+    // internally: an answer-shaped result for a question it could not answer.
+    const double value = sym_limit(*expr, var_text, point);
+    if (!std::isfinite(value)) {
+        return std::unexpected(DomainError{
+            "sym_limit", "limit does not exist or could not be determined numerically"});
+    }
+    return format_scalar(value) + "\n";
 }
 
 Result<std::string> eval_sym_series_strings(const std::string& expr_arg, const std::string& var_arg,
@@ -14990,6 +16510,14 @@ Result<std::string> format_ode_trajectory(const OdeResult& result) {
     if (result.t.size() != result.y.size()) {
         return std::unexpected(DomainError{"ode", "internal trajectory size mismatch"});
     }
+    // An adaptive solver that ran out of its step budget covered part of the interval.
+    // Printing that partial trajectory with no marker made it read as the solution over
+    // the whole of it: ode_rk45("cos(1000*t)", 0, 0, 100) stopped at t = 17.45.
+    if (!result.complete) {
+        return std::unexpected(DomainError{
+            "ode", "step budget exhausted before t_end: the equation is too stiff or "
+                   "too oscillatory for this solver over that interval"});
+    }
     Matrix<double> out(result.t.size(), 2);
     for (size_t i = 0; i < result.t.size(); ++i) {
         out(i, 0) = result.t[i];
@@ -14997,14 +16525,13 @@ Result<std::string> format_ode_trajectory(const OdeResult& result) {
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -15041,10 +16568,11 @@ Result<Matrix<double>> eval_ode_fixed_step_matrix(const std::string& fn,
         return std::unexpected(DomainError{
             fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -15084,10 +16612,19 @@ Result<std::string> eval_ode_fixed_step_call(const std::string& fn, const std::s
         return std::unexpected(DomainError{
             fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    // Decided on the double: `static_cast<int>` of a value outside int's range is
+    // undefined behaviour, not a wrap, so the range cannot be read off the result of it.
+    //
+    // These solvers keep the WHOLE trajectory and the REPL prints it as a steps+1 by 2
+    // matrix, so a step count past half the matrix cap is work for an answer that could
+    // never be shown: `ode_backward_euler("-50*y", 0, 1, 1, 200000)` spent 0.2 s
+    // integrating and was then refused for being 400002 elements. At 1e8 steps, which the
+    // linear cap admits, that is two minutes before the same refusal.
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -15172,10 +16709,11 @@ Result<std::string> eval_ode_trapezoidal_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_trapezoidal(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -15204,10 +16742,11 @@ Result<std::string> eval_ode_rosenbrock23_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_rosenbrock23(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -15240,10 +16779,11 @@ Result<std::string> eval_ode_exponential_euler_call(const std::string& formula_a
             "expected ode_exponential_euler(\"g\", lambda, t0, y0, t_end, steps) with g the "
             "nonlinear remainder in dy/dt = lambda*y + g(t,y)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc g = [expr_ptr](double t, double y) {
@@ -15370,19 +16910,18 @@ Result<std::vector<double>> parse_bracket_vector_literal(const std::string& text
 std::map<std::string, double> build_optim_env(const std::vector<double>& x) {
     std::map<std::string, double> env;
     for (size_t i = 0; i < x.size(); ++i) {
-        env["x" + std::to_string(i)] = x[i];
+        env["x" + format_scalar(i)] = x[i];
     }
     return env;
 }
 
 Result<std::string> format_optim_result(const OptimResult& result) {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
     oss << "x_opt =\n";
     for (double xi : result.x) {
-        oss << "  [" << xi << "]\n";
+        oss << "  [" << format_scalar(xi) << "]\n";
     }
-    oss << "f_val = " << result.f_val << "\n";
+    oss << "f_val = " << format_scalar(result.f_val) << "\n";
     oss << "iterations = " << result.iterations << "\n";
     oss << "converged = " << (result.converged ? 1 : 0) << "\n";
     return oss.str();
@@ -15390,9 +16929,8 @@ Result<std::string> format_optim_result(const OptimResult& result) {
 
 Result<std::string> format_scalar_optim_result(double x_opt, double f_val) {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
-    oss << "x_opt = " << x_opt << "\n";
-    oss << "f_val = " << f_val << "\n";
+    oss << "x_opt = " << format_scalar(x_opt) << "\n";
+    oss << "f_val = " << format_scalar(f_val) << "\n";
     return oss.str();
 }
 
@@ -15414,6 +16952,16 @@ Result<NdOptimInputs> parse_nd_optim_inputs(const std::string& formula_arg,
     }
     if (x0->empty()) {
         return std::unexpected(DomainError{fn, "expected non-empty initial point vector x0"});
+    }
+    // The objective is written in x0, x1, ...; anything else is a typo that would
+    // otherwise read as zero and turn the objective into a constant.
+    std::vector<std::string> bound;
+    bound.reserve(x0->size());
+    for (size_t i = 0; i < x0->size(); ++i) {
+        bound.push_back("x" + std::to_string(i));
+    }
+    if (auto checked = require_bound_variables(*expr, bound, fn); !checked) {
+        return std::unexpected(checked.error());
     }
     auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     const size_t dim = x0->size();
@@ -15452,14 +17000,26 @@ Result<double> parse_optional_positive_number(const std::string& text, const cha
     return value;
 }
 
+// The upper end of the range was not tested, which is both halves of the usual defect:
+// `static_cast<int>` of a double past `int` is undefined, and a value that IS an `int` is
+// not thereby affordable. `lbfgs("x0*x0", [1], 2000000000)` reserves two billion doubles
+// for its history and was measured aborting the process. `max_value` is the caller's,
+// because what these nineteen call sites bound is not one kind of thing: an iteration
+// count is bounded by work, a stored history by memory.
 Result<int> parse_optional_positive_int(const std::string& text, const char* fn, const char* label,
-                                        int default_value) {
+                                        int default_value,
+                                        double max_value = kMaxReplIntegerArgument) {
     if (text.empty()) {
         return default_value;
     }
     double value = 0.0;
     if (!parse_number(trim_copy(text), value) || value < 1.0 || std::floor(value) != value) {
         return std::unexpected(DomainError{fn, std::string("expected positive integer ") + label});
+    }
+    if (value > max_value) {
+        return std::unexpected(DomainError{
+            fn, std::string(label) + " " + describe_count(value) + " is too large; it is " +
+                    "bounded at " + describe_count(max_value)});
     }
     return static_cast<int>(value);
 }
@@ -15509,7 +17069,10 @@ Result<std::string> eval_lbfgs_call(const std::string& formula_arg, const std::s
     if (!inputs) {
         return std::unexpected(inputs.error());
     }
-    auto m = parse_optional_positive_int(m_arg, fn, "m", 5);
+    // `m` is the number of correction pairs L-BFGS KEEPS, so it is an extent rather than
+    // an iteration count and is bounded by the element budget.
+    auto m = parse_optional_positive_int(m_arg, fn, "m", 5,
+                                         static_cast<double>(kMaxReplMatrixElems));
     if (!m) {
         return std::unexpected(m.error());
     }
@@ -15703,11 +17266,14 @@ Result<std::string> eval_cmaes_call(const std::string& formula_arg, const std::s
     unsigned seed = 42;
     if (!seed_arg.empty()) {
         double seed_d = 0.0;
-        if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
-            std::floor(seed_d) != seed_d) {
+        if (!parse_number(trim_copy(seed_arg), seed_d)) {
             return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
         }
-        seed = static_cast<unsigned>(seed_d);
+        auto seed_checked = checked_seed_argument(fn, "seed", seed_d);
+        if (!seed_checked) {
+            return std::unexpected(seed_checked.error());
+        }
+        seed = *seed_checked;
     }
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
@@ -15838,16 +17404,25 @@ Result<unsigned> parse_optional_seed(const std::string& seed_arg, const char* fn
         return seed;
     }
     double seed_d = 0.0;
-    if (!parse_number(trim_copy(seed_arg), seed_d) || seed_d < 0.0 ||
-        std::floor(seed_d) != seed_d) {
+    if (!parse_number(trim_copy(seed_arg), seed_d)) {
         return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
     }
-    return static_cast<unsigned>(seed_d);
+    return checked_seed_argument(fn, "seed", seed_d);
 }
 
 Func1D make_scalar_formula_func(SymExpr expr) {
     auto expr_ptr = std::make_shared<SymExpr>(std::move(expr));
     return [expr_ptr](double x) { return sym_eval(*expr_ptr, build_optim_env({x})); };
+}
+
+/// The one-dimensional formula callers all bind exactly x0, so the check is the same
+/// for all of them: a root finder given "x^2 - 2" is looking for the root of the
+/// constant 0, and reports whatever bracket midpoint it happened to reach.
+Result<Func1D> make_checked_scalar_formula_func(SymExpr expr, const char* fn) {
+    if (auto checked = require_bound_variables(expr, {"x0"}, fn); !checked) {
+        return std::unexpected(checked.error());
+    }
+    return make_scalar_formula_func(std::move(expr));
 }
 
 using BracketRootSolver = double (*)(Func1D, double, double, double, int);
@@ -15875,7 +17450,11 @@ Result<std::string> eval_bracket_root_call(const char* fn, BracketRootSolver sol
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto f = *f_or_error;
     const double x_opt = solver(f, a, b, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -15902,7 +17481,11 @@ Result<std::string> eval_secant_call(const std::string& formula_arg, const std::
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto f = *f_or_error;
     const double x_opt = secant(f, x0, x1, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -15936,9 +17519,21 @@ Result<std::string> eval_halley_call(const std::string& f_arg, const std::string
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto f = make_scalar_formula_func(std::move(*f_expr));
-    auto df = make_scalar_formula_func(std::move(*df_expr));
-    auto d2f = make_scalar_formula_func(std::move(*d2f_expr));
+    auto f_or_error = make_checked_scalar_formula_func(std::move(*f_expr), fn);
+    if (!f_or_error) {
+        return std::unexpected(f_or_error.error());
+    }
+    auto df_or_error = make_checked_scalar_formula_func(std::move(*df_expr), fn);
+    if (!df_or_error) {
+        return std::unexpected(df_or_error.error());
+    }
+    auto d2f_or_error = make_checked_scalar_formula_func(std::move(*d2f_expr), fn);
+    if (!d2f_or_error) {
+        return std::unexpected(d2f_or_error.error());
+    }
+    auto f = *f_or_error;
+    auto df = *df_or_error;
+    auto d2f = *d2f_or_error;
     const double x_opt = halley(f, df, d2f, x0, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, f(x_opt));
 }
@@ -15964,7 +17559,11 @@ Result<std::string> eval_fixed_point_call(const std::string& formula_arg, const 
     if (!max_iter) {
         return std::unexpected(max_iter.error());
     }
-    auto g = make_scalar_formula_func(std::move(*expr));
+    auto g_or_error = make_checked_scalar_formula_func(std::move(*expr), fn);
+    if (!g_or_error) {
+        return std::unexpected(g_or_error.error());
+    }
+    auto g = *g_or_error;
     const double x_opt = fixed_point(g, x0, *tol, *max_iter);
     return format_scalar_optim_result(x_opt, g(x_opt));
 }
@@ -16039,8 +17638,24 @@ Result<std::string> eval_differential_evolution_call(
     if (!seed) {
         return std::unexpected(seed.error());
     }
-    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    // Every generation evaluates the formula once per member, and each evaluation walks a
+    // vector as wide as the bounds list, so the cost is the three of them multiplied:
+    // 200 members over 2000 generations in one dimension took 0.46 s, and in four
+    // dimensions 1.57 s -- 1200 ns a unit either way. A large population or a long run is
+    // a request rather than a slip, the way a Monte Carlo path count is, so it is budgeted
+    // against the simulation policy.
     const size_t dim = bounds->size();
+    WorkBudget budget(fn, 1200.0, kMaxReplSimulationWorkNanos);
+    budget.charge(dim);
+    auto bounded_pop = budget.take("pop", static_cast<double>(*pop));
+    if (!bounded_pop) {
+        return std::unexpected(bounded_pop.error());
+    }
+    auto bounded_iter = budget.take("max_iter", static_cast<double>(*max_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
         return sym_eval(*expr_ptr, build_optim_env(x));
     };
@@ -16074,8 +17689,20 @@ Result<std::string> eval_particle_swarm_call(const std::string& formula_arg,
     if (!seed) {
         return std::unexpected(seed.error());
     }
-    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    // The same product, measured on the same shape: 200 particles over 2000 iterations in
+    // one dimension took 0.38 s, about 1000 ns a unit.
     const size_t dim = bounds->size();
+    WorkBudget budget(fn, 1000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(dim);
+    auto bounded_particles = budget.take("n_particles", static_cast<double>(*n_particles));
+    if (!bounded_particles) {
+        return std::unexpected(bounded_particles.error());
+    }
+    auto bounded_iter = budget.take("max_iter", static_cast<double>(*max_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
         return sym_eval(*expr_ptr, build_optim_env(x));
     };
@@ -16114,7 +17741,7 @@ std::map<std::string, double> build_vec_ode_env(double t, const std::vector<doub
     std::map<std::string, double> env;
     env["t"] = t;
     for (size_t i = 0; i < y.size(); ++i) {
-        env["y" + std::to_string(i)] = y[i];
+        env["y" + format_scalar(i)] = y[i];
     }
     return env;
 }
@@ -16123,7 +17750,7 @@ std::map<std::string, double> build_vec_accel_env(double t, const std::vector<do
     std::map<std::string, double> env;
     env["t"] = t;
     for (size_t i = 0; i < q.size(); ++i) {
-        env["q" + std::to_string(i)] = q[i];
+        env["q" + format_scalar(i)] = q[i];
     }
     return env;
 }
@@ -16131,6 +17758,11 @@ std::map<std::string, double> build_vec_accel_env(double t, const std::vector<do
 Result<std::string> format_ode_trajectory_vec(const OdeResultVec& result) {
     if (result.t.size() != result.y.size()) {
         return std::unexpected(DomainError{"ode", "internal vector trajectory size mismatch"});
+    }
+    if (!result.complete) {
+        return std::unexpected(DomainError{
+            "ode", "step budget exhausted before t_end: the equation is too stiff or "
+                   "too oscillatory for this solver over that interval"});
     }
     if (result.t.empty()) {
         return std::string("traj =\n");
@@ -16149,14 +17781,13 @@ Result<std::string> format_ode_trajectory_vec(const OdeResultVec& result) {
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16175,14 +17806,13 @@ Result<std::string> format_ode_verlet_trajectory(const OdeVerletResult& result) 
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16213,14 +17843,13 @@ Result<std::string> format_ode_verlet_trajectory_vec(const OdeVerletResultVec& r
     }
     std::ostringstream oss;
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16246,10 +17875,11 @@ Result<std::string> eval_ode_verlet_call(const std::string& formula_arg, const s
         return std::unexpected(DomainError{
             fn, "expected ode_verlet(\"formula\", t0, q0, v0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeAccelFunc a = [expr_ptr](double t, double q) {
@@ -16367,10 +17997,11 @@ Result<std::string> eval_ode_rosenbrock23_vec_call(const std::string& formula_ar
         return std::unexpected(DomainError{
             fn, "expected ode_rosenbrock23_vec(\"f0;f1;...\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
     OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
         const auto env = build_vec_ode_env(t, y);
@@ -16413,10 +18044,11 @@ Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_verlet_vec(\"a0;a1;...\", t0, q0, v0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
     OdeAccelFuncVec a = [exprs_ptr](double t, const std::vector<double>& q) {
         const auto env = build_vec_accel_env(t, q);
@@ -16435,7 +18067,7 @@ std::map<std::string, double> build_dae_env(double t, const std::vector<double>&
                                             const std::vector<double>& z) {
     auto env = build_vec_ode_env(t, y);
     for (size_t i = 0; i < z.size(); ++i) {
-        env["z" + std::to_string(i)] = z[i];
+        env["z" + format_scalar(i)] = z[i];
     }
     return env;
 }
@@ -16469,14 +18101,13 @@ Result<std::string> format_dae_trajectory(const DaeResult& result) {
         }
     }
     oss << "y_traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < y_out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < y_out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << y_out(i, j);
+            oss << format_scalar(y_out(i, j));
         }
         oss << "]\n";
     }
@@ -16487,7 +18118,7 @@ Result<std::string> format_dae_trajectory(const DaeResult& result) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << z_out(i, j);
+            oss << format_scalar(z_out(i, j));
         }
         oss << "]\n";
     }
@@ -16512,14 +18143,13 @@ Result<std::string> format_ode_bvp_trajectory(const OdeBvpResult& result) {
         out(i, 2) = result.yp[i];
     }
     oss << "traj =\n";
-    oss << std::fixed << std::setprecision(6);
     for (size_t i = 0; i < out.rows(); ++i) {
         oss << "  [";
         for (size_t j = 0; j < out.cols(); ++j) {
             if (j > 0) {
                 oss << ", ";
             }
-            oss << out(i, j);
+            oss << format_scalar(out(i, j));
         }
         oss << "]\n";
     }
@@ -16534,21 +18164,22 @@ Result<std::string> format_ode_event_trajectory(const OdeEventResult& result) {
         return std::unexpected(DomainError{"ode", "internal event value size mismatch"});
     }
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(6);
     oss << "traj =\n";
     for (size_t i = 0; i < result.t.size(); ++i) {
-        oss << "  [" << result.t[i] << ", " << result.y[i] << "]\n";
+        oss << "  [" << format_scalar(result.t[i]) << ", " << format_scalar(result.y[i])
+            << "]\n";
     }
     oss << "event_count = " << result.event_times.size() << "\n";
     if (!result.event_times.empty()) {
         oss << "events =\n";
         for (size_t i = 0; i < result.event_times.size(); ++i) {
-            oss << "  [" << result.event_times[i] << ", " << result.event_values[i] << "]\n";
+            oss << "  [" << format_scalar(result.event_times[i]) << ", "
+                << format_scalar(result.event_values[i]) << "]\n";
         }
     }
     oss << "event_values =\n";
     for (size_t i = 0; i < result.event_values.size(); ++i) {
-        oss << "  [" << result.event_values[i] << "]\n";
+        oss << "  [" << format_scalar(result.event_values[i]) << "]\n";
     }
     return oss.str();
 }
@@ -16594,10 +18225,11 @@ Result<std::string> eval_ode_dae_index1_call(const std::string& diff_formula_arg
             fn,
             "expected ode_dae_index1(\"f0;f1;...\", \"g0;g1;...\", t0, y0, z0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto diff_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*diff_exprs));
     auto alg_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*alg_exprs));
     DaeDiffFunc f = [diff_exprs_ptr](double t, const std::vector<double>& y,
@@ -16648,10 +18280,11 @@ Result<std::string> eval_ode_bvp_shooting_call(const std::string& formula_arg,
             "expected ode_bvp_shooting(\"formula\", t0, y_a, t_end, y_b, steps) "
             "with env {t, y, yp}"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeBvpFunc f = [expr_ptr](double t, double y, double yp) {
@@ -16687,10 +18320,11 @@ Result<std::string> eval_ode_dde_fixed_step_call(const std::string& formula_arg,
             "expected ode_dde_fixed_step(\"f\", \"history\", t0, t_end, tau, steps) "
             "with f env {t, y, ydelay} and history env {t}"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     SymExpr hist_parsed = std::move(*hist_expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
@@ -16732,10 +18366,11 @@ Result<std::string> eval_ode_event_detect_call(const std::string& formula_arg,
             "expected ode_event_detect(\"f\", \"event\", t0, y0, t_end, steps) "
             "with env {t, y} for both formulas"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     SymExpr event_parsed = std::move(*event_expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
@@ -16762,7 +18397,8 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         fn != "sym_ilaplace" && fn != "sym_mellin" && fn != "sym_imellin" &&
         fn != "sym_hankel" && fn != "sym_ihankel" &&
         fn != "sym_fourier" && fn != "sym_ifourier" &&
-        fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve") {
+        fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve" &&
+        fn != "sym_latex" && fn != "sym_export" && fn != "sym_from_latex") {
         return std::nullopt;
     }
     const auto args = split_call_args(cmd);
@@ -16777,6 +18413,26 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
             return eval_sym_simplify_string(args->at(0));
         }
         return eval_sym_expand_string(args->at(0));
+    }
+    if (fn == "sym_latex") {
+        if (args->size() != 1) {
+            return std::unexpected(DomainError{fn, "expected sym_latex(\"expr\")"});
+        }
+        return eval_sym_latex_string(args->at(0));
+    }
+    if (fn == "sym_from_latex") {
+        if (args->size() != 1) {
+            return std::unexpected(
+                DomainError{"sym_from_latex", "expected sym_from_latex(\"tex\")"});
+        }
+        return eval_sym_from_latex_string(args->at(0));
+    }
+    if (fn == "sym_export") {
+        if (args->size() != 2) {
+            return std::unexpected(
+                DomainError{fn, "expected sym_export(\"expr\", \"notation\")"});
+        }
+        return eval_sym_export_strings(args->at(0), args->at(1));
     }
     if (fn == "sym_diff" || fn == "sym_integrate" || fn == "sym_eval" || fn == "sym_collect" ||
         fn == "sym_solve_linear") {
@@ -17123,9 +18779,27 @@ std::optional<std::vector<std::string>> split_call_args(const std::string& cmd) 
     std::vector<std::string> args;
     std::string current;
     int depth = 0;
+    // A comma inside a quoted string is part of the string, not a separator. Without
+    // this, every argument a user would actually write with one came apart:
+    // `sym_eval("x*y", "x=2,y=3")` -- multi-variable evaluation, which is the whole
+    // point of the second argument -- reported an arity error, as did any expression
+    // carrying a call of two arguments, and `\,` in LaTeX, which is a thin space.
+    //
+    // `parse_quoted_string` accepts either quote character and has no escape sequence,
+    // so this tracks whichever one opened and closes on the same one. Adding an escape
+    // here that the reader does not honour would be worse than having none.
+    char quote = '\0';
     for (size_t i = open + 1; i < close; ++i) {
         const char c = cmd[i];
-        if (c == '[') {
+        if (quote != '\0') {
+            current += c;
+            if (c == quote) {
+                quote = '\0';
+            }
+        } else if (c == '"' || c == '\'') {
+            quote = c;
+            current += c;
+        } else if (c == '[') {
             ++depth;
             current += c;
         } else if (c == ']') {
@@ -17273,6 +18947,26 @@ bool try_parse_bigint_assignment(const std::string& line, std::string& name, std
     return is_identifier(name);
 }
 
+/// `bigint("495")` with no target.
+///
+/// The assignment form above has always existed and the bare one had not, so a line
+/// naming a real command with a real argument fell through every reading and came back
+/// "could not read ... as a matrix call, a matrix constructor, or a scalar expression".
+/// That is true and useless: what is wrong with `bigint("495.0")` is one character, and
+/// nothing told the author which. `bigint` has a reporting parse and the bare form now
+/// reaches it.
+bool try_parse_bigint_call(const std::string& line, std::string& decimal) {
+    static const std::regex pattern(R"(bigint\s*\(\s*(\"([^\"]*)\"|'([^']*)')\s*\))",
+                                    std::regex::icase);
+    const std::string trimmed = trim_copy(line);
+    std::smatch match;
+    if (!std::regex_match(trimmed, match, pattern)) {
+        return false;
+    }
+    decimal = match[2].matched ? match[2].str() : match[3].str();
+    return true;
+}
+
 bool parse_scalar_operand(const std::string& text, ScalarOperand& out) {
     const std::string token = trim_copy(text);
     double value = 0.0;
@@ -17300,12 +18994,22 @@ bool is_binary_minus(const std::string& expr, size_t index) {
         return false;
     }
     const char prev = expr[j - 1];
-    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '(';
+    return prev != '+' && prev != '-' && prev != '*' && prev != '/' && prev != '^' &&
+           prev != '(';
 }
 
-std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops) {
+/// The top-level occurrence of any character in `ops`.
+///
+/// `leftmost` selects which one when there are several, and that is associativity
+/// rather than a preference. Splitting at the LAST occurrence of a left-associative
+/// operator puts everything before it on the left, so `a - b - c` becomes
+/// `(a - b) - c`; splitting at the FIRST occurrence of a right-associative one gives
+/// `a ^ (b ^ c)`, which is what `^` means. Getting this backwards is not a formatting
+/// difference: 2^3^2 is 512 read one way and 729 read the other.
+std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr, const char* ops,
+                                                         bool leftmost) {
     int depth = 0;
-    std::optional<std::pair<size_t, char>> last;
+    std::optional<std::pair<size_t, char>> found;
     for (size_t i = 0; i < expr.size(); ++i) {
         const char c = expr[i];
         if (c == '(') {
@@ -17318,19 +19022,25 @@ std::optional<std::pair<size_t, char>> find_top_level_op(const std::string& expr
                     if (c == '-' && !is_binary_minus(expr, i)) {
                         continue;
                     }
-                    last = std::pair{i, *p};
+                    if (leftmost) {
+                        return std::pair{i, *p};
+                    }
+                    found = std::pair{i, *p};
                 }
             }
         }
     }
-    return last;
+    return found;
 }
 
 std::optional<std::pair<size_t, char>> find_scalar_binop(const std::string& rhs) {
-    if (auto add_sub = find_top_level_op(rhs, "+-")) {
+    if (auto add_sub = find_top_level_op(rhs, "+-", false)) {
         return add_sub;
     }
-    return find_top_level_op(rhs, "*/");
+    if (auto mul_div = find_top_level_op(rhs, "*/", false)) {
+        return mul_div;
+    }
+    return find_top_level_op(rhs, "^", true);
 }
 
 std::string strip_outer_parens(std::string expr) {
@@ -17570,6 +19280,9 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "dist_solve" || fn == "dist_cg" || fn == "dist_gmres" || fn == "dist_jacobi" || fn == "dist_bicgstab" || fn == "dist_minres" || fn == "dist_qmr" || fn == "dist_tfqmr" || fn == "dist_lsmr" || fn == "dist_lsqr" || fn == "dist_matmul" || fn == "transpose" || fn == "chol" ||
             fn == "det" ||
             fn == "trace" || fn == "norm" || fn == "rank" || fn == "matrix_rank" ||
+            fn == "mat_rows" || fn == "mat_cols" || fn == "mat_numel" ||
+            fn == "mat_at" || fn == "mat_row" || fn == "mat_col" ||
+            fn == "mat_reshape" || fn == "mat_submatrix" ||
             fn == "cond" || fn == "lu" ||
             fn == "cuda_lu" ||
             fn == "qr" || fn == "svd" || fn == "eig_sym" || fn == "eig" || fn == "ldl" ||
@@ -17712,6 +19425,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "poly_eval_at" || fn == "poly_sylvester" ||
             fn == "poly_mul" || fn == "poly_sub" || fn == "poly_compose" ||
             fn == "geo_poly_union" || fn == "geo_poly_intersect" || fn == "geo_poly_diff" ||
+            fn == "geo_boolean_union" || fn == "geo_boolean_intersect" ||
+            fn == "geo_boolean_diff" || fn == "geo_boolean_xor" ||
             fn == "geo_minkowski_sum" || fn == "geo_clip_polygon" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "stats_friedman" || fn == "stats_ks_2sample" || fn == "stats_jarque_bera" || fn == "stats_ljung_box" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
             fn == "fft_irfft" || fn == "fft_ifft" || fn == "fft_fft2" || fn == "fft_dct2" || fn == "fft_idct2" || fn == "fft_dst2" || fn == "ifft2" || fn == "idst2" || fn == "kruskal_wallis" || fn == "stats_shapiro_wilk" || fn == "stats_one_way_anova" || fn == "stats_levene" || fn == "stats_bartlett" || fn == "stats_fligner" || fn == "stats_mann_whitney_u" || fn == "stats_wilcoxon_signed_rank" || fn == "fftshift" || fn == "ifftshift" || fn == "fftfreq" || fn == "rfftfreq" ||
@@ -17803,7 +19518,8 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_hankel" || fn == "sym_ihankel" ||
             fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
-            fn == "sym_dsolve" ||
+            fn == "sym_dsolve" || fn == "sym_latex" || fn == "sym_export" ||
+            fn == "sym_from_latex" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_min_cut" ||
@@ -17917,14 +19633,60 @@ Result<double> resolve_scalar_operand(const SessionState& state, const ScalarOpe
     }
     const auto it = state.scalars.find(operand.name);
     if (it == state.scalars.end()) {
+        // A name that exists as a matrix is not an unknown name, and saying so sends
+        // the reader looking for a variable they can see in `vars`. What they have hit
+        // is that there is no operator arithmetic over matrices -- `A + B` and `A * B`
+        // are not spelled that way -- and the message should say which of the two
+        // problems they have.
+        if (state.matrices.count(operand.name) > 0) {
+            return std::unexpected(DomainError{
+                "resolve", "'" + operand.name +
+                               "' is a matrix, not a scalar; matrices have no operator "
+                               "arithmetic -- use matmul(A, B) and the mat_* accessors"});
+        }
         return std::unexpected(DomainError{"resolve", "unknown scalar: " + operand.name});
     }
     return it->second;
 }
 
+/// Reports an argument outside a libm function's real domain, instead of letting the
+/// call return a NaN.
+///
+/// `sqrt(-1)` printed `-nan` and `log(-1)` printed `-nan`. That is the audits' own
+/// category -- a marker that reads as a value -- and `ms::sym2::evaluate` already
+/// declines both, so the REPL and the symbolic core disagreed about the same
+/// expression. It also made the golden transcript unportable: glibc spells it `-nan`
+/// and MSVC spells it `-nan(ind)`, so the corpus was pinning a libc detail rather than
+/// anything about MathScript.
+///
+/// Only the functions whose domain is a real restriction are listed. `exp` overflowing
+/// to infinity is not a domain error, and `0.0/0.0` is division's business.
+Result<void> check_scalar_domain(std::string_view fn, double arg) {
+    const auto out_of_domain = [&fn](const char* requirement) {
+        return std::unexpected(DomainError{std::string(fn), requirement});
+    };
+    if (iequals(fn, "sqrt")) {
+        if (arg < 0.0) return out_of_domain("expected a non-negative argument");
+    } else if (iequals(fn, "log") || iequals(fn, "log2") || iequals(fn, "log10")) {
+        if (arg <= 0.0) return out_of_domain("expected a positive argument");
+    } else if (iequals(fn, "log1p")) {
+        if (arg <= -1.0) return out_of_domain("expected an argument greater than -1");
+    } else if (iequals(fn, "asin") || iequals(fn, "acos")) {
+        if (arg < -1.0 || arg > 1.0) return out_of_domain("expected an argument in [-1, 1]");
+    } else if (iequals(fn, "acosh")) {
+        if (arg < 1.0) return out_of_domain("expected an argument of at least 1");
+    } else if (iequals(fn, "atanh")) {
+        if (arg <= -1.0 || arg >= 1.0) return out_of_domain("expected an argument in (-1, 1)");
+    }
+    return {};
+}
+
 Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const double> args) {
     if (args.size() == 1) {
         const double arg = args[0];
+        if (auto domain = check_scalar_domain(fn_name, arg); !domain) {
+            return std::unexpected(domain.error());
+        }
         if (iequals(fn_name, "sin")) {
             return std::sin(arg);
         }
@@ -17997,7 +19759,29 @@ Result<double> eval_scalar_call_cached(std::string_view fn_name, std::span<const
     return Interpreter::eval_scalar_call(fn_lower, g_scalar_call_arg_buf);
 }
 
+// A chain like x+x+...+x recurses once per operator, so the depth this evaluator
+// reaches is set by the input rather than by anything it controls. Whether that
+// fits was previously a property of the platform: it survived Linux's 8 MB and
+// segfaulted on the 1 MB a Windows thread gets. Refusing beyond a fixed depth
+// makes the answer the same everywhere -- a reported error rather than a crash --
+// and the limit is set well above the longest chain anyone writes by hand and
+// well below what the smallest supported stack holds.
+constexpr int kMaxScalarExprDepth = 1024;
+
+thread_local int g_scalar_expr_depth = 0;
+
+struct ScalarDepthGuard {
+    ScalarDepthGuard() { ++g_scalar_expr_depth; }
+    ~ScalarDepthGuard() { --g_scalar_expr_depth; }
+    ScalarDepthGuard(const ScalarDepthGuard&) = delete;
+    ScalarDepthGuard& operator=(const ScalarDepthGuard&) = delete;
+};
+
 Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view expr_text) {
+    const ScalarDepthGuard depth_guard;
+    if (g_scalar_expr_depth > kMaxScalarExprDepth) {
+        return std::unexpected(DomainError{"eval", "expression nested too deeply"});
+    }
     std::string_view expr = strip_outer_parens_view(expr_text);
     if (expr.empty()) {
         return std::unexpected(DomainError{"eval", "empty expression"});
@@ -18005,6 +19789,43 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
 
     if (is_literal_arith_expr(expr)) {
         return eval_literal_arith(expr);
+    }
+
+    if (const auto call = parse_scalar_unary_call_view(expr)) {
+        return eval_scalar_call_expr(state, expr, *call);
+    }
+
+    ScalarOperand single;
+    if (parse_scalar_operand_view(expr, single)) {
+        return resolve_scalar_operand(state, single);
+    }
+
+    // As in eval_literal_arith: the binary operator is found before a leading sign
+    // is taken as unary, or the sign applies to the whole expression. With x = 4,
+    // -x + 1 evaluated to -5 and -x + y to -6.
+    if (const auto op_pos = find_scalar_binop_view(expr)) {
+    // `-a^b` is `-(a^b)`, not `(-a)^b`. Unary minus binds looser than exponentiation --
+    // in mathematics and in every language that has a power operator -- and the two
+    // readings differ: -2^2 is -4 one way and 4 the other. The additive and
+    // multiplicative levels have to be searched BEFORE the sign is peeled, or `-4 + 1`
+    // becomes `-(4 + 1)`; the power level has to be searched AFTER it. So the sign is
+    // taken here, once the operator found turns out to be the power.
+        if (op_pos->second == '^' && (expr.front() == '-' || expr.front() == '+')) {
+            auto inner = eval_scalar_expr_impl(state, expr.substr(1));
+            if (!inner) {
+                return std::unexpected(inner.error());
+            }
+            return expr.front() == '-' ? -(*inner) : *inner;
+        }
+        auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
+        if (!left) {
+            return std::unexpected(left.error());
+        }
+        auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
+        if (!right) {
+            return std::unexpected(right.error());
+        }
+        return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
     }
 
     if (expr.front() == '-') {
@@ -18017,10 +19838,22 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
     if (expr.front() == '+') {
         return eval_scalar_expr_impl(state, expr.substr(1));
     }
+    return std::unexpected(DomainError{"eval", "invalid scalar expression"});
+}
 
-    if (const auto call = parse_scalar_unary_call_view(expr)) {
+// Evaluating a call needs 16 string_views and 16 doubles of scratch, about half
+// a kilobyte. It lives in its own frame because eval_scalar_expr_impl recurses
+// once per operator in a chain -- x+x+...+x with 500 terms is 500 frames deep --
+// so anything sitting in that frame is multiplied by the length of the chain the
+// platform can take. With the scratch inline, 500 terms needed a quarter of a
+// megabyte of stack: fine on Linux's 8 MB, fatal on the 1 MB a Windows thread
+// gets, where MSVC's larger frames pushed it over and segfaulted CI.
+MS_NOINLINE Result<double> eval_scalar_call_expr(
+    const SessionState& state, std::string_view expr,
+    const std::pair<std::string_view, std::string_view>& call) {
+    {
         std::string_view arg_views[16];
-        const size_t arg_count = split_scalar_call_args_view(call->second, arg_views, 16);
+        const size_t arg_count = split_scalar_call_args_view(call.second, arg_views, 16);
         if (arg_count == 0) {
             return std::unexpected(DomainError{"eval", "invalid scalar expression"});
         }
@@ -18052,28 +19885,8 @@ Result<double> eval_scalar_expr_impl(const SessionState& state, std::string_view
             }
             arg_values[i] = *arg;
         }
-        return eval_scalar_call_cached(call->first, std::span(arg_values.data(), arg_count));
+        return eval_scalar_call_cached(call.first, std::span(arg_values.data(), arg_count));
     }
-
-    ScalarOperand single;
-    if (parse_scalar_operand_view(expr, single)) {
-        return resolve_scalar_operand(state, single);
-    }
-
-    const auto op_pos = find_scalar_binop_view(expr);
-    if (!op_pos) {
-        return std::unexpected(DomainError{"eval", "invalid scalar expression"});
-    }
-
-    auto left = eval_scalar_expr_impl(state, trim_view(expr.substr(0, op_pos->first)));
-    if (!left) {
-        return std::unexpected(left.error());
-    }
-    auto right = eval_scalar_expr_impl(state, trim_view(expr.substr(op_pos->first + 1)));
-    if (!right) {
-        return std::unexpected(right.error());
-    }
-    return Interpreter::eval_scalar_op(op_pos->second, *left, *right);
 }
 
 Result<double> eval_scalar_expr(const SessionState& state, const std::string& expr_text) {

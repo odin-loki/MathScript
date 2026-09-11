@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -24,7 +26,7 @@ void expect_contains(Interpreter& interp, const std::string& cmd, const std::str
 
 } // namespace
 
-TEST(IntegrationFrameworks,  CellmemoryPartialTrace) {
+TEST(IntegrationFrameworks, CellmemoryPartialTrace_CellmemoryNewCellmemoryLong) {
     Interpreter interp;
     expect_contains(interp, "help", "cellmemory_long_term_state");
     expect_contains(interp, "help", "quantum_partial_trace");
@@ -38,7 +40,7 @@ TEST(IntegrationFrameworks,  CellmemoryPartialTrace) {
     EXPECT_EQ(interp.state().matrices.at("ptr").rows(), 2u);
 }
 
-TEST(IntegrationFrameworks,  AngerJScalar) {
+TEST(IntegrationFrameworks, AngerJScalar_CellmemoryNewCellmemoryLong) {
     Interpreter interp;
     expect_ok(interp, "aj = anger_j(1, 1)");
     EXPECT_NEAR(interp.state().scalars.at("aj"), ms::anger_j(1, 1.0), 1e-8);

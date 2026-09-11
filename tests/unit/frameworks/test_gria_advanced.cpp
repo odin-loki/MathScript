@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Advanced unit tests for under-covered ms::gria framework functions.
 // Covers: matrix_alpha, is_critical, classify, generate_field,
 //         langton_lambda, alpha_ca, alpha_lfsr.

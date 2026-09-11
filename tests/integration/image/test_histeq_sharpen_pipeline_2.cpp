@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationImage,  HisteqSharpenTail15) {
     ASSERT_GT(interp.state().matrices.count("S"), 0u);
 }
 
-TEST(IntegrationImage,  ProbExpPpfScalar) {
+TEST(IntegrationImage, ProbExpPpfScalar_HisteqSharpenPipeline2) {
     Interpreter interp;
     expect_ok(interp, "eq = prob_exp_ppf(0.5, 1)");
     EXPECT_NEAR(interp.state().scalars.at("eq"), ms::exp_ppf(0.5, 1), 1e-8);

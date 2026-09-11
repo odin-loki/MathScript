@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/graph/graph.hpp"
 #include <algorithm>
 #include <cmath>
@@ -188,6 +190,36 @@ Graph to_undirected(const Graph& G) {
     return U;
 }
 
+
+// Underlying SIMPLE UNDIRECTED edge list of G, the common normalisation used
+// by max_weight_matching and the planarity family. Directed graphs are
+// symmetrised (a directed edge becomes one undirected edge, as with
+// to_undirected); self-loops are dropped (they can neither be matched nor
+// affect planarity); parallel copies of the same unordered pair collapse to
+// the single HEAVIEST copy; neighbour ids outside [0, n) are skipped
+// defensively (the same guard maximum_matching already applies). Every
+// returned Edge has from < to, and the list is sorted ascending by
+// (from, to), so the downstream edge numbering -- and therefore every
+// tie-break in the algorithms built on it -- is a deterministic function of
+// G alone.
+// O(E log E) time, O(E) space.
+std::vector<Edge> canonical_simple_edges(const Graph& G) {
+    const int n = G.n_vertices();
+    std::map<std::pair<int, int>, double> best;
+    for (int u = 0; u < n; ++u) {
+        for (const auto& [v, w] : G.neighbors(u)) {
+            if (v < 0 || v >= n || v == u) continue;
+            const std::pair<int, int> key{std::min(u, v), std::max(u, v)};
+            const auto it = best.find(key);
+            if (it == best.end()) best.emplace(key, w);
+            else if (w > it->second) it->second = w;
+        }
+    }
+    std::vector<Edge> out;
+    out.reserve(best.size());
+    for (const auto& [key, w] : best) out.push_back(Edge{key.first, key.second, w});
+    return out;
+}
 } // namespace
 
 // ---- Graph ----
@@ -839,25 +871,36 @@ std::vector<int> eccentricity(const Graph& G) {
     return ecc;
 }
 
+// Both used to skip the unreachable pairs and answer from what was left, so a
+// disconnected graph reported the diameter of its largest component -- a real number
+// for a quantity that is infinite, with nothing to say the graph was disconnected.
+// eccentricity() next door already returns -1 for a vertex that cannot reach every
+// other, and these follow it: -1 means "not finite", which is what the diameter and
+// radius of a disconnected graph are.
 int diameter(const Graph& G) {
     auto d = floyd_warshall(G);
-    int n = G.n_vertices();
+    const int n = G.n_vertices();
     double diam = 0;
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j)
-            if (d[i][j] < INF) diam = std::max(diam, d[i][j]);
+    for (int i = 0; i < n; ++i) {
+        for (int j = 0; j < n; ++j) {
+            if (d[i][j] >= INF) return -1;
+            diam = std::max(diam, d[i][j]);
+        }
+    }
     return static_cast<int>(diam);
 }
 
 int radius(const Graph& G) {
     auto d = floyd_warshall(G);
-    int n = G.n_vertices();
+    const int n = G.n_vertices();
     double rad = INF;
     for (int i = 0; i < n; ++i) {
         double ecc = 0;
-        for (int j = 0; j < n; ++j)
-            if (d[i][j] < INF) ecc = std::max(ecc, d[i][j]);
-        if (ecc > 0) rad = std::min(rad, ecc);
+        for (int j = 0; j < n; ++j) {
+            if (d[i][j] >= INF) return -1;
+            ecc = std::max(ecc, d[i][j]);
+        }
+        rad = std::min(rad, ecc);
     }
     return rad < INF ? static_cast<int>(rad) : 0;
 }
@@ -871,6 +914,488 @@ bool is_planar_k5_k33_check(const Graph& G) {
     // Simple Euler formula check: planar => E <= 3V - 6
     int V = G.n_vertices(), E = G.n_edges();
     return E <= 3 * V - 6;
+}
+
+// ---- Exact planarity: the Left-Right criterion ----
+
+namespace {
+
+// Explicit signed -> unsigned index conversion, so every container subscript
+// in the Left-Right and weighted-matching code below states the crossing.
+inline std::size_t uz(int i) { return static_cast<std::size_t>(i); }
+
+// One directed half-edge of the canonical simple edge list: `nbr` is the far
+// endpoint, `edge` the undirected edge index, `half` the half-edge id
+// (2*edge seen from the lower endpoint, 2*edge+1 from the higher one). A
+// named struct rather than a 3-element array so no extra header is needed.
+struct AdjEntry { int nbr = -1; int edge = -1; int half = -1; };
+
+// A maximal run of return (back) edges that must all be drawn on the same
+// side of the current DFS tree path; `low`/`high` are oriented edge ids with
+// -1 meaning "none", so an interval is empty exactly when both are -1.
+struct LRInterval {
+    int low = -1;
+    int high = -1;
+    bool empty() const { return low == -1 && high == -1; }
+};
+
+// The two sides (left/right) of one constraint on a DFS tree path.
+struct LRConflictPair {
+    LRInterval left{};
+    LRInterval right{};
+};
+
+// Left-Right planarity test (de Fraysseix / Ossona de Mendez / Rosenstiehl,
+// in Brandes' iterative formulation), the engine behind is_planar and
+// planar_embedding. Three passes over the canonical simple edge list:
+//   1. dfs_orientation  -- orient every edge away from the DFS tree and
+//      compute height, lowpt, lowpt2 and per-edge nesting depth;
+//   2. dfs_testing      -- walk the nesting-depth-ordered adjacency lists
+//      maintaining a stack of conflict pairs; the two `return false` sites in
+//      add_constraints are the only places non-planarity is detected;
+//   3. dfs_embedding    -- resolve every relative side to an absolute +-1,
+//      re-sort by signed nesting depth and splice half-edges into per-vertex
+//      circular lists, yielding the rotation system.
+// Everything is std::vector/std::unordered_map state; no owning raw pointers,
+// no floating point, and no recursion (all three passes use explicit stacks).
+struct LRPlanarity {
+    int n = 0;
+    int m = 0;
+    std::vector<Edge> E;
+    std::vector<std::vector<AdjEntry>> adj;
+
+    // Pass 1 state.
+    std::vector<int> height;        // n; -1 = not yet visited
+    std::vector<int> parent_edge;   // n; oriented edge id of the tree edge into v
+    std::vector<int> src;           // m
+    std::vector<int> dst;           // m
+    std::vector<char> oriented;     // m
+    std::vector<int> lowpt;         // m
+    std::vector<int> lowpt2;        // m
+    std::vector<int> nesting_depth; // m
+    std::vector<std::vector<int>> out_edges;     // n; orientation order
+    std::vector<std::vector<int>> ordered_adjs;  // n; nesting-depth order
+    std::vector<int> roots;
+
+    // Pass 2 state.
+    std::vector<int> ref_;          // m; reference edge for side resolution
+    std::vector<int> side_;         // m; relative, then absolute, side (+1/-1)
+    std::vector<int> lowpt_edge;    // m
+    std::vector<int> stack_bottom;  // m; index of S's top when the edge was entered
+    std::vector<LRConflictPair> S;
+
+    // Pass 3 state: per-vertex circular half-edge lists.
+    std::vector<std::unordered_map<int, int>> emb_cw;
+    std::vector<std::unordered_map<int, int>> emb_ccw;
+    std::vector<int> emb_first;
+    std::vector<int> left_ref;
+    std::vector<int> right_ref;
+    std::vector<int> chain_;
+
+    // Shared per-pass scratch (each vertex belongs to exactly one DFS tree,
+    // so one array per pass serves every root).
+    std::vector<std::size_t> ind;
+    std::vector<char> skip_init;
+
+    // --- Pass 1: orientation -------------------------------------------
+    void dfs_orientation(int root) {
+        std::vector<int> dfs_stack;
+        dfs_stack.push_back(root);
+        while (!dfs_stack.empty()) {
+            const int v = dfs_stack.back();
+            dfs_stack.pop_back();
+            const int e = parent_edge[uz(v)];
+            while (ind[uz(v)] < adj[uz(v)].size()) {
+                const AdjEntry a = adj[uz(v)][ind[uz(v)]];
+                bool descended = false;
+                if (!skip_init[uz(a.half)]) {
+                    if (oriented[uz(a.edge)]) { ++ind[uz(v)]; continue; }
+                    oriented[uz(a.edge)] = 1;
+                    src[uz(a.edge)] = v;
+                    dst[uz(a.edge)] = a.nbr;
+                    out_edges[uz(v)].push_back(a.edge);
+                    lowpt[uz(a.edge)] = height[uz(v)];
+                    lowpt2[uz(a.edge)] = height[uz(v)];
+                    if (height[uz(a.nbr)] == -1) {          // tree edge
+                        parent_edge[uz(a.nbr)] = a.edge;
+                        height[uz(a.nbr)] = height[uz(v)] + 1;
+                        dfs_stack.push_back(v);             // revisit v after w
+                        dfs_stack.push_back(a.nbr);
+                        skip_init[uz(a.half)] = 1;
+                        descended = true;
+                    } else {                                // back edge
+                        lowpt[uz(a.edge)] = height[uz(a.nbr)];
+                    }
+                }
+                if (descended) break;                       // deliberately no ++ind
+                const int k = a.edge;
+                nesting_depth[uz(k)] = 2 * lowpt[uz(k)];
+                if (lowpt2[uz(k)] < height[uz(v)]) nesting_depth[uz(k)] += 1;
+                if (e != -1) {
+                    if (lowpt[uz(k)] < lowpt[uz(e)]) {
+                        lowpt2[uz(e)] = std::min(lowpt[uz(e)], lowpt2[uz(k)]);
+                        lowpt[uz(e)] = lowpt[uz(k)];
+                    } else if (lowpt[uz(k)] > lowpt[uz(e)]) {
+                        lowpt2[uz(e)] = std::min(lowpt2[uz(e)], lowpt[uz(k)]);
+                    } else {
+                        lowpt2[uz(e)] = std::min(lowpt2[uz(e)], lowpt2[uz(k)]);
+                    }
+                }
+                ++ind[uz(v)];
+            }
+        }
+    }
+
+    // --- Pass 2: testing -----------------------------------------------
+    void set_ref(int a, int b) { if (a >= 0) ref_[uz(a)] = b; }
+
+    bool conflicting(const LRInterval& I, int b) const {
+        return !I.empty() && I.high >= 0 && lowpt[uz(I.high)] > lowpt[uz(b)];
+    }
+
+    int lowest(const LRConflictPair& P) const {
+        const bool has_l = P.left.low >= 0;
+        const bool has_r = P.right.low >= 0;
+        if (!has_l && !has_r) return std::numeric_limits<int>::max();
+        if (!has_l) return lowpt[uz(P.right.low)];
+        if (!has_r) return lowpt[uz(P.left.low)];
+        return std::min(lowpt[uz(P.left.low)], lowpt[uz(P.right.low)]);
+    }
+
+    bool add_constraints(int ei, int e) {
+        // e is the tree edge into the current vertex; a root would have
+        // height 0 and every lowpt is >= 0, so this guard is unreachable.
+        if (e < 0) return true;
+        LRConflictPair P;
+        // Merge the return edges of e_i into P.right.
+        while (!S.empty()) {
+            LRConflictPair Q = S.back();
+            S.pop_back();
+            if (!Q.left.empty()) std::swap(Q.left, Q.right);
+            if (!Q.left.empty()) return false;              // NOT PLANAR
+            if (Q.right.low >= 0 && lowpt[uz(Q.right.low)] > lowpt[uz(e)]) {
+                if (P.right.empty()) P.right = Q.right;     // topmost interval
+                else set_ref(P.right.low, Q.right.high);
+                P.right.low = Q.right.low;
+            } else {
+                set_ref(Q.right.low, lowpt_edge[uz(e)]);    // align
+            }
+            if (static_cast<int>(S.size()) - 1 == stack_bottom[uz(ei)]) break;
+        }
+        // Merge the conflicting return edges of e_1 .. e_{i-1} into P.left.
+        while (!S.empty() &&
+               (conflicting(S.back().left, ei) || conflicting(S.back().right, ei))) {
+            LRConflictPair Q = S.back();
+            S.pop_back();
+            if (conflicting(Q.right, ei)) std::swap(Q.left, Q.right);
+            if (conflicting(Q.right, ei)) return false;     // NOT PLANAR
+            set_ref(P.right.low, Q.right.high);
+            if (Q.right.low != -1) P.right.low = Q.right.low;
+            if (P.left.empty()) P.left = Q.left;            // topmost interval
+            else set_ref(P.left.low, Q.left.high);
+            P.left.low = Q.left.low;
+        }
+        if (!(P.left.empty() && P.right.empty())) S.push_back(P);
+        return true;
+    }
+
+    void remove_back_edges(int e) {
+        const int u = src[uz(e)];
+        // Drop the conflict pairs whose return edges all end at u.
+        while (!S.empty() && lowest(S.back()) == height[uz(u)]) {
+            const LRConflictPair P = S.back();
+            S.pop_back();
+            if (P.left.low != -1) side_[uz(P.left.low)] = -1;
+        }
+        if (!S.empty()) {                                   // trim one more pair
+            LRConflictPair P = S.back();
+            S.pop_back();
+            while (P.left.high != -1 && dst[uz(P.left.high)] == u)
+                P.left.high = ref_[uz(P.left.high)];
+            if (P.left.high == -1 && P.left.low != -1) {
+                set_ref(P.left.low, P.right.low);
+                side_[uz(P.left.low)] = -1;
+                P.left.low = -1;
+            }
+            while (P.right.high != -1 && dst[uz(P.right.high)] == u)
+                P.right.high = ref_[uz(P.right.high)];
+            if (P.right.high == -1 && P.right.low != -1) {
+                set_ref(P.right.low, P.left.low);
+                side_[uz(P.right.low)] = -1;
+                P.right.low = -1;
+            }
+            S.push_back(P);
+        }
+        // The side of e is the side of a highest return edge still open.
+        if (lowpt[uz(e)] < height[uz(u)]) {
+            const int hl = S.empty() ? -1 : S.back().left.high;
+            const int hr = S.empty() ? -1 : S.back().right.high;
+            if (hl != -1 && (hr == -1 || lowpt[uz(hl)] > lowpt[uz(hr)])) ref_[uz(e)] = hl;
+            else ref_[uz(e)] = hr;
+        }
+    }
+
+    bool dfs_testing(int root) {
+        std::vector<int> dfs_stack;
+        dfs_stack.push_back(root);
+        while (!dfs_stack.empty()) {
+            const int v = dfs_stack.back();
+            dfs_stack.pop_back();
+            const int e = parent_edge[uz(v)];
+            bool skip_final = false;
+            while (ind[uz(v)] < ordered_adjs[uz(v)].size()) {
+                const int ei = ordered_adjs[uz(v)][ind[uz(v)]];
+                const int w = dst[uz(ei)];
+                if (!skip_init[uz(ei)]) {
+                    stack_bottom[uz(ei)] = static_cast<int>(S.size()) - 1;
+                    if (ei == parent_edge[uz(w)]) {         // tree edge
+                        dfs_stack.push_back(v);
+                        dfs_stack.push_back(w);
+                        skip_init[uz(ei)] = 1;
+                        skip_final = true;
+                        break;                              // deliberately no ++ind
+                    }
+                    lowpt_edge[uz(ei)] = ei;                // back edge
+                    LRConflictPair fresh;
+                    fresh.right = LRInterval{ei, ei};
+                    S.push_back(fresh);
+                }
+                if (lowpt[uz(ei)] < height[uz(v)]) {        // integrate return edges
+                    if (ind[uz(v)] == 0) {                  // e_i is v's first edge
+                        if (e >= 0) lowpt_edge[uz(e)] = lowpt_edge[uz(ei)];
+                    } else if (!add_constraints(ei, e)) {
+                        return false;
+                    }
+                }
+                ++ind[uz(v)];
+            }
+            if (!skip_final && e != -1) remove_back_edges(e);
+        }
+        return true;
+    }
+
+    // --- Pass 3: sign resolution and embedding --------------------------
+    // Iterative equivalent of the reference's recursive sign(): follow the
+    // ref_ chain to its end, clearing links on the way (so the walk also
+    // memoises and cannot loop), then multiply the sides back down the chain.
+    int resolve_sign(int e) {
+        chain_.clear();
+        int f = e;
+        while (ref_[uz(f)] != -1) {
+            chain_.push_back(f);
+            const int next = ref_[uz(f)];
+            ref_[uz(f)] = -1;
+            f = next;
+        }
+        while (!chain_.empty()) {
+            const int g = chain_.back();
+            chain_.pop_back();
+            side_[uz(g)] *= side_[uz(f)];
+            f = g;
+        }
+        return side_[uz(e)];
+    }
+
+    void half_edge_cw(int v, int w, int r) {                // insert w cw of r
+        std::unordered_map<int, int>& cw = emb_cw[uz(v)];
+        std::unordered_map<int, int>& ccw = emb_ccw[uz(v)];
+        if (r == -1) {
+            cw[w] = w;
+            ccw[w] = w;
+            emb_first[uz(v)] = w;
+            return;
+        }
+        const int cw_r = cw[r];
+        cw[r] = w;
+        cw[w] = cw_r;
+        ccw[cw_r] = w;
+        ccw[w] = r;
+    }
+
+    void half_edge_ccw(int v, int w, int r) {               // insert w ccw of r
+        if (r == -1) { half_edge_cw(v, w, -1); return; }
+        const int ccw_r = emb_ccw[uz(v)][r];
+        half_edge_cw(v, w, ccw_r);
+        if (r == emb_first[uz(v)]) emb_first[uz(v)] = w;
+    }
+
+    void half_edge_first(int v, int w) { half_edge_ccw(v, w, emb_first[uz(v)]); }
+
+    void dfs_embedding(int root) {
+        std::vector<int> dfs_stack;
+        dfs_stack.push_back(root);
+        while (!dfs_stack.empty()) {
+            const int v = dfs_stack.back();
+            dfs_stack.pop_back();
+            while (ind[uz(v)] < ordered_adjs[uz(v)].size()) {
+                const int ei = ordered_adjs[uz(v)][ind[uz(v)]];
+                const int w = dst[uz(ei)];
+                ++ind[uz(v)];                               // note: before the break
+                if (ei == parent_edge[uz(w)]) {             // tree edge
+                    half_edge_first(w, v);
+                    left_ref[uz(v)] = w;
+                    right_ref[uz(v)] = w;
+                    dfs_stack.push_back(v);
+                    dfs_stack.push_back(w);
+                    break;
+                }
+                if (side_[uz(ei)] == 1) {                   // back edge
+                    half_edge_cw(w, v, right_ref[uz(w)]);
+                } else {
+                    half_edge_ccw(w, v, left_ref[uz(w)]);
+                    left_ref[uz(w)] = v;
+                }
+            }
+        }
+    }
+
+    void sort_by_nesting_depth() {
+        for (int v = 0; v < n; ++v) {
+            ordered_adjs[uz(v)] = out_edges[uz(v)];
+            // stable: ties keep orientation order, which is what fixes the
+            // embedding's tie-breaking; an unstable sort would silently
+            // change it.
+            std::stable_sort(ordered_adjs[uz(v)].begin(), ordered_adjs[uz(v)].end(),
+                             [this](int a, int b) {
+                                 return nesting_depth[uz(a)] < nesting_depth[uz(b)];
+                             });
+        }
+    }
+
+    // Runs passes 1 and 2 (and pass 3 when want_embedding); returns planarity.
+    bool run(const Graph& G, bool want_embedding) {
+        n = G.n_vertices();
+        E = canonical_simple_edges(G);
+        m = static_cast<int>(E.size());
+        // Euler's bound, exact for simple graphs with at least 3 vertices.
+        if (n > 2 && m > 3 * n - 6) return false;
+
+        adj.clear();
+        adj.resize(uz(n));
+        for (int k = 0; k < m; ++k) {
+            const Edge& ed = E[uz(k)];
+            adj[uz(ed.from)].push_back(AdjEntry{ed.to, k, 2 * k});
+            adj[uz(ed.to)].push_back(AdjEntry{ed.from, k, 2 * k + 1});
+        }
+
+        height.assign(uz(n), -1);
+        parent_edge.assign(uz(n), -1);
+        src.assign(uz(m), -1);
+        dst.assign(uz(m), -1);
+        oriented.assign(uz(m), 0);
+        lowpt.assign(uz(m), 0);
+        lowpt2.assign(uz(m), 0);
+        nesting_depth.assign(uz(m), 0);
+        out_edges.clear();
+        out_edges.resize(uz(n));
+        ordered_adjs.clear();
+        ordered_adjs.resize(uz(n));
+        roots.clear();
+        ind.assign(uz(n), 0);
+        skip_init.assign(uz(2 * m), 0);
+        for (int v = 0; v < n; ++v) {
+            if (height[uz(v)] == -1) {
+                height[uz(v)] = 0;
+                roots.push_back(v);
+                dfs_orientation(v);
+            }
+        }
+
+        sort_by_nesting_depth();
+
+        ref_.assign(uz(m), -1);
+        side_.assign(uz(m), 1);
+        lowpt_edge.assign(uz(m), -1);
+        stack_bottom.assign(uz(m), -1);
+        S.clear();
+        ind.assign(uz(n), 0);
+        skip_init.assign(uz(m), 0);
+        for (std::size_t i = 0; i < roots.size(); ++i)
+            if (!dfs_testing(roots[i])) return false;
+
+        if (!want_embedding) return true;
+
+        for (int k = 0; k < m; ++k)
+            nesting_depth[uz(k)] = resolve_sign(k) * nesting_depth[uz(k)];
+        sort_by_nesting_depth();
+
+        emb_cw.clear();
+        emb_cw.resize(uz(n));
+        emb_ccw.clear();
+        emb_ccw.resize(uz(n));
+        emb_first.assign(uz(n), -1);
+        left_ref.assign(uz(n), -1);
+        right_ref.assign(uz(n), -1);
+        for (int v = 0; v < n; ++v) {
+            int prev = -1;
+            for (std::size_t i = 0; i < ordered_adjs[uz(v)].size(); ++i) {
+                const int w = dst[uz(ordered_adjs[uz(v)][i])];
+                half_edge_cw(v, w, prev);
+                prev = w;
+            }
+        }
+        ind.assign(uz(n), 0);
+        for (std::size_t i = 0; i < roots.size(); ++i) dfs_embedding(roots[i]);
+        return true;
+    }
+
+    // Walks each vertex's circular list once, starting from emb_first.
+    std::vector<std::vector<int>> embedding() {
+        std::vector<std::vector<int>> out(uz(n));
+        for (int v = 0; v < n; ++v) {
+            const int first = emb_first[uz(v)];
+            if (first == -1) continue;
+            const std::size_t cap = emb_cw[uz(v)].size();
+            int cur = first;
+            for (std::size_t step = 0; step < cap; ++step) {
+                out[uz(v)].push_back(cur);
+                cur = emb_cw[uz(v)][cur];
+                if (cur == first) break;
+            }
+        }
+        return out;
+    }
+};
+
+} // namespace
+
+bool is_planar(const Graph& G) {
+    LRPlanarity lr;
+    return lr.run(G, false);
+}
+
+Result<std::vector<std::vector<int>>> planar_embedding(const Graph& G) {
+    LRPlanarity lr;
+    if (!lr.run(G, true)) {
+        return std::unexpected(
+            Error{DomainError{"planar_embedding", "graph is not planar"}});
+    }
+    return lr.embedding();
+}
+
+std::vector<Edge> kuratowski_subgraph(const Graph& G) {
+    const std::vector<Edge> E = canonical_simple_edges(G);
+    const int n = G.n_vertices();
+    std::vector<char> present(E.size(), 1);
+    auto rebuild = [&]() {
+        Graph H(n, false);
+        for (std::size_t i = 0; i < E.size(); ++i)
+            if (present[i]) H.add_edge(E[i].from, E[i].to, E[i].weight);
+        return H;
+    };
+    if (is_planar(rebuild())) return {};                 // planar: no certificate
+    // Greedy edge minimisation. Every edge put back was, at that moment,
+    // required for non-planarity; since the surviving set only shrinks after
+    // that and subgraphs of planar graphs are planar, the final set is
+    // edge-minimal non-planar -- i.e. exactly a K5 or K3,3 subdivision.
+    for (std::size_t i = 0; i < E.size(); ++i) {
+        present[i] = 0;
+        if (is_planar(rebuild())) present[i] = 1;        // essential: put it back
+    }
+    std::vector<Edge> out;
+    for (std::size_t i = 0; i < E.size(); ++i)
+        if (present[i]) out.push_back(E[i]);
+    return out;
 }
 
 // ---- K-core decomposition (Batagelj-Zaversnik degree peeling) ----
@@ -1346,6 +1871,591 @@ std::vector<std::pair<int, int>> maximum_matching(const Graph& G) {
             edges.emplace_back(i, mate[static_cast<size_t>(i)]);
     }
     return edges;
+}
+
+// ---- General maximum WEIGHT matching (Edmonds primal-dual blossom) ----
+
+namespace {
+
+struct WeightedMatchingResult {
+    std::vector<std::pair<int, int>> edges;
+    double weight = 0.0;
+};
+
+// Relative tolerance base: an edge counts as tight, and a blossom dual as
+// zero, within kBlossomRelTol * max(1, max|weight|). Integer-valued weights
+// keep every dual exactly integral in the doubled formulation below, so the
+// tolerance only matters for genuinely real-valued inputs.
+constexpr double kBlossomRelTol = 1e-9;
+
+// Edmonds' primal-dual maximum-weight matching in Galil's O(V^3) formulation.
+//
+// The doubled dual convention is what keeps integer weights exact: dualvar[v]
+// holds 2*u_v for a vertex and z_b for a blossom, so an edge's slack is
+//     slack(k) = dualvar[u] + dualvar[v] - 2*w(k)
+// and every dual adjustment moves by an integral amount.
+//
+// Endpoint numbering: undirected edge k owns the two endpoint ids 2k and
+// 2k+1, with endpoint[2k] = eu[k] and endpoint[2k+1] = ev[k]. Hence p ^ 1 is
+// always the other end of the same edge and p / 2 is the edge index, which is
+// what makes the alternating-tree bookkeeping below a handful of xors.
+//
+// Blossom ids in [0, nvertex) are trivial blossoms (single vertices); ids in
+// [nvertex, 2*nvertex) are shrunk blossoms handed out from unusedblossoms.
+struct BlossomSolver {
+    int nvertex = 0;
+    int nedge = 0;
+    bool maxcardinality = false;
+    double tol = 0.0;
+
+    std::vector<int> eu;                     // nedge; eu[k] < ev[k]
+    std::vector<int> ev;                     // nedge
+    std::vector<double> ew;                  // nedge
+    std::vector<int> endpoint;               // 2*nedge
+    std::vector<std::vector<int>> neighbend; // nvertex; remote endpoint ids
+
+    std::vector<int> mate;                   // nvertex; endpoint id, -1 = free
+    std::vector<int> label;                  // 2*nvertex; 0 free, 1 S, 2 T, 5 mark
+    std::vector<int> labelend;               // 2*nvertex
+    std::vector<int> inblossom;              // nvertex; top-level blossom of v
+    std::vector<int> blossomparent;          // 2*nvertex
+    std::vector<int> blossombase;            // 2*nvertex; -1 = unused slot
+    std::vector<int> bestedge;               // 2*nvertex; least-slack edge out
+    std::vector<std::vector<int>> blossomchilds;    // 2*nvertex; cyclic order
+    std::vector<std::vector<int>> blossomendps;     // 2*nvertex
+    std::vector<std::vector<int>> blossombestedges; // 2*nvertex
+    // Distinguishes "no list computed yet" from "computed and empty", which
+    // the reference expresses as None vs []; both are meaningful states.
+    std::vector<char> bestedges_valid;       // 2*nvertex
+    std::vector<int> unusedblossoms;
+    std::vector<double> dualvar;             // 2*nvertex; doubled duals
+    std::vector<char> allowedge;             // nedge; slack is (nearly) zero
+    std::vector<int> queue_;                 // S-vertices pending scan (LIFO)
+
+    double slack(int k) const {
+        return dualvar[uz(eu[uz(k)])] + dualvar[uz(ev[uz(k)])] - 2.0 * ew[uz(k)];
+    }
+
+    static int wrap(int j, int len) { return ((j % len) + len) % len; }
+
+    static int index_of(const std::vector<int>& v, int x) {
+        for (std::size_t i = 0; i < v.size(); ++i)
+            if (v[i] == x) return static_cast<int>(i);
+        return -1;
+    }
+
+    // Every trivial (single-vertex) blossom inside b, in cyclic child order.
+    // Recursion depth is the blossom nesting depth, at most nvertex / 2.
+    void collect_leaves(int b, std::vector<int>& out) const {
+        if (b < nvertex) { out.push_back(b); return; }
+        for (std::size_t i = 0; i < blossomchilds[uz(b)].size(); ++i) {
+            const int t = blossomchilds[uz(b)][i];
+            if (t < nvertex) out.push_back(t);
+            else collect_leaves(t, out);
+        }
+    }
+
+    // Label w's top-level blossom S (t == 1) or T (t == 2), arriving through
+    // endpoint p. A T label immediately forces the matched partner to S,
+    // which is why this recurses exactly one level.
+    void assign_label(int w, int t, int p) {
+        const int b = inblossom[uz(w)];
+        label[uz(w)] = t;
+        label[uz(b)] = t;
+        labelend[uz(w)] = p;
+        labelend[uz(b)] = p;
+        bestedge[uz(w)] = -1;
+        bestedge[uz(b)] = -1;
+        if (t == 1) {
+            std::vector<int> leaves;
+            collect_leaves(b, leaves);
+            for (std::size_t i = 0; i < leaves.size(); ++i) queue_.push_back(leaves[i]);
+        } else if (t == 2) {
+            const int mb = mate[uz(blossombase[uz(b)])];
+            if (mb >= 0) assign_label(endpoint[uz(mb)], 1, mb ^ 1);
+        }
+    }
+
+    // Walk the two alternating paths up towards their roots one step at a
+    // time, alternating sides and leaving breadcrumbs (label 5 has bit 2 set).
+    // Returns the base of the blossom the two paths close, or -1 when they
+    // reach different roots -- which means an augmenting path was found.
+    int scan_blossom(int v, int w) {
+        std::vector<int> path;
+        int base = -1;
+        while (v != -1 || w != -1) {
+            int b = inblossom[uz(v)];
+            if ((label[uz(b)] & 4) != 0) { base = blossombase[uz(b)]; break; }
+            path.push_back(b);
+            label[uz(b)] = 5;
+            if (labelend[uz(b)] == -1) {
+                v = -1;
+            } else {
+                v = endpoint[uz(labelend[uz(b)])];
+                b = inblossom[uz(v)];               // a T-blossom
+                v = endpoint[uz(labelend[uz(b)])];
+            }
+            if (w != -1) std::swap(v, w);
+        }
+        for (std::size_t i = 0; i < path.size(); ++i) label[uz(path[i])] = 1;
+        return base;
+    }
+
+    // Shrink the odd cycle through edge k into a new blossom based at `base`.
+    void add_blossom(int base, int k) {
+        int v = eu[uz(k)];
+        int w = ev[uz(k)];
+        const int bb = inblossom[uz(base)];
+        int bv = inblossom[uz(v)];
+        int bw = inblossom[uz(w)];
+        const int b = unusedblossoms.back();
+        unusedblossoms.pop_back();
+        blossombase[uz(b)] = base;
+        blossomparent[uz(b)] = -1;
+        blossomparent[uz(bb)] = b;
+        std::vector<int> path;
+        std::vector<int> endps;
+        while (bv != bb) {                          // trace v back to the base
+            blossomparent[uz(bv)] = b;
+            path.push_back(bv);
+            endps.push_back(labelend[uz(bv)]);
+            v = endpoint[uz(labelend[uz(bv)])];
+            bv = inblossom[uz(v)];
+        }
+        path.push_back(bb);
+        std::reverse(path.begin(), path.end());
+        std::reverse(endps.begin(), endps.end());
+        endps.push_back(2 * k);
+        while (bw != bb) {                          // trace w back to the base
+            blossomparent[uz(bw)] = b;
+            path.push_back(bw);
+            endps.push_back(labelend[uz(bw)] ^ 1);
+            w = endpoint[uz(labelend[uz(bw)])];
+            bw = inblossom[uz(w)];
+        }
+        label[uz(b)] = 1;
+        labelend[uz(b)] = labelend[uz(bb)];
+        dualvar[uz(b)] = 0.0;
+        blossomchilds[uz(b)] = path;
+        blossomendps[uz(b)] = endps;
+        {
+            std::vector<int> leaves;
+            collect_leaves(b, leaves);
+            for (std::size_t i = 0; i < leaves.size(); ++i) {
+                const int x = leaves[i];
+                // A T-vertex swallowed by an S-blossom becomes an S-vertex.
+                if (label[uz(inblossom[uz(x)])] == 2) queue_.push_back(x);
+                inblossom[uz(x)] = b;
+            }
+        }
+        // Least-slack edge from b to each neighbouring S-blossom. Iterating
+        // bestedgeto in ascending blossom id keeps the collected list, and so
+        // every later tie-break, a deterministic function of the input.
+        std::vector<int> bestedgeto(uz(2 * nvertex), -1);
+        for (std::size_t pi = 0; pi < path.size(); ++pi) {
+            const int sub = path[pi];
+            std::vector<std::vector<int>> nblists;
+            if (!bestedges_valid[uz(sub)]) {
+                std::vector<int> leaves;
+                collect_leaves(sub, leaves);
+                for (std::size_t li = 0; li < leaves.size(); ++li) {
+                    const std::vector<int>& nb = neighbend[uz(leaves[li])];
+                    std::vector<int> ks;
+                    ks.reserve(nb.size());
+                    for (std::size_t ni = 0; ni < nb.size(); ++ni) ks.push_back(nb[ni] / 2);
+                    nblists.push_back(ks);
+                }
+            } else {
+                nblists.push_back(blossombestedges[uz(sub)]);
+            }
+            for (std::size_t li = 0; li < nblists.size(); ++li) {
+                const std::vector<int>& nblist = nblists[li];
+                for (std::size_t ki = 0; ki < nblist.size(); ++ki) {
+                    const int kk = nblist[ki];
+                    int i = eu[uz(kk)];
+                    int j = ev[uz(kk)];
+                    if (inblossom[uz(j)] == b) std::swap(i, j);
+                    const int bj = inblossom[uz(j)];
+                    if (bj != b && label[uz(bj)] == 1 &&
+                        (bestedgeto[uz(bj)] == -1 || slack(kk) < slack(bestedgeto[uz(bj)]))) {
+                        bestedgeto[uz(bj)] = kk;
+                    }
+                }
+            }
+            blossombestedges[uz(sub)].clear();
+            bestedges_valid[uz(sub)] = 0;
+            bestedge[uz(sub)] = -1;
+        }
+        blossombestedges[uz(b)].clear();
+        for (int t = 0; t < 2 * nvertex; ++t)
+            if (bestedgeto[uz(t)] != -1) blossombestedges[uz(b)].push_back(bestedgeto[uz(t)]);
+        bestedges_valid[uz(b)] = 1;
+        bestedge[uz(b)] = -1;
+        for (std::size_t i = 0; i < blossombestedges[uz(b)].size(); ++i) {
+            const int kk = blossombestedges[uz(b)][i];
+            if (bestedge[uz(b)] == -1 || slack(kk) < slack(bestedge[uz(b)])) bestedge[uz(b)] = kk;
+        }
+    }
+
+    // Undo a blossom, relabelling its children along the alternating path
+    // that entered it. endstage == true means the stage is over and only
+    // zero-dual blossoms are being expanded, so no relabelling is needed.
+    void expand_blossom(int b, bool endstage) {
+        for (std::size_t i = 0; i < blossomchilds[uz(b)].size(); ++i) {
+            const int s = blossomchilds[uz(b)][i];
+            blossomparent[uz(s)] = -1;
+            if (s < nvertex) {
+                inblossom[uz(s)] = s;
+            } else if (endstage && std::abs(dualvar[uz(s)]) <= tol) {
+                expand_blossom(s, endstage);
+            } else {
+                std::vector<int> leaves;
+                collect_leaves(s, leaves);
+                for (std::size_t li = 0; li < leaves.size(); ++li)
+                    inblossom[uz(leaves[li])] = s;
+            }
+        }
+        if (!endstage && label[uz(b)] == 2) {
+            const int len = static_cast<int>(blossomchilds[uz(b)].size());
+            const int entrychild = inblossom[uz(endpoint[uz(labelend[uz(b)] ^ 1)])];
+            int j = index_of(blossomchilds[uz(b)], entrychild);
+            int jstep = 0;
+            int endptrick = 0;
+            if ((j & 1) != 0) { j -= len; jstep = 1; endptrick = 0; }
+            else { jstep = -1; endptrick = 1; }
+            int p = labelend[uz(b)];
+            while (j != 0) {                        // relabel along the path
+                label[uz(endpoint[uz(p ^ 1)])] = 0;
+                const int q1 = blossomendps[uz(b)][uz(wrap(j - endptrick, len))];
+                label[uz(endpoint[uz(q1 ^ endptrick ^ 1)])] = 0;
+                assign_label(endpoint[uz(p ^ 1)], 2, p);
+                allowedge[uz(q1 / 2)] = 1;
+                j += jstep;
+                const int q2 = blossomendps[uz(b)][uz(wrap(j - endptrick, len))];
+                p = q2 ^ endptrick;
+                allowedge[uz(p / 2)] = 1;
+                j += jstep;
+            }
+            int bv = blossomchilds[uz(b)][uz(wrap(j, len))];
+            label[uz(endpoint[uz(p ^ 1)])] = 2;
+            label[uz(bv)] = 2;
+            labelend[uz(endpoint[uz(p ^ 1)])] = p;
+            labelend[uz(bv)] = p;
+            bestedge[uz(bv)] = -1;
+            j += jstep;
+            while (blossomchilds[uz(b)][uz(wrap(j, len))] != entrychild) {
+                bv = blossomchilds[uz(b)][uz(wrap(j, len))];
+                if (label[uz(bv)] == 1) { j += jstep; continue; }
+                std::vector<int> leaves;
+                collect_leaves(bv, leaves);
+                int v = -1;
+                for (std::size_t li = 0; li < leaves.size(); ++li) {
+                    v = leaves[li];
+                    if (label[uz(v)] != 0) break;
+                }
+                if (v != -1 && label[uz(v)] != 0) {
+                    const int mb = mate[uz(blossombase[uz(bv)])];
+                    label[uz(v)] = 0;
+                    if (mb >= 0) label[uz(endpoint[uz(mb)])] = 0;
+                    assign_label(v, 2, labelend[uz(v)]);
+                }
+                j += jstep;
+            }
+        }
+        label[uz(b)] = -1;
+        labelend[uz(b)] = -1;
+        blossomchilds[uz(b)].clear();
+        blossomendps[uz(b)].clear();
+        blossombase[uz(b)] = -1;
+        blossombestedges[uz(b)].clear();
+        bestedges_valid[uz(b)] = 0;
+        bestedge[uz(b)] = -1;
+        unusedblossoms.push_back(b);
+    }
+
+    // Swap the matched/unmatched edges around blossom b so that its base
+    // becomes v, recursing into every sub-blossom the path passes through.
+    void augment_blossom(int b, int v) {
+        int t = v;
+        while (blossomparent[uz(t)] != b) t = blossomparent[uz(t)];
+        if (t >= nvertex) augment_blossom(t, v);
+        const int len = static_cast<int>(blossomchilds[uz(b)].size());
+        const int i = index_of(blossomchilds[uz(b)], t);
+        int j = i;
+        int jstep = 0;
+        int endptrick = 0;
+        if ((i & 1) != 0) { j -= len; jstep = 1; endptrick = 0; }
+        else { jstep = -1; endptrick = 1; }
+        while (j != 0) {
+            j += jstep;
+            int tt = blossomchilds[uz(b)][uz(wrap(j, len))];
+            const int p = blossomendps[uz(b)][uz(wrap(j - endptrick, len))] ^ endptrick;
+            if (tt >= nvertex) augment_blossom(tt, endpoint[uz(p)]);
+            j += jstep;
+            tt = blossomchilds[uz(b)][uz(wrap(j, len))];
+            if (tt >= nvertex) augment_blossom(tt, endpoint[uz(p ^ 1)]);
+            mate[uz(endpoint[uz(p)])] = p ^ 1;
+            mate[uz(endpoint[uz(p ^ 1)])] = p;
+        }
+        std::rotate(blossomchilds[uz(b)].begin(), blossomchilds[uz(b)].begin() + i,
+                    blossomchilds[uz(b)].end());
+        std::rotate(blossomendps[uz(b)].begin(), blossomendps[uz(b)].begin() + i,
+                    blossomendps[uz(b)].end());
+        blossombase[uz(b)] = blossombase[uz(blossomchilds[uz(b)][0])];
+    }
+
+    // Flip the alternating path found through edge k, growing the matching
+    // by one edge at each of the path's two ends.
+    void augment_matching(int k) {
+        for (int side = 0; side < 2; ++side) {
+            int s = (side == 0) ? eu[uz(k)] : ev[uz(k)];
+            int p = (side == 0) ? (2 * k + 1) : (2 * k);
+            while (true) {
+                const int bs = inblossom[uz(s)];
+                if (bs >= nvertex) augment_blossom(bs, s);
+                mate[uz(s)] = p;
+                if (labelend[uz(bs)] == -1) break;
+                const int t = endpoint[uz(labelend[uz(bs)])];
+                const int bt = inblossom[uz(t)];
+                s = endpoint[uz(labelend[uz(bt)])];
+                const int j = endpoint[uz(labelend[uz(bt)] ^ 1)];
+                if (bt >= nvertex) augment_blossom(bt, j);
+                mate[uz(j)] = labelend[uz(bt)];
+                p = labelend[uz(bt)] ^ 1;
+            }
+        }
+    }
+
+    double min_vertex_dual() const {
+        double d = dualvar[0];
+        for (int v = 1; v < nvertex; ++v) d = std::min(d, dualvar[uz(v)]);
+        return d;
+    }
+
+    WeightedMatchingResult solve(const Graph& G, bool maxcard) {
+        WeightedMatchingResult result;
+        maxcardinality = maxcard;
+        nvertex = G.n_vertices();
+        if (nvertex == 0) return result;
+        const std::vector<Edge> E = canonical_simple_edges(G);
+        nedge = static_cast<int>(E.size());
+        if (nedge == 0) return result;
+
+        eu.assign(uz(nedge), 0);
+        ev.assign(uz(nedge), 0);
+        ew.assign(uz(nedge), 0.0);
+        double maxweight = 0.0;   // clamped at 0 so duals start dual-feasible
+        double maxabsweight = 0.0;
+        for (int k = 0; k < nedge; ++k) {
+            eu[uz(k)] = E[uz(k)].from;
+            ev[uz(k)] = E[uz(k)].to;
+            ew[uz(k)] = E[uz(k)].weight;
+            maxweight = std::max(maxweight, ew[uz(k)]);
+            maxabsweight = std::max(maxabsweight, std::abs(ew[uz(k)]));
+        }
+        tol = kBlossomRelTol * std::max(1.0, maxabsweight);
+
+        endpoint.assign(uz(2 * nedge), 0);
+        neighbend.clear();
+        neighbend.resize(uz(nvertex));
+        for (int k = 0; k < nedge; ++k) {
+            endpoint[uz(2 * k)] = eu[uz(k)];
+            endpoint[uz(2 * k + 1)] = ev[uz(k)];
+            neighbend[uz(eu[uz(k)])].push_back(2 * k + 1);
+            neighbend[uz(ev[uz(k)])].push_back(2 * k);
+        }
+
+        mate.assign(uz(nvertex), -1);
+        label.assign(uz(2 * nvertex), 0);
+        labelend.assign(uz(2 * nvertex), -1);
+        inblossom.assign(uz(nvertex), 0);
+        for (int v = 0; v < nvertex; ++v) inblossom[uz(v)] = v;
+        blossomparent.assign(uz(2 * nvertex), -1);
+        blossombase.assign(uz(2 * nvertex), -1);
+        for (int v = 0; v < nvertex; ++v) blossombase[uz(v)] = v;
+        bestedge.assign(uz(2 * nvertex), -1);
+        blossomchilds.clear();
+        blossomchilds.resize(uz(2 * nvertex));
+        blossomendps.clear();
+        blossomendps.resize(uz(2 * nvertex));
+        blossombestedges.clear();
+        blossombestedges.resize(uz(2 * nvertex));
+        bestedges_valid.assign(uz(2 * nvertex), 0);
+        unusedblossoms.clear();
+        for (int b = nvertex; b < 2 * nvertex; ++b) unusedblossoms.push_back(b);
+        dualvar.assign(uz(2 * nvertex), 0.0);
+        for (int v = 0; v < nvertex; ++v) dualvar[uz(v)] = maxweight;
+        allowedge.assign(uz(nedge), 0);
+        queue_.clear();
+
+        // At most one augmentation per stage, and each augmentation matches
+        // two more vertices, so nvertex stages always suffice.
+        for (int stage = 0; stage < nvertex; ++stage) {
+            std::fill(label.begin(), label.end(), 0);
+            std::fill(bestedge.begin(), bestedge.end(), -1);
+            for (int b = nvertex; b < 2 * nvertex; ++b) {
+                blossombestedges[uz(b)].clear();
+                bestedges_valid[uz(b)] = 0;
+            }
+            std::fill(allowedge.begin(), allowedge.end(), 0);
+            queue_.clear();
+            for (int v = 0; v < nvertex; ++v)
+                if (mate[uz(v)] == -1 && label[uz(inblossom[uz(v)])] == 0)
+                    assign_label(v, 1, -1);
+
+            bool augmented = false;
+            // Each substage either makes a new edge allowable or expands a
+            // blossom, so this cap is unreachable in exact arithmetic; it
+            // exists only so rounding can never spin here forever.
+            const int substage_cap = 4 * (nvertex + nedge) + 16;
+            int substage_guard = 0;
+            while (true) {
+                if (++substage_guard > substage_cap) break;
+
+                // ---- grow the alternating forest ----
+                while (!queue_.empty() && !augmented) {
+                    const int v = queue_.back();
+                    queue_.pop_back();
+                    const std::vector<int>& nb = neighbend[uz(v)];
+                    for (std::size_t pi = 0; pi < nb.size(); ++pi) {
+                        const int p = nb[pi];
+                        const int k = p / 2;
+                        const int w = endpoint[uz(p)];
+                        if (inblossom[uz(v)] == inblossom[uz(w)]) continue;
+                        double kslack = 0.0;
+                        if (!allowedge[uz(k)]) {
+                            kslack = slack(k);
+                            if (kslack <= tol) allowedge[uz(k)] = 1;
+                        }
+                        if (allowedge[uz(k)]) {
+                            if (label[uz(inblossom[uz(w)])] == 0) {
+                                assign_label(w, 2, p ^ 1);
+                            } else if (label[uz(inblossom[uz(w)])] == 1) {
+                                const int base = scan_blossom(v, w);
+                                if (base >= 0) {
+                                    add_blossom(base, k);
+                                } else {
+                                    augment_matching(k);
+                                    augmented = true;
+                                    break;
+                                }
+                            } else if (label[uz(w)] == 0) {
+                                label[uz(w)] = 2;
+                                labelend[uz(w)] = p ^ 1;
+                            }
+                        } else if (label[uz(inblossom[uz(w)])] == 1) {
+                            const int bv = inblossom[uz(v)];
+                            if (bestedge[uz(bv)] == -1 || kslack < slack(bestedge[uz(bv)]))
+                                bestedge[uz(bv)] = k;
+                        } else if (label[uz(w)] == 0) {
+                            if (bestedge[uz(w)] == -1 || kslack < slack(bestedge[uz(w)]))
+                                bestedge[uz(w)] = k;
+                        }
+                    }
+                }
+                if (augmented) break;
+
+                // ---- dual adjustment: take the least of the four deltas ----
+                int deltatype = -1;
+                double delta = 0.0;
+                int deltaedge = -1;
+                int deltablossom = -1;
+
+                if (!maxcardinality) {                       // delta1
+                    deltatype = 1;
+                    delta = min_vertex_dual();
+                }
+                for (int v = 0; v < nvertex; ++v) {          // delta2
+                    if (label[uz(inblossom[uz(v)])] == 0 && bestedge[uz(v)] != -1) {
+                        const double d = slack(bestedge[uz(v)]);
+                        if (deltatype == -1 || d < delta) {
+                            delta = d;
+                            deltatype = 2;
+                            deltaedge = bestedge[uz(v)];
+                        }
+                    }
+                }
+                for (int b = 0; b < 2 * nvertex; ++b) {      // delta3
+                    if (blossomparent[uz(b)] == -1 && label[uz(b)] == 1 &&
+                        bestedge[uz(b)] != -1) {
+                        const double d = 0.5 * slack(bestedge[uz(b)]);
+                        if (deltatype == -1 || d < delta) {
+                            delta = d;
+                            deltatype = 3;
+                            deltaedge = bestedge[uz(b)];
+                        }
+                    }
+                }
+                for (int b = nvertex; b < 2 * nvertex; ++b) {  // delta4
+                    if (blossombase[uz(b)] >= 0 && blossomparent[uz(b)] == -1 &&
+                        label[uz(b)] == 2 && (deltatype == -1 || dualvar[uz(b)] < delta)) {
+                        delta = dualvar[uz(b)];
+                        deltatype = 4;
+                        deltablossom = b;
+                    }
+                }
+                if (deltatype == -1) {                       // maxcardinality optimum
+                    deltatype = 1;
+                    delta = std::max(0.0, min_vertex_dual());
+                }
+                if (delta < 0.0) delta = 0.0;                // rounding clamp
+
+                for (int v = 0; v < nvertex; ++v) {
+                    const int lv = label[uz(inblossom[uz(v)])];
+                    if (lv == 1) dualvar[uz(v)] -= delta;
+                    else if (lv == 2) dualvar[uz(v)] += delta;
+                }
+                for (int b = nvertex; b < 2 * nvertex; ++b) {
+                    if (blossombase[uz(b)] >= 0 && blossomparent[uz(b)] == -1) {
+                        if (label[uz(b)] == 1) dualvar[uz(b)] += delta;
+                        else if (label[uz(b)] == 2) dualvar[uz(b)] -= delta;
+                    }
+                }
+
+                if (deltatype == 1) break;                   // optimum reached
+                if (deltatype == 2) {
+                    allowedge[uz(deltaedge)] = 1;
+                    int i = eu[uz(deltaedge)];
+                    if (label[uz(inblossom[uz(i)])] == 0) i = ev[uz(deltaedge)];
+                    queue_.push_back(i);
+                } else if (deltatype == 3) {
+                    allowedge[uz(deltaedge)] = 1;
+                    queue_.push_back(eu[uz(deltaedge)]);
+                } else {
+                    expand_blossom(deltablossom, false);
+                }
+            }
+
+            if (!augmented) break;                           // no augmenting path left
+            for (int b = nvertex; b < 2 * nvertex; ++b) {    // end of stage
+                if (blossomparent[uz(b)] == -1 && blossombase[uz(b)] >= 0 &&
+                    label[uz(b)] == 1 && std::abs(dualvar[uz(b)]) <= tol) {
+                    expand_blossom(b, true);
+                }
+            }
+        }
+
+        for (int v = 0; v < nvertex; ++v) {
+            const int mv = mate[uz(v)];
+            if (mv >= 0 && endpoint[uz(mv)] > v) {
+                result.edges.emplace_back(v, endpoint[uz(mv)]);
+                result.weight += ew[uz(mv / 2)];
+            }
+        }
+        return result;
+    }
+};
+
+} // namespace
+
+std::vector<std::pair<int, int>> max_weight_matching(const Graph& G, bool maxcardinality) {
+    BlossomSolver solver;
+    return solver.solve(G, maxcardinality).edges;
+}
+
+double max_weight_matching_value(const Graph& G, bool maxcardinality) {
+    BlossomSolver solver;
+    return solver.solve(G, maxcardinality).weight;
 }
 
 // ---- Coloring ----

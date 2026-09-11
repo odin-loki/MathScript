@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <cmath>
 #include <gtest/gtest.h>
 #include <map>
@@ -227,7 +229,9 @@ TEST(SymbolicExtendedTest, integrate_definite_sanity) {
 }
 
 TEST(SymbolicExtendedTest, integrate_unsupported_returns_deriv_sentinel) {
-    const auto unsupported = sym_integrate(sym_sin(sym_mul(sym_const(2.0), sym_var("x"))), "x");
+    // sin(2*x) integrates now; the sentinel needs an integrand with no elementary
+    // antiderivative at all.
+    const auto unsupported = sym_integrate(sym_exp(sym_pow(sym_var("x"), sym_const(2.0))), "x");
     EXPECT_EQ(unsupported.op, SymOp::Deriv);
 }
 
@@ -281,9 +285,12 @@ TEST(SymbolicExtendedTest, to_string_new_ops) {
     EXPECT_NE(sym_to_string(sym_sqrt(sym_var("a"))).find("sqrt"), std::string::npos);
 }
 
-TEST(SymbolicExtendedTest, integrate_pow_minus_one_unsupported) {
-    const auto unsupported = sym_integrate(sym_pow(sym_var("x"), sym_const(-1.0)), "x");
-    EXPECT_EQ(unsupported.op, SymOp::Deriv);
+TEST(SymbolicExtendedTest, integrate_pow_minus_one_is_the_logarithm) {
+    // n = -1 is the case the power rule carves out because the answer is log(x), not
+    // because there is no answer.
+    const auto recip = sym_integrate(sym_pow(sym_var("x"), sym_const(-1.0)), "x");
+    EXPECT_FALSE(sym_is_unsupported(recip, "x"));
+    EXPECT_NEAR(sym_eval(recip, {{"x", 2.0}}), std::log(2.0), 1e-12);
 }
 
 TEST(SymbolicExtendedTest, substitute_in_unary_ops) {
@@ -680,7 +687,8 @@ TEST(SymbolicParseTest, roundtrip_to_string_reparse) {
 }
 
 TEST(SymbolicParseTest, integrate_unsupported_parsed_form) {
-    auto parsed = sym_parse("sin(2*x)");
+    // sin(2*x) integrates now; sin(x^2) is the Fresnel integral and does not.
+    auto parsed = sym_parse("sin(x^2)");
     ASSERT_TRUE(parsed.has_value());
     const auto integral = sym_integrate(*parsed, "x");
     EXPECT_EQ(integral.op, SymOp::Deriv);
@@ -799,16 +807,35 @@ TEST(SymbolicExtendedTest, integrate_product_of_nonconst_is_sentinel) {
     EXPECT_EQ(unsupported.op, SymOp::Deriv);
 }
 
-TEST(SymbolicExtendedTest, integrate_tan_log_exp_are_sentinel) {
-    EXPECT_EQ(sym_integrate(sym_tan(sym_var("x")), "x").op, SymOp::Deriv);
-    EXPECT_EQ(sym_integrate(sym_log(sym_var("x")), "x").op, SymOp::Deriv);
-    EXPECT_EQ(sym_integrate(sym_exp(sym_var("x")), "x").op, SymOp::Deriv);
-    EXPECT_EQ(sym_integrate(sym_sqrt(sym_var("x")), "x").op, SymOp::Deriv);
+TEST(SymbolicExtendedTest, integrate_tan_log_exp_sqrt_are_table_entries) {
+    // All four are standard rows: -log(cos x), x*log(x) - x, exp(x), (2/3)x^(3/2).
+    // The switch simply had no case for these node types.
+    struct Case {
+        SymExpr (*build)(SymExpr);
+        double at_half;
+    };
+    EXPECT_NEAR(sym_eval(sym_integrate(sym_tan(sym_var("x")), "x"), {{"x", 0.5}}),
+                -std::log(std::cos(0.5)), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_integrate(sym_log(sym_var("x")), "x"), {{"x", 2.0}}),
+                2.0 * std::log(2.0) - 2.0, 1e-12);
+    EXPECT_NEAR(sym_eval(sym_integrate(sym_exp(sym_var("x")), "x"), {{"x", 1.5}}),
+                std::exp(1.5), 1e-12);
+    EXPECT_NEAR(sym_eval(sym_integrate(sym_sqrt(sym_var("x")), "x"), {{"x", 4.0}}),
+                (2.0 / 3.0) * std::pow(4.0, 1.5), 1e-12);
 }
 
-TEST(SymbolicExtendedTest, integrate_pow_of_sum_is_sentinel) {
-    const auto unsupported =
+TEST(SymbolicExtendedTest, integrate_pow_of_linear_uses_the_substitution_rule) {
+    // (x+1)^2 is the power rule at a linear argument: (x+1)^3/3. It used to reach the
+    // sentinel because only a bare variable was accepted as the base.
+    const auto integral =
         sym_integrate(sym_pow(sym_add(sym_var("x"), sym_const(1.0)), sym_const(2.0)), "x");
+    EXPECT_FALSE(sym_is_unsupported(integral, "x"));
+    EXPECT_NEAR(sym_eval(integral, {{"x", 2.0}}), 27.0 / 3.0, 1e-12);
+
+    // A power of something that is not first-degree still has no rule.
+    const auto unsupported = sym_integrate(
+        sym_pow(sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_const(1.0)), sym_const(0.5)),
+        "x");
     EXPECT_EQ(unsupported.op, SymOp::Deriv);
 }
 

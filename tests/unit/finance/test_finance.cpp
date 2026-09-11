@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/finance/finance.hpp"
 #include <cmath>
@@ -2336,10 +2338,33 @@ TEST(FinanceBond, NegativePeriodsStillFinite) {
     EXPECT_NEAR(p, 100.0 * 1.04, 1e-10);
 }
 
-TEST(FinanceBond, YtmZeroPeriodsUnmatchedPrice) {
-    auto y = bond_ytm(50.0, 0.05, 0, 100.0);
-    ASSERT_TRUE(y.has_value());
-    EXPECT_TRUE(std::isfinite(*y));
+TEST(FinanceBond, YtmZeroPeriodsUnmatchedPriceIsAnError) {
+    // With n = 0 the price is constant at fv for every yield (verified: 100.0
+    // at y = -0.5, 0, 0.05, 0.5, 2, 10), so no yield reproduces a price of 50.
+    // This used to return the midpoint of the hard-coded [0, 1] bracket and
+    // report success; bond_ytm's Result<double> exists to say so instead.
+    const auto y = bond_ytm(50.0, 0.05, 0, 100.0);
+    EXPECT_FALSE(y.has_value());
+}
+
+TEST(FinanceBond, YtmRecoversYieldsOutsideTheUnitInterval) {
+    // A price above the undiscounted sum of the cash flows implies a NEGATIVE
+    // yield; a price far below implies one above 100%. Both used to be clamped
+    // to a bracket endpoint and reported as success.
+    const auto neg = bond_ytm(170.0, 0.05, 10, 100.0);
+    ASSERT_TRUE(neg.has_value());
+    EXPECT_LT(*neg, 0.0);
+    EXPECT_NEAR(bond_price(0.05, *neg, 10, 100.0), 170.0, 1e-8);
+
+    const auto big = bond_ytm(4.0, 0.05, 10, 100.0);
+    ASSERT_TRUE(big.has_value());
+    EXPECT_GT(*big, 1.0);
+    EXPECT_NEAR(bond_price(0.05, *big, 10, 100.0), 4.0, 1e-8);
+
+    // The ordinary case still round-trips exactly.
+    const auto par = bond_ytm(100.0, 0.05, 10, 100.0);
+    ASSERT_TRUE(par.has_value());
+    EXPECT_NEAR(*par, 0.05, 1e-9);
 }
 
 TEST(FinanceTVM, PvZeroAndOnePeriod) {

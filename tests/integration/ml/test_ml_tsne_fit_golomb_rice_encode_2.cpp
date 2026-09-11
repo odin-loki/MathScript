@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -41,7 +43,7 @@ TEST(IntegrationMl,  MlTsneGolombTail21) {
     EXPECT_EQ(interp.state().matrices.at("GR").rows(), 5u);
 }
 
-TEST(IntegrationMl,  GeoVec2dLengthScalar) {
+TEST(IntegrationMl, GeoVec2dLengthScalar_MlTsneFitGolombRiceEncode2) {
     Interpreter interp;
     expect_ok(interp, "vl = geo_vec2d_length(3, 4)");
     EXPECT_NEAR(interp.state().scalars.at("vl"), 5.0, 1e-8);

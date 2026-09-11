@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -376,11 +378,15 @@ TEST(ReplCommandsTest, numthy_jordan_totient) {
     Interpreter interp;
     expect_contains(interp, "help", "numthy_jordan_totient(k,n)");
 
-    // J_2(6) = 36*(1-1/2)*(1-1/3) = 12.
+    // J_2(6) = 36*(1-1/4)*(1-1/9) = 24. This used to assert 12, from a comment that
+    // wrote the Jordan totient as (1 - 1/p) rather than (1 - 1/p^k) -- the same error
+    // the implementation and the header both carried.
     expect_ok(interp, "jt = numthy_jordan_totient(2, 6)");
-    EXPECT_NEAR(interp.state().scalars.at("jt"), 12.0, 1e-9);
+    EXPECT_NEAR(interp.state().scalars.at("jt"), 24.0, 1e-9);
 
-    expect_contains(interp, "numthy_jordan_totient(2, 6)", "12");
+    expect_contains(interp, "numthy_jordan_totient(2, 6)", "24");
+    // J_1 is the Euler totient, which is why k = 1 was the only case that ever passed.
+    expect_contains(interp, "numthy_jordan_totient(1, 6)", "2");
 }
 
 TEST(ReplCommandsTest, numthy_factor) {
@@ -3596,7 +3602,7 @@ TEST(ReplCommandsTest, numthy_lcm_noassign) {
 
 TEST(ReplCommandsTest, numthy_jordan_totient_noassign) {
     Interpreter interp;
-    expect_contains(interp, "numthy_jordan_totient(2, 6)", "12");
+    expect_contains(interp, "numthy_jordan_totient(2, 6)", "24");
     expect_error_contains(interp, "numthy_jordan_totient(2, missing)",
                           "expected numthy_jordan_totient");
 }

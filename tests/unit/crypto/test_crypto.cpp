@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/crypto/crypto.hpp"
 
 #include <gtest/gtest.h>
@@ -321,6 +323,57 @@ TEST(CryptoPbkdf2HmacSha512, ZeroLengthOutput) {
     const auto password = from_hex("70617373776f7264");
     const auto salt = from_hex("73616c74");
     EXPECT_TRUE(pbkdf2_hmac_sha512(password, salt, 1, 0).empty());
+}
+
+// §8.4: the degenerate guard was tested; the values just past it were not.
+//
+// `if (dklen == 0 || iterations == 0) return {};` survived a mutant that changed the
+// zero to a one -- because dklen = 0 takes the same path either way (the block count
+// rounds to zero and the loop does not run) and every other test asks for 16, 20, 25
+// or 64 bytes. Nothing asked for one, so nothing could tell the guard from a guard
+// that also refuses a one-byte key.
+//
+// The property asserted is PBKDF2's own: a shorter derived key is a PREFIX of a
+// longer one from the same password, salt and iteration count, because the blocks are
+// generated in order and the last is truncated. That pins every short length at once
+// rather than pinning one more vector.
+TEST(CryptoPbkdf2HmacSha512, AShortKeyIsAPrefixOfALongOne) {
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    const auto full = pbkdf2_hmac_sha512(password, salt, 1, 64);
+    ASSERT_EQ(full.size(), std::size_t{64});
+    for (const std::size_t dklen : {std::size_t{1}, std::size_t{2}, std::size_t{7},
+                                    std::size_t{31}, std::size_t{63},
+                                    std::size_t{64}}) {
+        const auto shorter = pbkdf2_hmac_sha512(password, salt, 1, dklen);
+        ASSERT_EQ(shorter.size(), dklen) << "dklen " << dklen;
+        for (std::size_t i = 0; i < dklen; ++i) {
+            EXPECT_EQ(shorter[i], full[i]) << "dklen " << dklen << " byte " << i;
+        }
+    }
+    // And past one digest, where a second block has to be generated and truncated.
+    const auto long_key = pbkdf2_hmac_sha512(password, salt, 1, 100);
+    ASSERT_EQ(long_key.size(), std::size_t{100});
+    for (std::size_t i = 0; i < 64; ++i) {
+        EXPECT_EQ(long_key[i], full[i]) << "second-block prefix at " << i;
+    }
+}
+
+TEST(CryptoPbkdf2HmacSha256, AShortKeyIsAPrefixOfALongOne) {
+    // The same for the SHA-256 sibling, whose guard is the identical line.
+    const auto password = from_hex("70617373776f7264");
+    const auto salt = from_hex("73616c74");
+    const auto full = pbkdf2_hmac_sha256(password, salt, 2, 40);
+    ASSERT_EQ(full.size(), std::size_t{40});
+    for (const std::size_t dklen : {std::size_t{1}, std::size_t{3}, std::size_t{31},
+                                    std::size_t{32}, std::size_t{33},
+                                    std::size_t{40}}) {
+        const auto shorter = pbkdf2_hmac_sha256(password, salt, 2, dklen);
+        ASSERT_EQ(shorter.size(), dklen) << "dklen " << dklen;
+        for (std::size_t i = 0; i < dklen; ++i) {
+            EXPECT_EQ(shorter[i], full[i]) << "dklen " << dklen << " byte " << i;
+        }
+    }
 }
 
 TEST(CryptoToHex, Empty) {

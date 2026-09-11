@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -53,7 +55,7 @@ TEST(IntegrationControl,  ControlC2dD2cTustinEuler) {
     EXPECT_NEAR(interp.state().matrices.at("Ac_e")(0, 0), -2.0, 1e-6);
 }
 
-TEST(IntegrationControl,  KelvinBerScalar) {
+TEST(IntegrationControl, KelvinBerScalar_ControlC2dTustinControlC2d) {
     Interpreter interp;
     expect_ok(interp, "kbr = kelvin_ber(0, 1)");
     EXPECT_NEAR(interp.state().scalars.at("kbr"), ms::kelvin_ber(0, 1), 1e-8);

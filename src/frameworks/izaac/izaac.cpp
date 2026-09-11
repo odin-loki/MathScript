@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/frameworks/izaac/izaac.hpp"
+#include "ms/crypto/crypto.hpp"
 #include "ms/core/rng.hpp"
 #include "ms/error/error_types.hpp"
 
@@ -207,24 +210,37 @@ uint64_t eval_polynomial(
 std::optional<CSPRNG> g_session_rng;
 
 VRFKey keygen() {
+    // Ed25519 keypair from OS entropy. The previous version drew 32 bytes from
+    // a std::mt19937_64 (not a CSPRNG) and derived the "public" key as
+    // public_key[i] = private_key[i] ^ private_key[(i+13)%32], which is not a
+    // one-way function of the private key at all.
     VRFKey key;
-    std::mt19937_64 gen{std::random_device{}()};
-    for (auto& b : key.private_key) {
-        b = static_cast<uint8_t>(gen() & 0xFF);
+    if (!ms::crypto::random_bytes_into(std::span<uint8_t>(key.private_key))) {
+        return key;  // zeroed key; prove()/verify() will not validate
     }
-    for (size_t i = 0; i < key.public_key.size(); ++i) {
-        key.public_key[i] = static_cast<uint8_t>(key.private_key[i] ^ key.private_key[(i + 13) % 32]);
-    }
+    const auto kp = ms::crypto::ed25519_keypair(std::span<const uint8_t>(key.private_key));
+    key.public_key = kp.public_key;
     return key;
 }
 
 VRFProof prove(const VRFKey& key, std::span<const uint8_t> msg) {
+    // Signature-based VRF: proof = Ed25519_sign(sk, msg), output = SHA-512(proof).
+    // Ed25519 signing is deterministic (RFC 8032), so a given (key, msg) yields
+    // exactly one proof and one output, which is what a VRF's uniqueness
+    // property requires; verification binds the message and needs only the
+    // public key.
+    //
+    // The previous prove() computed output[i] = private_key[i%32] ^ msg[i%len]
+    // -- a one-time pad against the message, so anyone who knew the message
+    // recovered the private key by XOR -- and proof[i] = output[i%64] +
+    // public_key[i%32], which carries no secret at all.
     VRFProof proof;
-    for (size_t i = 0; i < proof.output.size(); ++i) {
-        proof.output[i] = static_cast<uint8_t>(key.private_key[i % 32] ^ (msg.empty() ? 0 : msg[i % msg.size()]));
-    }
-    for (size_t i = 0; i < proof.proof.size(); ++i) {
-        proof.proof[i] = static_cast<uint8_t>(proof.output[i % 64] + key.public_key[i % 32]);
+    const auto sig = ms::crypto::ed25519_sign(std::span<const uint8_t>(key.private_key), msg);
+    std::copy(sig.begin(), sig.end(), proof.proof.begin());
+    // proof is 80 bytes; the 16 beyond the signature stay zero and are checked.
+    const auto digest = ms::crypto::sha512(std::span<const uint8_t>(sig));
+    if (digest.size() == proof.output.size()) {
+        std::copy(digest.begin(), digest.end(), proof.output.begin());
     }
     return proof;
 }
@@ -233,22 +249,39 @@ bool verify(
     const std::array<uint8_t, 32>& pub,
     std::span<const uint8_t> msg,
     const VRFProof& proof) {
-    for (size_t i = 0; i < proof.output.size(); ++i) {
-        const uint8_t derived = static_cast<uint8_t>(proof.proof[i] - pub[i % pub.size()]);
-        if (derived != proof.output[i]) {
+    // This used to ignore `msg` entirely -- the body ended with `(void)msg;` --
+    // and check only proof[i] - pub[i%32] == output[i], a self-consistency
+    // identity on the proof bytes. An attacker holding nothing but the public
+    // key could pick any 64-byte output, set proof[i] = output[i%64] +
+    // pub[i%32], and verify() returned true; a proof produced for one message
+    // also verified against any other.
+    //
+    // Verification is now the Ed25519 signature check, which binds the message
+    // to the public key, plus the output/proof binding.
+    const std::size_t sig_size = ms::crypto::ed25519_signature_size;
+    if (proof.proof.size() < sig_size) {
+        return false;
+    }
+    // The bytes past the signature are unused and must be zero, so a proof
+    // cannot smuggle anything through them.
+    for (std::size_t i = sig_size; i < proof.proof.size(); ++i) {
+        if (proof.proof[i] != 0) {
             return false;
         }
     }
-    for (size_t i = proof.output.size(); i < proof.proof.size(); ++i) {
-        const uint8_t derived =
-            static_cast<uint8_t>(proof.proof[i] - pub[i % pub.size()]);
-        if (derived != proof.output[i % proof.output.size()]) {
-            return false;
-        }
+    const std::span<const uint8_t> sig(proof.proof.data(), sig_size);
+    if (!ms::crypto::ed25519_verify(std::span<const uint8_t>(pub), msg, sig)) {
+        return false;
     }
-    (void)msg;
-    return true;
+    const auto digest = ms::crypto::sha512(sig);
+    if (digest.size() != proof.output.size()) {
+        return false;
+    }
+    return ms::crypto::constant_time_eq(
+        std::span<const uint8_t>(digest.data(), digest.size()),
+        std::span<const uint8_t>(proof.output.data(), proof.output.size()));
 }
+
 
 CSPRNG::CSPRNG(const VRFProof& seed) {
     std::array<uint8_t, 32> bytes{};
@@ -643,9 +676,24 @@ constexpr size_t kNonceSize = 16;
 CipherText encrypt(std::span<const uint8_t> plaintext, std::array<uint8_t, 32> key) {
     CipherText ct;
 
-    CSPRNG nonce_rng(mix_seed(key));
+    // The nonce must be FRESH. It used to come from `CSPRNG nonce_rng(mix_seed(key))`
+    // -- a generator constructed from scratch on every call and seeded only by
+    // the key -- so the 16 "nonce" bytes were a deterministic pure function of
+    // the key. The keystream seed is derive_cipher_seed(key, nonce), so it was
+    // identical too: encrypting two plaintexts under one key produced the same
+    // nonce and the same keystream, and ct1 XOR ct2 == pt1 XOR pt2. That is a
+    // two-time pad, which leaks the XOR of the plaintexts outright.
+    //
+    // decrypt() already reads the nonce back out of the ciphertext, so drawing
+    // it from the OS CSPRNG needs no format change.
     std::array<uint8_t, kNonceSize> nonce{};
-    nonce_rng.fill(std::span<uint8_t>(nonce));
+    if (!ms::crypto::random_bytes_into(std::span<uint8_t>(nonce))) {
+        // The OS CSPRNG is unavailable. Refuse to encrypt with a predictable
+        // nonce rather than silently producing a two-time pad.
+        ct.data.clear();
+        ct.tag = {};
+        return ct;
+    }
 
     ct.data.resize(kNonceSize + plaintext.size());
     std::memcpy(ct.data.data(), nonce.data(), kNonceSize);

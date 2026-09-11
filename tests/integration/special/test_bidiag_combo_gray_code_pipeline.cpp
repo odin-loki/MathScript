@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -44,7 +46,7 @@ TEST(IntegrationSpecial,  LinalgCombo) {
     EXPECT_EQ(interp.state().matrices.at("X").rows(), 2u);
 }
 
-TEST(IntegrationSpecial,  SpecialScalar) {
+TEST(IntegrationSpecial, SpecialScalar_BidiagComboGrayCodePipeline) {
     Interpreter interp;
 
     expect_ok(interp, "tn = chebyshev_tn(3, 0, 0.5)");

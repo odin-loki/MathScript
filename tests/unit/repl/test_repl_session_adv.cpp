@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript REPL Session and Eval API Advanced Tests
 // Tests: save_session, load_session, eval_scalar_op, assign_scalar_expr
 
@@ -45,9 +47,18 @@ TEST(ReplScalarOp, Div_By_Zero_Returns_Error) {
     EXPECT_FALSE(r.has_value());
 }
 
-TEST(ReplScalarOp, Unknown_Op_Returns_Error) {
+TEST(ReplScalarOp, Power_Is_Supported) {
+    // This test used to assert that `^` was NOT supported, which was true and was the
+    // defect: `^` was an operator in every symbolic command and in the matrix literal
+    // syntax, and not in scalar arithmetic, so `2^3` did not parse while `sym_eval`
+    // read the same characters as a power. The golden corpus found it.
     auto r = Interpreter::eval_scalar_op('^', 10.0, 3.0);
-    // ^ is not supported by eval_scalar_op (only +, -, *, /)
+    ASSERT_TRUE(r.has_value());
+    EXPECT_NEAR(*r, 1000.0, 1e-9);
+}
+
+TEST(ReplScalarOp, Unknown_Op_Returns_Error) {
+    auto r = Interpreter::eval_scalar_op('%', 10.0, 3.0);
     EXPECT_FALSE(r.has_value());
 }
 

@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/diffgeo/diffgeo.hpp"
 #include <cmath>
+#include <limits>
 #include <array>
 #include <utility>
 #ifndef M_PI
@@ -44,10 +47,18 @@ metric_inv(const std::vector<std::vector<double>>& g_in) {
         std::swap(aug[col], aug[pivot]);
         double sc = aug[col][col];
         if (std::abs(sc) < 1e-14) {
-            // singular: return identity as fallback
-            std::vector<std::vector<double>> id(n, std::vector<double>(n, 0.0));
-            for (int k=0;k<n;++k) id[k][k]=1.0;
-            return id;
+            // Singular metric: there is no inverse. This used to return the
+            // IDENTITY, which is not the inverse of anything but itself, and
+            // which downstream Christoffel-symbol and curvature code cannot
+            // distinguish from a valid result -- so a degenerate metric silently
+            // produced plausible-looking geometry. Return NaN so the failure is
+            // visible at the first arithmetic that touches it. (metric_inv
+            // returns a plain value, not a Result, so NaN is the available
+            // signal; see the header note.)
+            return std::vector<std::vector<double>>(
+                static_cast<std::size_t>(n),
+                std::vector<double>(static_cast<std::size_t>(n),
+                                    std::numeric_limits<double>::quiet_NaN()));
         }
         for (int j = 0; j < 2*n; ++j) aug[col][j] /= sc;
         for (int row = 0; row < n; ++row) {

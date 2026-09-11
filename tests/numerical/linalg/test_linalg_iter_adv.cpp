@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Advanced Iterative Solver Tests (Wave 51)
 // CG, BICGSTAB, GMRES convergence and accuracy tests.
 

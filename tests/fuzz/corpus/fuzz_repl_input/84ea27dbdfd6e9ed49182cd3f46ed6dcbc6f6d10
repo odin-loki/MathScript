@@ -1,0 +1,4 @@
+difmodel_new(dm, 1, 1, 2, 0.1)
+difmodel_updat; 8; 9; 10], 5, 1)
+m, [1], [0.5])
+difmodel_predict(dm, [1])

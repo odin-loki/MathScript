@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "matrix_call.hpp"
 #include "repl_engine_internal.hpp"
 
@@ -6,35 +8,12 @@ namespace ms::interp {
 Result<Matrix<double>> handle_imhist(Interpreter& interp, const MatrixCallAssign& assign) {
     using namespace detail;
     MatrixCallCtx ctx(interp);
-    auto resolve_operand = [&ctx](const std::string& text) { return ctx.resolve_operand(text); };
-    auto parse_scalar_arg = [&ctx](const std::string& arg_text, const char* fn) -> Result<double> {
-        double value = 0.0;
-        if (parse_number(arg_text, value)) return value;
-        auto expr = eval_scalar_expr(ctx.state(), arg_text);
-        if (!expr) {
-            return std::unexpected(DomainError{fn, "expected numeric scalar argument"});
-        }
-        return *expr;
-    };
-    auto parse_positive_size_arg = [](double value, const char* fn, const char* label) -> Result<std::size_t> {
-        const int i = static_cast<int>(value);
-        if (i < 1 || value != static_cast<double>(i)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<std::size_t>(i);
-    };
-    auto parse_uint64_arg = [](double value, const char* fn, const char* label) -> Result<uint64_t> {
-        if (value < 0.0 || value != std::floor(value)) {
-            return std::unexpected(DomainError{fn, label});
-        }
-        return static_cast<uint64_t>(value);
-    };
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
     if (assign.callee == "imhist" &&
                (assign.args.size() == 1 || assign.args.size() == 2)) {
-        auto matrix = resolve_operand(assign.args[0]);
+        auto matrix = ctx.resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
@@ -44,11 +23,17 @@ Result<Matrix<double>> handle_imhist(Interpreter& interp, const MatrixCallAssign
             if (!parse_number(assign.args[1], nbins_d)) {
                 return std::unexpected(DomainError{"imhist", "expected imhist(M[, nbins])"});
             }
-            nbins = static_cast<int>(nbins_d);
-            if (nbins < 1 || nbins_d != nbins) {
+            // Decided on the double: `static_cast<int>` of a value outside int's
+            // range is undefined rather than a wrap. The histogram is one row per
+            // bin, so a bin count past the matrix cap is counted and then refused.
+            auto bounded = checked_result_length("imhist", "nbins", nbins_d);
+            if (!bounded || *bounded < 1) {
                 return std::unexpected(
-                    DomainError{"imhist", "expected positive integer nbins"});
+                    bounded ? Error{DomainError{"imhist",
+                                                "expected positive integer nbins"}}
+                            : bounded.error());
             }
+            nbins = static_cast<int>(*bounded);
         }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {

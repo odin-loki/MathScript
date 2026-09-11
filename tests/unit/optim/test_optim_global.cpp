@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: Global optimization and new scalar root finder tests
 #define _USE_MATH_DEFINES
 #include "ms/optim/optim.hpp"

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationGraph,  BetweennessClosenessTail30) {
     ASSERT_GT(interp.state().matrices.count("cc"), 0u);
 }
 
-TEST(IntegrationGraph,  Theta2Scalar) {
+TEST(IntegrationGraph, Theta2Scalar_GraphBetweennessGraphCloseness) {
     Interpreter interp;
     expect_ok(interp, "th = theta2(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th"), ms::theta2(0.2, 0.1), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
 #include <cmath>
 #include <numbers>
@@ -333,11 +335,16 @@ TEST(SpecialExtTest, lambert_w_minus_one_near_branch_point) {
 }
 
 TEST(SpecialExtTest, mathieu_characteristic_index_out_of_range) {
+    // AUDIT FIX: high orders used to fall off the end of a fixed 80x80 matrix and return NaN.
+    // The matrix is now sized to the requested order, so these are computed -- and at q = 0.1
+    // they must be very close to n^2.
     const std::vector<int> orders{160, 200, 201};
     for (const int n : orders) {
-        EXPECT_TRUE(std::isnan(mathieu_a(n, 0.1))) << "n=" << n;
-        EXPECT_TRUE(std::isnan(mathieu_b(n, 0.1))) << "n=" << n;
+        EXPECT_NEAR(mathieu_a(n, 0.1), static_cast<double>(n) * n, 1e-3) << "n=" << n;
+        EXPECT_NEAR(mathieu_b(n, 0.1), static_cast<double>(n) * n, 1e-3) << "n=" << n;
     }
+    EXPECT_TRUE(std::isnan(mathieu_a(-1, 0.1)));
+    EXPECT_TRUE(std::isnan(mathieu_b(0, 0.1)));  // se_0 is identically zero, so b_0 does not exist
 }
 
 TEST(SpecialExtTest, jacobi_p_rising_factorial_underflow) {
@@ -346,7 +353,11 @@ TEST(SpecialExtTest, jacobi_p_rising_factorial_underflow) {
 }
 
 TEST(SpecialExtTest, whittaker_w_both_representations_fail) {
-    EXPECT_TRUE(std::isnan(whittaker_w(0.0, 0.0, 80.0)));
+    // AUDIT FIX: this used to be NaN only because tricomi_u_impl produced non-finite garbage.
+    // W_{0,0}(z) = sqrt(z/pi) K_0(z/2) (DLMF 13.18.9), which is perfectly finite at z = 80.
+    EXPECT_NEAR(whittaker_w(0.0, 0.0, 80.0),
+                std::sqrt(80.0 / std::numbers::pi) * bessel_k(0, 40.0), 1e-9);
+    EXPECT_TRUE(std::isnan(whittaker_w(0.0, 0.0, -1.0)));
 }
 
 TEST(SpecialExtTest, erfi_airy_gamma_overflow_underflow) {
@@ -358,7 +369,9 @@ TEST(SpecialExtTest, erfi_airy_gamma_overflow_underflow) {
 TEST(SpecialExtTest, bessel_ik_origin_and_domain) {
     EXPECT_NEAR(bessel_i(0, 0.0), 1.0, 1e-15);
     EXPECT_NEAR(bessel_i(1, 0.0), 0.0, 1e-15);
-    EXPECT_FALSE(std::isfinite(bessel_i(3, 0.0)));
+    // AUDIT FIX: I_n(0) = 0 for n >= 1. The old value was NaN only because the (broken)
+    // recurrence evaluated 0 * (2n/0).
+    EXPECT_NEAR(bessel_i(3, 0.0), 0.0, 1e-15);
     EXPECT_TRUE(std::isnan(bessel_i(-1, 1.0)));
     EXPECT_TRUE(std::isnan(bessel_k(0, 0.0)));
     EXPECT_TRUE(std::isnan(bessel_k(-2, 1.0)));
@@ -386,7 +399,13 @@ TEST(SpecialExtTest, pcf_vw_at_origin) {
     const double w0 = pcf_w(0.0, 0.0);
     EXPECT_TRUE(std::isfinite(v0));
     EXPECT_TRUE(std::isfinite(w0));
-    EXPECT_NEAR(pcf_w(0.0, 0.0), pcf_u(0.0, 0.0), 1e-12);
+    // AUDIT FIX: this asserted the old pcf_w = U cos(pi a) - V sin(pi a) mix. W(a,x) is the
+    // oscillatory solution of y'' + (x^2/4 - a)y = 0 (DLMF 12.14), a different function:
+    //   W(0,0) = 2^{-3/4} sqrt(Gamma(1/4)/Gamma(3/4)),  U(0,0) = 2^{-1/4} sqrt(pi)/Gamma(3/4).
+    EXPECT_NEAR(pcf_w(0.0, 0.0),
+                std::pow(2.0, -0.75) * std::sqrt(std::tgamma(0.25) / std::tgamma(0.75)), 1e-13);
+    EXPECT_NEAR(pcf_u(0.0, 0.0),
+                std::pow(2.0, -0.25) * std::sqrt(std::numbers::pi) / std::tgamma(0.75), 1e-13);
 }
 
 TEST(SpecialExtTest, voigt_gaussian_limit_peak) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 
 #include "ms/core/matrix.hpp"
@@ -96,6 +98,7 @@ public:
     void reset() {
         state_ = SessionState{};
         session_objects_.clear();
+        random_draws_ = 0;
     }
     Result<void> save_session(const std::string& path) const;
     Result<void> load_session(const std::string& path);
@@ -125,6 +128,20 @@ private:
     std::map<std::string, SessionObject> session_objects_;
     std::atomic<bool>* cancel_flag_ = nullptr;
     int script_depth_ = 0;
+    /// How many random matrices this session has drawn.
+    ///
+    /// rand(m, n) and randn(m, n) used to seed a fresh mt19937 with the constant 0 on
+    /// every call, so `A = rand(2,2)` and `B = rand(2,2)` were the same matrix -- not a
+    /// stream sampled twice but one sample taken twice. Mixing this counter into the
+    /// seed makes successive calls successive draws while a session still replays
+    /// identically from its start, which is the determinism contract in docs/API.md.
+    unsigned random_draws_ = 0;
+
+public:
+    /// Next seed in this session's stream. Not const: drawing advances it.
+    unsigned next_random_seed();
+
+private:
     std::vector<std::string> script_stack_;
     std::optional<Result<std::string>> try_session_object_command(const std::string& cmd);
     Result<Matrix<double>> parse_matrix(const std::string& text) const;

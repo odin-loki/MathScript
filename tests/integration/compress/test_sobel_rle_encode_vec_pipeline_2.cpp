@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -45,7 +47,7 @@ TEST(IntegrationCompress,  SobelRleEncodeDecodeTail18) {
     }
 }
 
-TEST(IntegrationCompress,  ProbPoisPdfScalar) {
+TEST(IntegrationCompress, ProbPoisPdfScalar_SobelRleEncodeVecPipeline2) {
     Interpreter interp;
     expect_ok(interp, "pp = prob_pois_pdf(2, 2)");
     EXPECT_NEAR(interp.state().scalars.at("pp"), ms::pois_pdf(2, 2), 1e-8);

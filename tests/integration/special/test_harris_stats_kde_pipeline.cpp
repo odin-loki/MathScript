@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -57,7 +59,7 @@ TEST(IntegrationSpecial,  ImageStats) {
     EXPECT_EQ(interp.state().matrices.at("RGB").cols(), 3u);
 }
 
-TEST(IntegrationSpecial,  SpecialScalar) {
+TEST(IntegrationSpecial, SpecialScalar_HarrisStatsKdePipeline) {
     Interpreter interp;
 
     expect_ok(interp, "lp = legendre_pn(2, 1, 0.5)");

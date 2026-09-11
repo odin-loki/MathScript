@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -36,7 +38,7 @@ TEST(IntegrationSpecial,  KnnFitPredict) {
     ASSERT_GT(interp.state().matrices.count("knn_p"), 0u);
 }
 
-TEST(IntegrationSpecial,  ChebyshevTScalar) {
+TEST(IntegrationSpecial, ChebyshevTScalar_MlKnnFitMlKnnPredictPipeline) {
     Interpreter interp;
     expect_ok(interp, "ct = chebyshev_t(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("ct"), ms::chebyshev_t(2, 0.5), 1e-8);

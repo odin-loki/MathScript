@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Condition Number and Matrix Rank Tests (Wave 49, Wave 217)
 // Tests for cond(), rank(), and matrix_rank() functions in ms::linalg
 

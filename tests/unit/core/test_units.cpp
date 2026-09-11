@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // Tests for the compile-time SI unit-dimension system (ms::core::TypedScalar).
 // This is a separate, additive system alongside the runtime ms::Scalar class
 // (covered by test_scalar_type.cpp); these tests do not touch ms::Scalar.

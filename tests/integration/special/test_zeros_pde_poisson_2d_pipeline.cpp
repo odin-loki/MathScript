@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationSpecial,  Poisson2dBurgers) {
     EXPECT_EQ(interp.state().matrices.at("b1").rows(), 11u);
 }
 
-TEST(IntegrationSpecial,  HermiteHScalar) {
+TEST(IntegrationSpecial, HermiteHScalar_ZerosPdePoisson2dPipeline) {
     Interpreter interp;
     expect_ok(interp, "hh = hermite_h(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("hh"), ms::hermite_h(2, 0.5), 1e-8);

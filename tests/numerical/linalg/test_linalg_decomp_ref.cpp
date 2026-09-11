@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Linear Algebra Decomposition Numerical Reference Tests
 // Tests for Hessenberg, Bidiagonal, Schur, and LDL decompositions
 
@@ -258,10 +260,22 @@ TEST(NumericalDecompMatFuncs, Expm_DiagonalMatrix_ExponentiatesEntries) {
     const auto result = expm(A);
     ASSERT_TRUE(result.has_value());
     const DMatrix R = to_col(*result);
-    // expm uses Padé approximation, tolerance ~1e-5 for diagonal case
-    EXPECT_NEAR(R(0, 0), std::exp(1.0), 1e-5);
-    EXPECT_NEAR(R(1, 1), std::exp(2.0), 1e-4);
-    EXPECT_NEAR(R(2, 2), std::exp(3.0), 1e-3);
+    // TIGHTENED: these tolerances (1e-5 / 1e-4 / 1e-3, growing with the
+    // eigenvalue) were sized around a 12-term Taylor truncation while the
+    // comment claimed a Pade approximant. expm is now scaling-and-squaring
+    // with a [13/13] Pade core, so the result is accurate to round-off.
+    EXPECT_NEAR(R(0, 0), std::exp(1.0), 1e-12);
+    EXPECT_NEAR(R(1, 1), std::exp(2.0), 1e-12);
+    EXPECT_NEAR(R(2, 2), std::exp(3.0), 1e-11);
+    // A norm the old truncation could not survive at all: e^20 was off by
+    // orders of magnitude.
+    DMatrix Big(2, 2);
+    Big(0, 0) = 20.0;
+    Big(1, 1) = 20.0;
+    const auto big_result = expm(Big);
+    ASSERT_TRUE(big_result.has_value());
+    const DMatrix RB = to_col(*big_result);
+    EXPECT_NEAR(RB(0, 0) / std::exp(20.0), 1.0, 1e-12);
     EXPECT_NEAR(R(0, 1), 0.0, 1e-8);
     EXPECT_NEAR(R(1, 0), 0.0, 1e-8);
 }

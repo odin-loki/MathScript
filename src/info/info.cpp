@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/info/info.hpp"
 #include <algorithm>
@@ -36,6 +38,14 @@ double normalized_entropy(std::span<const double> p) {
 
 double joint_entropy(std::span<const double> pxy, int rows, int cols,
                      double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     const double log_base_val = std::log(base);
     const int cols_i = cols;
     double h = 0.0;
@@ -49,6 +59,14 @@ double joint_entropy(std::span<const double> pxy, int rows, int cols,
 
 double conditional_entropy(std::span<const double> pxy, int rows, int cols,
                            double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     // H(Y|X) = H(X,Y) - H(X)
     std::vector<double> px(rows, 0.0);
     for (int i = 0; i < rows; ++i)
@@ -59,6 +77,14 @@ double conditional_entropy(std::span<const double> pxy, int rows, int cols,
 
 double mutual_info(std::span<const double> pxy, int rows, int cols,
                    double base) {
+    // rows*cols is the caller's claim about the shape of pxy; it is not
+    // checked anywhere upstream in general, and a joint PMF that is smaller
+    // than the claim would be read past its end (libFuzzer:
+    // info_joint_entropy on a 2x2 with rows=6, cols=2).
+    if (rows <= 0 || cols <= 0 ||
+        static_cast<size_t>(rows) * static_cast<size_t>(cols) > pxy.size()) {
+        return 0.0;
+    }
     // I(X;Y) = H(X) + H(Y) - H(X,Y)
     std::vector<double> px(rows, 0.0), py(cols, 0.0);
     for (int i = 0; i < rows; ++i)
@@ -241,15 +267,26 @@ double source_coding_rate(std::span<const double> p) {
 
 double lz_complexity(std::span<const int> seq) {
     if (seq.empty()) return 0.0;
-    size_t n = seq.size();
-    size_t c = 1; // complexity counter
-    size_t i = 0, k = 1, l = 1;
-    size_t kmax = 1, k_init = 1;
+    const size_t n = seq.size();
+    size_t c = 1;  // number of productions
+    size_t k = 1;  // start of the phrase being built
+    size_t l = 1;  // its length
 
     while (k + l <= n) {
-        // Check if seq[k..k+l-1] exists in seq[0..k-1]
+        // Lempel-Ziv (1976) exhaustive-history complexity: the copy may OVERLAP
+        // the position being reproduced, so the search window ends at k+l-2, not
+        // at k-1. That overlap is exactly what lets a periodic tail be
+        // reproduced by a single production -- without it, a sequence like
+        // 0101010101 was charged a new phrase for every period and scored as
+        // though it were random.
+        // The copy must START strictly before k (it is drawn from the already
+        // produced history), but it may EXTEND past k -- that overlap is what
+        // lets a periodic tail be reproduced by a single production. The
+        // original bound `start + l <= k` forbade the overlap; letting start run
+        // to k+l-2 goes too far the other way and lets a phrase match itself,
+        // which collapses every sequence to the same complexity.
         bool found = false;
-        for (size_t start = 0; start + l <= k; ++start) {
+        for (size_t start = 0; start < k; ++start) {
             bool match = true;
             for (size_t j = 0; j < l; ++j) {
                 if (seq[start + j] != seq[k + j]) { match = false; break; }
@@ -263,7 +300,11 @@ double lz_complexity(std::span<const int> seq) {
             k += l;
             l = 1;
         }
-        (void)i; (void)kmax; (void)k_init;
+    }
+    // The loop exits with a partial phrase still in hand whenever l > 1; the
+    // classic Kaspar-Schuster formulation counts it as one more production.
+    if (l != 1) {
+        ++c;
     }
     // Normalised complexity
     return static_cast<double>(c) / (static_cast<double>(n) / std::log2(static_cast<double>(n) + 1));
@@ -289,24 +330,37 @@ double differential_entropy_uniform(double a, double b) {
 }
 
 double sample_entropy(std::span<const double> x, int m, double r) {
-    // ApEn / SampEn: count template matches
-    size_t n = x.size();
-    if (n < static_cast<size_t>(m + 1)) return 0.0;
+    // SampEn = -log(A / B), where A and B count matching template pairs of
+    // length m+1 and m taken over the SAME population of n - m templates. The
+    // count loop used to run to n - len, giving B a population of n - m and A
+    // only n - m - 1, so A/B < 1 even when every pair matched and a perfectly
+    // regular series reported a strictly positive entropy. Both the length-m and
+    // length-(m+1) vectors starting at i < n - m are constructible, since the
+    // longest needs index i + m <= n - 1.
+    const size_t n = x.size();
+    if (m < 1 || n < static_cast<size_t>(m) + 1) return 0.0;
+    const size_t templates = n - static_cast<size_t>(m);
     auto count_matches = [&](int len) -> double {
         double cnt = 0.0;
-        for (size_t i = 0; i < n - len; ++i) {
-            for (size_t j = i + 1; j < n - len; ++j) {
+        for (size_t i = 0; i < templates; ++i) {
+            for (size_t j = i + 1; j < templates; ++j) {
                 double d = 0.0;
                 for (int k = 0; k < len; ++k)
-                    d = std::max(d, std::abs(x[i + k] - x[j + k]));
+                    d = std::max(d, std::abs(x[i + static_cast<size_t>(k)] -
+                                             x[j + static_cast<size_t>(k)]));
                 if (d < r) cnt += 1.0;
             }
         }
         return cnt;
     };
-    double A = count_matches(m + 1);
-    double B = count_matches(m);
-    if (B <= 0.0) return 0.0;
+    const double A = count_matches(m + 1);
+    const double B = count_matches(m);
+    if (B <= 0.0 || A <= 0.0) {
+        // No matches at either length: SampEn is undefined (log of 0 or 0/0).
+        // Keep the module's defensive convention and report 0 rather than an
+        // infinity that would poison downstream arithmetic.
+        return 0.0;
+    }
     return -std::log(A / B);
 }
 
@@ -328,9 +382,24 @@ static double range_max(std::span<const double> data) {
     return *std::max_element(data.begin(), data.end());
 }
 
+// The joint distribution `transfer_entropy` builds is bins x bins x bins, and the
+// product used to be formed in `int`: the SQUARE overflows at bins = 46341 and the
+// CUBE at 1291, so `transfer_entropy(x, y, 10000000, 1)` did not ask for a large
+// allocation -- it asked for an undefined one, and what came out reached
+// std::vector's max_size() check and ended the process.
+//
+// 256 is where a histogram stops being a histogram of anything rather than where the
+// memory stops being affordable: 256^3 is 16.7 million cells, and the caller has at
+// most `n` samples to put in them. The product is formed in std::size_t regardless,
+// because a bound that is only enforced after an overflowing multiply is not a bound.
+constexpr int kMaxTransferEntropyBins = 256;
+
 double transfer_entropy(const std::vector<double>& x,
                         const std::vector<double>& y, int bins, int lag) {
-    if (x.size() != y.size() || lag < 1 || bins < 1) return 0.0;
+    if (x.size() != y.size() || lag < 1 || bins < 1 ||
+        bins > kMaxTransferEntropyBins) {
+        return 0.0;
+    }
 
     const size_t n = x.size();
     if (n < static_cast<size_t>(lag) + 1) return 0.0;
@@ -343,12 +412,12 @@ double transfer_entropy(const std::vector<double>& x,
     const size_t n_samples = n - static_cast<size_t>(lag);
 
     // Joint p(y_t, y_{t+lag}) for H(y_{t+lag}|y_t): rows=y_t, cols=y_{t+lag}.
-    std::vector<double> p_yt_yfuture(static_cast<size_t>(bins * bins), 0.0);
+    const size_t bins_u = static_cast<size_t>(bins);
+    std::vector<double> p_yt_yfuture(bins_u * bins_u, 0.0);
     // Joint p(y_t, x_t) marginal for H(y_{t+lag}|y_t, x_t).
-    std::vector<double> p_yt_xt(static_cast<size_t>(bins * bins), 0.0);
+    std::vector<double> p_yt_xt(bins_u * bins_u, 0.0);
     // Joint p(y_t, x_t, y_{t+lag}): index = iy_past * bins * bins + ix * bins + iy_future.
-    std::vector<double> p_yt_xt_yfuture(
-        static_cast<size_t>(bins * bins * bins), 0.0);
+    std::vector<double> p_yt_xt_yfuture(bins_u * bins_u * bins_u, 0.0);
 
     for (size_t t = 0; t < n_samples; ++t) {
         const int iy_past =

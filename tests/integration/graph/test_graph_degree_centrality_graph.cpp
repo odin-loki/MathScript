@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -37,7 +39,7 @@ TEST(IntegrationGraph,  DegreeTopoSortTail30) {
     ASSERT_GT(interp.state().matrices.count("ord"), 0u);
 }
 
-TEST(IntegrationGraph,  Theta3Scalar) {
+TEST(IntegrationGraph, Theta3Scalar_GraphDegreeCentralityGraph) {
     Interpreter interp;
     expect_ok(interp, "th = theta3(0.2, 0.1)");
     EXPECT_NEAR(interp.state().scalars.at("th"), ms::theta3(0.2, 0.1), 1e-8);

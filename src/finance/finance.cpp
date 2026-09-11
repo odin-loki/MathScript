@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/finance/finance.hpp"
 #include "ms/error/error_types.hpp"
@@ -78,7 +80,10 @@ static double heston_integrand(double phi, double S, double K, double T, double 
                                double v0, double kappa, double theta, double sigma_v,
                                double rho, int j) {
     const std::complex<double> i(0.0, 1.0);
-    const double u = (j == 1) ? 1.0 : 0.0;
+    // Heston's u1 = +1/2, u2 = -1/2. Using 1 and 0 doubles the 2*u*i*phi term in
+    // the discriminant for j=1 and deletes it for j=2, so d -- and every
+    // coefficient built from it -- was wrong for both integrands.
+    const double u = (j == 1) ? 0.5 : -0.5;
     const double b = (j == 1) ? (kappa - rho * sigma_v) : kappa;
     const double a = kappa * theta;
     const double sigma_v2 = sigma_v * sigma_v;
@@ -92,9 +97,16 @@ static double heston_integrand(double phi, double S, double K, double T, double 
     const std::complex<double> exp_dt = std::exp(-d * T);
     const std::complex<double> one(1.0, 0.0);
     const std::complex<double> G = (one - c_inv * exp_dt) / (one - c_inv);
+    // The Albrecher "little trap" D is
+    //   ((b - rho*sigma*i*phi - d)/sigma^2) * (1 - e^{-dT}) / (1 - c*e^{-dT}).
+    // Dividing by G = (1 - c*e^{-dT})/(1 - c) instead of by (1 - c*e^{-dT})
+    // multiplied D by a spurious (1 - c). G belongs to C, which uses log(G)
+    // correctly; only D was wrong. The error vanishes as sigma_v -> 0 (c -> 0),
+    // which is exactly the limit the zero-vol tests check, so it stayed hidden.
+    const std::complex<double> one_minus_c_edt = one - c_inv * exp_dt;
     const std::complex<double> D =
         (b - rho * sigma_v * i * phi_c - d) / sigma_v2 *
-        ((one - exp_dt) / G);
+        ((one - exp_dt) / one_minus_c_edt);
     const std::complex<double> C =
         r * i * phi_c * T +
         (a / sigma_v2) *
@@ -487,15 +499,56 @@ double bond_convexity(double c, double y, int n, double fv) {
 }
 
 Result<double> bond_ytm(double price, double c, int n, double fv) {
-    double lo = 0.0, hi = 1.0;
-    for (int i = 0; i < 200; ++i) {
-        double mid = 0.5 * (lo + hi);
-        double p = bond_price(c, mid, n, fv);
-        if (std::abs(p - price) < 1e-8) return mid;
-        if (p > price) lo = mid; else hi = mid;
+    // The bracket used to be hard-coded [0, 1] and the function returned the
+    // midpoint unconditionally after 200 halvings -- so a bond whose true yield
+    // was negative or above 100% was silently clamped to an endpoint and
+    // reported as a successful answer. A price of 170 on a 5% 10-period bond
+    // (whose price at y = -2% is 178.36) came back as exactly 0.0, and the
+    // Result<double> return type -- which bs_implied_vol and irr both use to
+    // signal failure -- was never once used.
+    if (!(price > 0.0) || n <= 0) {
+        return std::unexpected(DomainError{"bond_ytm", "price must be positive and n >= 1"});
     }
-    double mid = 0.5 * (lo + hi);
-    return mid;
+
+    // Price is strictly decreasing in yield, so expand the bracket outwards
+    // until it straddles the target. The lower end may go negative (a real
+    // possibility for a bond trading above the sum of its cash flows) but must
+    // stay above -1 or the discount factor 1/(1+y)^t is undefined.
+    double lo = -0.9999;
+    double hi = 1.0;
+    double p_hi = bond_price(c, hi, n, fv);
+    for (int expand = 0; expand < 60 && p_hi > price; ++expand) {
+        hi *= 2.0;
+        p_hi = bond_price(c, hi, n, fv);
+    }
+    if (p_hi > price) {
+        return std::unexpected(ConvergenceFail{60, p_hi - price});
+    }
+    const double p_lo = bond_price(c, lo, n, fv);
+    if (p_lo < price) {
+        // Even at the lowest admissible yield the bond is worth less than the
+        // asking price: no yield reproduces it.
+        return std::unexpected(ConvergenceFail{0, price - p_lo});
+    }
+
+    for (int i = 0; i < 200; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        const double p = bond_price(c, mid, n, fv);
+        if (std::abs(p - price) < 1e-10) {
+            return mid;
+        }
+        if (p > price) {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    const double mid = 0.5 * (lo + hi);
+    const double resid = std::abs(bond_price(c, mid, n, fv) - price);
+    if (resid < 1e-6) {
+        return mid;
+    }
+    return std::unexpected(ConvergenceFail{200, resid});
 }
 
 double npv(double rate, std::span<const double> cashflows) {
@@ -561,11 +614,21 @@ double cvar(std::span<const double> returns, double alpha) {
     return -es;
 }
 
+// (1 - confidence) is a tail fraction, so it has to be clamped to [0, 1] BEFORE it is
+// scaled and converted: a confidence outside (0, 1) makes the product negative or larger
+// than the sample, and converting a negative double to size_t is undefined behaviour that
+// in practice yields a value near 2^64.
+static double tail_fraction(double confidence) {
+    const double tail = 1.0 - confidence;
+    if (!(tail > 0.0)) return 0.0;  // also catches NaN
+    return tail < 1.0 ? tail : 1.0;
+}
+
 double historical_var(std::span<const double> returns, double confidence) {
     if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t idx = static_cast<size_t>((1.0 - confidence) * sorted.size());
+    size_t idx = static_cast<size_t>(tail_fraction(confidence) * static_cast<double>(sorted.size()));
     if (idx >= sorted.size()) idx = sorted.size() - 1;
     return -sorted[idx];
 }
@@ -574,7 +637,8 @@ double historical_cvar(std::span<const double> returns, double confidence) {
     if (returns.empty()) return 0.0;
     std::vector<double> sorted(returns.begin(), returns.end());
     std::sort(sorted.begin(), sorted.end());
-    size_t cutoff = static_cast<size_t>((1.0 - confidence) * sorted.size());
+    size_t cutoff = static_cast<size_t>(tail_fraction(confidence) * static_cast<double>(sorted.size()));
+    if (cutoff > sorted.size()) cutoff = sorted.size();
     if (cutoff == 0) return -sorted[0];
     double sum = 0.0;
     for (size_t i = 0; i < cutoff; ++i) sum += sorted[i];

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #pragma once
 #include "ms/error/error_types.hpp"
 #include <complex>
@@ -68,6 +70,11 @@ StateSpace       ss(std::vector<std::vector<double>> A,
                     std::vector<std::vector<double>> C,
                     std::vector<std::vector<double>> D);
 // Convert TF to SS (canonical controllable form)
+/// @brief Controllable-canonical-form realisation of a transfer function.
+/// @note Leading zeros in either polynomial are stripped first: they do not change the
+///   polynomial, but den[0] is the divisor for the whole realisation, so a leading zero
+///   used to produce an infinite A and then hang the matrix exponential. An identically
+///   zero denominator is not a transfer function and yields the zero system.
 StateSpace tf2ss(const TransferFunction& sys);
 // Convert SS to TF
 TransferFunction ss2tf(const StateSpace& sys);

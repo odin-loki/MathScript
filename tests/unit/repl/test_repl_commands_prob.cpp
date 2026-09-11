@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -5048,7 +5050,7 @@ TEST(ReplCommandsTest, prob_binom_pdf_noassign) {
     expect_ok(interp, "prob_binom_pdf(2, 4, 0.5)");
     expect_error_contains(interp, "prob_binom_pdf(2, 4, missing)",
                           "expected prob_binom_pdf(k, n, p)");
-    expect_error_contains(interp, "prob_binom_pdf(1.5, 4, 0.5)", "expected integer k and n");
+    expect_error_contains(interp, "prob_binom_pdf(1.5, 4, 0.5)", "expected an integer k");
 }
 
 TEST(ReplCommandsTest, prob_binom_cdf_noassign) {
@@ -5056,7 +5058,7 @@ TEST(ReplCommandsTest, prob_binom_cdf_noassign) {
     expect_ok(interp, "prob_binom_cdf(2, 4, 0.5)");
     expect_error_contains(interp, "prob_binom_cdf(2, 4, missing)",
                           "expected prob_binom_cdf(k, n, p)");
-    expect_error_contains(interp, "prob_binom_cdf(1.5, 4, 0.5)", "expected integer k and n");
+    expect_error_contains(interp, "prob_binom_cdf(1.5, 4, 0.5)", "expected an integer k");
 }
 
 TEST(ReplCommandsTest, prob_exp_cdf_noassign) {

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
 #include <cmath>
 
@@ -20,12 +22,44 @@ TEST(FftCoreTest, fft_ifft_roundtrip) {
 }
 
 TEST(FftCoreTest, odd_length_dft_path) {
+    // dft() returns the transform at the input's OWN length. It used to forward
+    // to fft(), which zero-pads to the next power of two, so a length-3 signal
+    // came back as 4 bins of a padded signal -- values that are not a subset of
+    // the true 3-point DFT and that no caller could use as one.
     const std::vector<double> x{1, 2, 3};
     const auto spec = dft(std::span<const double>(x)).value();
-    ASSERT_EQ(spec.size(), 4u);
-    const auto back = ifft(spec).value();
+    ASSERT_EQ(spec.size(), 3u);
+
+    // Exact 3-point DFT of {1, 2, 3}: 6, -1.5 +/- i*sqrt(3)/2.
+    EXPECT_NEAR(spec[0].real(), 6.0, 1e-12);
+    EXPECT_NEAR(spec[0].imag(), 0.0, 1e-12);
+    EXPECT_NEAR(spec[1].real(), -1.5, 1e-12);
+    EXPECT_NEAR(spec[1].imag(), std::sqrt(3.0) / 2.0, 1e-12);
+    EXPECT_NEAR(spec[2].real(), -1.5, 1e-12);
+    EXPECT_NEAR(spec[2].imag(), -std::sqrt(3.0) / 2.0, 1e-12);
+
+    // idft is the matching inverse and round-trips at the same length.
+    const auto back = idft(spec).value();
+    ASSERT_EQ(back.size(), x.size());
     for (size_t i = 0; i < x.size(); ++i) {
-        EXPECT_NEAR(back[i], x[i], 1e-5);
+        EXPECT_NEAR(back[i].real(), x[i], 1e-10);
+        EXPECT_NEAR(back[i].imag(), 0.0, 1e-10);
+    }
+}
+
+TEST(FftCoreTest, dft_idft_round_trip_at_several_lengths) {
+    for (size_t n : {1u, 2u, 3u, 5u, 7u, 12u}) {
+        std::vector<double> x(n);
+        for (size_t i = 0; i < n; ++i) {
+            x[i] = std::sin(0.7 * static_cast<double>(i)) + 0.25 * static_cast<double>(i);
+        }
+        const auto spec = dft(std::span<const double>(x)).value();
+        ASSERT_EQ(spec.size(), n);
+        const auto back = idft(spec).value();
+        ASSERT_EQ(back.size(), n);
+        for (size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(back[i].real(), x[i], 1e-9) << "n = " << n << " i = " << i;
+        }
     }
 }
 

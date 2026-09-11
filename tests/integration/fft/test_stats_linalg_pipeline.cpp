@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: Stats + Linalg + Signal Pipeline
 // End-to-end pipeline: generate data, run stats, fit, solve, filter
 
@@ -14,6 +16,11 @@
 #include "ms/core/operations.hpp"
 #include "ms/signal/signal.hpp"
 #include "ms/fft/fft.hpp"
+
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 using namespace ms;
 using DMatrix = Matrix<double>;

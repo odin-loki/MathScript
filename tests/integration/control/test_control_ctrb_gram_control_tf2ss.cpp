@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -40,7 +42,7 @@ TEST(IntegrationControl,  GramTf2ssSeriesTail14) {
     EXPECT_EQ(interp.state().matrices.at("S").rows(), 2u);
 }
 
-TEST(IntegrationControl,  KelvinBerScalar) {
+TEST(IntegrationControl, KelvinBerScalar_ControlCtrbGramControlTf2ss) {
     Interpreter interp;
     expect_ok(interp, "ber = kelvin_ber(0, 1.0)");
     EXPECT_NEAR(interp.state().scalars.at("ber"), ms::kelvin_ber(0, 1.0), 1e-8);

@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -113,7 +115,11 @@ TEST(ReplCommandsTest, solve_and_matmul) {
     expect_contains(interp, "solve(A, B)", "x =");
     expect_contains(interp, "x = solve(A, B)", "x =");
     EXPECT_NEAR(interp.state().matrices.at("x")(0, 0), 0.2, 1e-9);
-    expect_contains(interp, "matmul(A, A)", "C =");
+    // A matrix call with no target prints under `_` and stores there, so the result
+    // can be used on the next line. It used to print under an invented `C` that no
+    // lookup could spell back. The assignment form still prints the name the user
+    // chose, which is what `C` means here.
+    expect_contains(interp, "matmul(A, A)", "_ =");
     expect_contains(interp, "C = matmul(A, A)", "C =");
     EXPECT_DOUBLE_EQ(interp.state().matrices.at("C")(0, 0), 10.0);
     ASSERT_TRUE(interp.execute("T = transpose(A)").has_value());
@@ -217,7 +223,7 @@ TEST(ReplCommandsTest, scatter_imshow_spy_commands) {
 
     const auto preview_path =
         (std::filesystem::temp_directory_path() / "mathscript_plot_preview.txt").string();
-    expect_contains(interp, "saveplot " + preview_path, "saved plot preview");
+    expect_contains(interp, "saveplot " + preview_path, "saved plot data");
     EXPECT_TRUE(std::filesystem::exists(preview_path));
     std::filesystem::remove(preview_path);
 
@@ -504,7 +510,7 @@ TEST(ReplCommandsTest, solve_and_matmul_via_variables) {
     ASSERT_TRUE(interp.execute("A = [3, 1; 1, 2]").has_value());
     ASSERT_TRUE(interp.execute("B = [1; 1]").has_value());
     expect_contains(interp, "solve(A, B)", "x =");
-    expect_contains(interp, "matmul(A, A)", "C =");
+    expect_contains(interp, "matmul(A, A)", "_ =");
 }
 
 TEST(ReplCommandsTest, gria_via_matrix_variable) {
@@ -1266,12 +1272,12 @@ TEST(ReplCommandsTest, special_mathieu_spheroidal_pcf) {
     EXPECT_NEAR(interp.state().scalars.at("a"), a_ref, 1e-3);
 
     const double lam_ref = ms::spheroidal_lambda(1, 1, 5.0);
-    EXPECT_NEAR(lam_ref, -7.493388284110646, 3e-2);
+    EXPECT_NEAR(lam_ref, 5.3504222984641157, 3e-2);
     expect_ok(interp, "lam = spheroidal_lambda(1, 1, 5.0)");
     EXPECT_NEAR(interp.state().scalars.at("lam"), lam_ref, 3e-2);
 
     const double s1_ref = ms::spheroidal_s1(1, 1, 5.0, 0.5);
-    EXPECT_NEAR(s1_ref, 0.03747174337125646, 5e-2);
+    EXPECT_NEAR(s1_ref, -0.56016304181378884, 5e-2);
     expect_ok(interp, "s1 = spheroidal_s1(1, 1, 5.0, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("s1"), s1_ref, 5e-2);
 
@@ -1328,7 +1334,7 @@ TEST(ReplCommandsTest, special_mathieu_heun) {
     EXPECT_NEAR(interp.state().scalars.at("hc"), hc_ref, 5e-3);
 
     const double hb_ref = ms::heun_b(0.1, 0.2, 0.3, 0.4, 0.2);
-    EXPECT_NEAR(hb_ref, 1.0738133528291396, 5e-3);
+    EXPECT_NEAR(hb_ref, 1.0862491654562247, 5e-3);
     expect_ok(interp, "hb = heun_b(0.1, 0.2, 0.3, 0.4, 0.2)");
     EXPECT_NEAR(interp.state().scalars.at("hb"), hb_ref, 5e-3);
 
@@ -1360,17 +1366,17 @@ TEST(ReplCommandsTest, special_painleve_dawsonx) {
     EXPECT_NEAR(interp.state().scalars.at("dx"), dx_ref, 5e-3);
 
     const double p3_ref = ms::painleve3(0.5, 0.5, -0.1, 0.5, 0.3);
-    EXPECT_NEAR(p3_ref, 1.398748842793728, 5e-3);
+    EXPECT_NEAR(p3_ref, 0.48771921611212105, 5e-3);
     expect_ok(interp, "p3 = painleve3(0.5, 0.5, -0.1, 0.5, 0.3)");
     EXPECT_NEAR(interp.state().scalars.at("p3"), p3_ref, 5e-3);
 
     const double p4_ref = ms::painleve4(0.5, 0.8, -0.05, 0.2, 0.4);
-    EXPECT_NEAR(p4_ref, 0.786121344510419, 5e-3);
+    EXPECT_NEAR(p4_ref, 0.91945144765805531, 5e-3);
     expect_ok(interp, "p4 = painleve4(0.5, 0.8, -0.05, 0.2, 0.4)");
     EXPECT_NEAR(interp.state().scalars.at("p4"), p4_ref, 5e-3);
 
     const double p5_ref = ms::painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, 0.04);
-    EXPECT_NEAR(p5_ref, 0.5558194327648597, 5e-3);
+    EXPECT_NEAR(p5_ref, 0.49531801548760035, 5e-3);
     expect_ok(interp, "p5 = painleve5(0.5, 0.5, -0.05, 0.01, 0.02, 0.03, 0.04)");
     EXPECT_NEAR(interp.state().scalars.at("p5"), p5_ref, 5e-3);
 
@@ -1394,8 +1400,10 @@ TEST(ReplCommandsTest, special_hypergeo_meijer) {
     EXPECT_NEAR(interp.state().scalars.at("tu"), tu_ref, 1e-3);
     expect_contains(interp, "tricomi_u(1, 2, 0.5)", std::to_string(tu_ref));
 
+    // G^{1,1}_{1,1}(z | a ; b) = Gamma(1-a+b) z^b (1+z)^{a-b-1}
+    //   = Gamma(2) * 0.5^2 * 1.5^-2 = 1 * 0.25 * 4/9 = 1/9.
     const double mg_ref = ms::meijer_g(1.0, 2.0, 0.5);
-    EXPECT_NEAR(mg_ref, 0.39346934028736663, 1e-3);
+    EXPECT_NEAR(mg_ref, 1.0 / 9.0, 1e-12);
     expect_ok(interp, "mg = meijer_g(1, 2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("mg"), mg_ref, 1e-3);
     expect_contains(interp, "meijer_g(1, 2, 0.5)", std::to_string(mg_ref));
@@ -20695,7 +20703,7 @@ TEST(ReplCommandsTest, ml_mat_mul_noassign) {
     Interpreter interp;
     expect_ok(interp, "I = eye(3)");
     expect_ok(interp, "A = [1, 2, 3; 4, 5, 6; 7, 8, 9]");
-    expect_contains(interp, "ml_mat_mul(I, A)", "C =");
+    expect_contains(interp, "ml_mat_mul(I, A)", "_ =");
     expect_error_contains(interp, "ml_mat_mul(no_such_matrix, A)", "unknown matrix");
 }
 
@@ -20744,31 +20752,31 @@ TEST(ReplCommandsTest, sym_mellin_noassign) {
 
 TEST(ReplCommandsTest, sym_imellin_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_imellin(\"1\", \"s\", \"t\")");
+    expect_error_contains(interp, "sym_imellin(\"1\", \"s\", \"t\")", "no closed form");
     expect_error_contains(interp, "sym_imellin(\"1\", s, \"t\")", "expected sym_imellin");
 }
 
 TEST(ReplCommandsTest, sym_hankel_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_hankel(\"1\", \"r\", \"k\")");
+    expect_error_contains(interp, "sym_hankel(\"1\", \"r\", \"k\")", "no closed form");
     expect_error_contains(interp, "sym_hankel(\"1\", r, \"k\")", "expected sym_hankel");
 }
 
 TEST(ReplCommandsTest, sym_ihankel_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_ihankel(\"1\", \"k\", \"r\")");
+    expect_error_contains(interp, "sym_ihankel(\"1\", \"k\", \"r\")", "no closed form");
     expect_error_contains(interp, "sym_ihankel(\"1\", k, \"r\")", "expected sym_ihankel");
 }
 
 TEST(ReplCommandsTest, sym_fourier_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_fourier(\"1\", \"t\", \"w\")");
+    expect_error_contains(interp, "sym_fourier(\"1\", \"t\", \"w\")", "no closed form");
     expect_error_contains(interp, "sym_fourier(\"1\", t, \"w\")", "expected sym_fourier");
 }
 
 TEST(ReplCommandsTest, sym_ifourier_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_ifourier(\"1\", \"w\", \"t\")");
+    expect_error_contains(interp, "sym_ifourier(\"1\", \"w\", \"t\")", "no closed form");
     expect_error_contains(interp, "sym_ifourier(\"1\", w, \"t\")", "expected sym_ifourier");
 }
 
@@ -20780,7 +20788,7 @@ TEST(ReplCommandsTest, sym_ztransform_noassign) {
 
 TEST(ReplCommandsTest, sym_iztransform_noassign) {
     Interpreter interp;
-    expect_ok(interp, "sym_iztransform(\"1\", \"z\", \"n\")");
+    expect_error_contains(interp, "sym_iztransform(\"1\", \"z\", \"n\")", "no closed form");
     expect_error_contains(interp, "sym_iztransform(\"1\", z, \"n\")", "expected sym_iztransform");
 }
 

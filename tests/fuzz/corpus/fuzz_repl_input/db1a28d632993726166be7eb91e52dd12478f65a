@@ -1,0 +1,1 @@
+g = stats_chi2_gof([10; 2graph_scc 30])

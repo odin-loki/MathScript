@@ -1,4 +1,7 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/distributed/dist_matrix.hpp"
+#include "ms/core/format.hpp"
 #include <functional>
 #include "ms/distributed/iterative.hpp"
 #include "ms/distributed/matmul.hpp"
@@ -47,6 +50,8 @@
 #include "ms/poly/poly.hpp"
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
+#include "ms/sym2/bridge.hpp"
+#include "ms/sym2/notation.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
 #include "ms/crypto/crypto.hpp"
@@ -81,9 +86,70 @@
 namespace ms::interp {
 using namespace detail;
 
+namespace {
+
+// The counting routines in src/combo signal "this does not fit in 64 bits" by
+// returning UINT64_MAX -- factorial past n = 20, Bell past 25, Motzkin past 45, and
+// so on. Their headers document it as an overflow sentinel, but the REPL used to hand
+// the number straight to the user: combo_factorial(25) printed
+// 18446744073709551615 where 25! is about 1.55e25. That reads as an answer.
+//
+// Same shape as the symbolic no-closed-form sentinel: a marker that means "no result"
+// and looks exactly like a result once it reaches the surface.
+constexpr std::uint64_t kComboOverflow = UINT64_MAX;
+
+/// numthy uses the same marker. prime_pi declines any n at or past its sieve span and
+/// partition declines any n past 416, and both said so by returning UINT64_MAX -- which
+/// the REPL printed. numthy_prime_pi(200000000) answered 18446744073709551615 where
+/// pi(2e8) is 11078937.
+Result<double> combo_count_value(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
+    }
+    return static_cast<double>(count);
+}
+
+/// The same sentinel, read for the sieve-backed numthy functions rather than for the
+/// combinatorial ones.
+///
+/// `prime_pi` and `prime_nth` return UINT64_MAX when the span they would have to sieve is
+/// past `kMaxSieveSpan`, which is a different fact from a result too large to represent,
+/// and the combinatorial message asserted the wrong one: pi(3000000000) is about 1.4e8
+/// and fits in a `double` with room to spare, but the REPL said it did not fit in 64 bits.
+Result<double> sieve_count_value(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(
+            DomainError{fn, "n is past what this can sieve, so there is no answer to give"});
+    }
+    return static_cast<double>(count);
+}
+
+Result<std::string> sieve_count_text(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(
+            DomainError{fn, "n is past what this can sieve, so there is no answer to give"});
+    }
+    return format_scalar(count) + "\n";
+}
+
+Result<std::string> combo_count_text(const std::string& fn, std::uint64_t count) {
+    if (count == kComboOverflow) {
+        return std::unexpected(DomainError{fn, "result does not fit in 64 bits"});
+    }
+    return format_scalar(count) + "\n";
+}
+
+} // namespace
+
 // Wave 256: unary matrix display tail (MSVC C1061).
-static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
-                                                      const Matrix<double>& matrix);
+//
+// `std::nullopt` means no branch here claimed the name -- which is different from
+// claiming it and failing, and the difference is the whole point. The chain this
+// continues is hand-written, so a name it has never heard of is a name the registry
+// may well know; rejecting the line here made 98 matrix-returning callees reachable
+// only through an assignment.
+static std::optional<Result<std::string>> format_unary_matrix_fn_tail(
+    const std::string& fn, const Matrix<double>& matrix);
 
 Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix);
 Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const Matrix<double>& right);
@@ -254,7 +320,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bloom_check) {
             return std::unexpected(bloom_check.error());
         }
-        return std::to_string(bloom->bit_count()) + "\n";
+        return format_scalar(bloom->bit_count()) + "\n";
     }
 
     if (fn == "bloom_hash_count") {
@@ -272,7 +338,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bloom_check) {
             return std::unexpected(bloom_check.error());
         }
-        return std::to_string(bloom->hash_count()) + "\n";
+        return format_scalar(bloom->hash_count()) + "\n";
     }
 
     if (fn == "tokenbucket_new") {
@@ -346,7 +412,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!parse_number(trim_copy(call_args->at(1)), now_seconds)) {
             return std::unexpected(DomainError{fn, "expected numeric now_seconds"});
         }
-        return std::to_string(bucket->available_tokens(now_seconds)) + "\n";
+        return format_scalar(bucket->available_tokens(now_seconds)) + "\n";
     }
 
     if (fn == "tokenbucket_capacity") {
@@ -364,7 +430,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bucket_check) {
             return std::unexpected(bucket_check.error());
         }
-        return std::to_string(bucket->capacity()) + "\n";
+        return format_scalar(bucket->capacity()) + "\n";
     }
 
     if (fn == "tokenbucket_refill_rate") {
@@ -382,7 +448,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!bucket_check) {
             return std::unexpected(bucket_check.error());
         }
-        return std::to_string(bucket->refill_rate_per_sec()) + "\n";
+        return format_scalar(bucket->refill_rate_per_sec()) + "\n";
     }
 
     if (fn == "cellmemory_input_dim") {
@@ -400,7 +466,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!memory_check) {
             return std::unexpected(memory_check.error());
         }
-        return std::to_string(memory->input_dim()) + "\n";
+        return format_scalar(memory->input_dim()) + "\n";
     }
 
     if (fn == "cellmemory_memory_dim") {
@@ -418,7 +484,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!memory_check) {
             return std::unexpected(memory_check.error());
         }
-        return std::to_string(memory->memory_dim()) + "\n";
+        return format_scalar(memory->memory_dim()) + "\n";
     }
 
     if (fn == "cellmemory_time_scales") {
@@ -785,7 +851,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!result) {
             return std::unexpected(result.error());
         }
-        return std::to_string(*result) + "\n";
+        return format_scalar(*result) + "\n";
     }
 
     if (fn == "difmodel_gh_gate") {
@@ -831,10 +897,16 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(
                 DomainError{fn, "expected positive integer n_nodes and non-negative integer seed"});
         }
+        auto n_nodes_checked = checked_int_argument(fn, "n_nodes", n_nodes_d);
+        if (!n_nodes_checked) {
+            return std::unexpected(n_nodes_checked.error());
+        }
+        auto seed_checked = checked_seed_argument(fn, "seed", seed_d);
+        if (!seed_checked) {
+            return std::unexpected(seed_checked.error());
+        }
         session_objects_.emplace(
-            handle,
-            izaac::consensus::Cluster(
-                static_cast<int>(n_nodes_d), static_cast<unsigned>(seed_d)));
+            handle, izaac::consensus::Cluster(*n_nodes_checked, *seed_checked));
         return std::string{"created Cluster '" + handle + "'\n"};
     }
 
@@ -853,7 +925,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!cluster_check) {
             return std::unexpected(cluster_check.error());
         }
-        return std::to_string(cluster->run_election()) + "\n";
+        return format_scalar(cluster->run_election()) + "\n";
     }
 
     if (fn == "cluster_replicate") {
@@ -881,8 +953,11 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!parse_quoted_string(call_args->at(2), command)) {
             return std::unexpected(DomainError{fn, "expected quoted string command"});
         }
-        return std::string(
-                   cluster->replicate(static_cast<int>(leader_id_d), command) ? "true\n" : "false\n");
+        auto leader_checked = checked_int_argument(fn, "leader_id", leader_id_d);
+        if (!leader_checked) {
+            return std::unexpected(leader_checked.error());
+        }
+        return std::string(cluster->replicate(*leader_checked, command) ? "true\n" : "false\n");
     }
 
     if (fn == "cluster_current_leader") {
@@ -900,7 +975,7 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
         if (!cluster_check) {
             return std::unexpected(cluster_check.error());
         }
-        return std::to_string(cluster->current_leader()) + "\n";
+        return format_scalar(cluster->current_leader()) + "\n";
     }
 
     if (fn == "cluster_status") {
@@ -958,6 +1033,15 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             std::floor(rank_d) != rank_d) {
             return std::unexpected(DomainError{fn, "expected positive integer rank"});
         }
+        // Each factor matrix is (dimension x rank), so an unbounded rank is an unbounded
+        // allocation: rank 3e9 on a 4x1 tensor threw std::length_error, which under
+        // -fno-exceptions aborts. No CP decomposition is informative past the element
+        // count, so that is the ceiling.
+        const double max_rank = static_cast<double>(tensor->numel());
+        if (rank_d > max_rank) {
+            return std::unexpected(DomainError{
+                fn, "rank exceeds the tensor's element count"});
+        }
         int max_iter = 200;
         double tol = 1e-6;
         if (call_args->size() == 5) {
@@ -968,10 +1052,24 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
                 return std::unexpected(
                     DomainError{fn, "expected positive integer max_iter and positive tol"});
             }
-            max_iter = static_cast<int>(max_iter_d);
+            auto max_iter_checked = checked_int_argument(fn, "max_iter", max_iter_d);
+            if (!max_iter_checked) {
+                return std::unexpected(max_iter_checked.error());
+            }
+            max_iter = *max_iter_checked;
         }
-        const auto cp = tensorops::decompose_cp(
-            *tensor, static_cast<int>(rank_d), max_iter, tol);
+        // ALS converges out of `max_iter` long before reaching it -- 1e7 iterations of a
+        // 40x40 still returns in 0.02 s -- so the cost is driven by the rank alone.
+        // Measured at 1540 ns per rank*numel unit: an 80x80 at rank 2000 took 19.7 s.
+        // The "rank <= numel" ceiling above is a separate statement and still binds for
+        // small tensors, where it is tighter than this.
+        WorkBudget budget(fn, 1540.0, kMaxReplSimulationWorkNanos);
+        budget.charge(tensor->numel());
+        auto rank_checked = budget.take("rank", rank_d);
+        if (!rank_checked) {
+            return std::unexpected(rank_checked.error());
+        }
+        const auto cp = tensorops::decompose_cp(*tensor, *rank_checked, max_iter, tol);
         session_objects_.emplace(handle, cp);
         std::ostringstream out;
         out << "created CPDecomposition '" << handle << "' residual=" << cp.residual << "\n";
@@ -1028,7 +1126,11 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
                 return std::unexpected(
                     DomainError{fn, "expected positive integer max_iter and positive tol"});
             }
-            max_iter = static_cast<int>(max_iter_d);
+            auto max_iter_checked = checked_int_argument(fn, "max_iter", max_iter_d);
+            if (!max_iter_checked) {
+                return std::unexpected(max_iter_checked.error());
+            }
+            max_iter = *max_iter_checked;
         }
         const auto tucker = tensorops::decompose_tucker(*tensor, *ranks, max_iter, tol);
         session_objects_.emplace(handle, tucker);
@@ -1158,10 +1260,27 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
                 return std::unexpected(
                     DomainError{fn, "expected positive integer max_iter and positive tol"});
             }
-            max_iter = static_cast<int>(max_iter_d);
+            auto max_iter_checked = checked_int_argument(fn, "max_iter", max_iter_d);
+            if (!max_iter_checked) {
+                return std::unexpected(max_iter_checked.error());
+            }
+            max_iter = *max_iter_checked;
         }
-        const auto nmf = tensorops::decompose_nmf(
-            *nested, static_cast<int>(rank_d), max_iter, tol);
+        // The multiplicative update runs `max_iter` sweeps of a rank x numel factor pair
+        // and, unlike CP and Tucker below, does not converge out of them early. Measured
+        // at 88 ns per max_iter*rank*numel unit: a 40x40 at rank 40 took 2.83 s, and an
+        // 80x80 at rank 200 -- an entirely ordinary request, and well inside the
+        // "rank <= numel" ceiling -- had not finished after 45 s.
+        const std::size_t nmf_numel =
+            nested->empty() ? 0 : nested->size() * nested->front().size();
+        WorkBudget budget(fn, 88.0, kMaxReplSimulationWorkNanos);
+        budget.charge(nmf_numel);
+        budget.charge(static_cast<std::size_t>(max_iter));
+        auto rank_checked = budget.take("rank", rank_d);
+        if (!rank_checked) {
+            return std::unexpected(rank_checked.error());
+        }
+        const auto nmf = tensorops::decompose_nmf(*nested, *rank_checked, max_iter, tol);
         if (!nmf) {
             return std::unexpected(nmf.error());
         }
@@ -1262,17 +1381,27 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
 
 
 // Wave 256: unary matrix display tail definition (MSVC C1061).
-static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
-                                               const Matrix<double>& matrix) {
+static std::optional<Result<std::string>> format_unary_matrix_fn_tail(
+    const std::string& fn, const Matrix<double>& matrix) {
     std::ostringstream out;
-    if (fn == "graph_katz_centrality") {
+    if (fn == "sparse_to_dense") {
+        // is_valid_matrix_call_arity accepts sparse_to_dense(A) with arity 1, and the
+        // assigned form works, so without this branch the printing form fell through to
+        // the "unknown function" tail of a function the arity table says exists.
+        auto dense = eval_sparse_to_dense(matrix);
+        if (!dense) {
+            return std::unexpected(dense.error());
+        }
+        out << "dense =\n";
+        print_matrix(out, *dense);
+    } else if (fn == "graph_katz_centrality") {
         auto kc = eval_graph_katz_centrality(matrix);
         if (!kc) {
             return std::unexpected(kc.error());
         }
         out << "katz_centrality:\n";
         for (size_t i = 0; i < kc->rows(); ++i) {
-            out << "  [" << i << "] " << (*kc)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*kc)(i, 0)) << "\n";
         }
     } else if (fn == "graph_adjacency_spectrum") {
         auto spec = eval_graph_adjacency_spectrum(matrix);
@@ -1281,7 +1410,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "adjacency_spectrum:\n";
         for (size_t i = 0; i < spec->rows(); ++i) {
-            out << "  [" << i << "] " << (*spec)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*spec)(i, 0)) << "\n";
         }
     } else if (fn == "graph_laplacian") {
         auto L = eval_graph_laplacian(matrix);
@@ -1304,7 +1433,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "eccentricity:\n";
         for (size_t i = 0; i < ecc->rows(); ++i) {
-            out << "  [" << i << "] " << (*ecc)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*ecc)(i, 0)) << "\n";
         }
     } else if (fn == "graph_articulation_points") {
         auto aps = eval_graph_articulation_points(matrix);
@@ -1313,7 +1442,7 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "articulation_points:\n";
         for (size_t i = 0; i < aps->rows(); ++i) {
-            out << "  [" << i << "] " << (*aps)(i, 0) << "\n";
+            out << "  [" << i << "] " << format_scalar((*aps)(i, 0)) << "\n";
         }
     } else if (fn == "graph_bridges") {
         auto br = eval_graph_bridges(matrix);
@@ -1329,6 +1458,33 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         }
         out << "matching =\n";
         print_matrix(out, *mm);
+    } else if (fn == "graph_max_weight_matching") {
+        auto mm = eval_graph_max_weight_matching(matrix, false);
+        if (!mm) {
+            return std::unexpected(mm.error());
+        }
+        out << "matching =\n";
+        print_matrix(out, *mm);
+    } else if (fn == "graph_max_weight_matching_value") {
+        auto value = eval_graph_max_weight_matching_value(matrix, false);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        out << format_scalar(*value) << "\n";
+    } else if (fn == "graph_planar_embedding") {
+        auto emb = eval_graph_planar_embedding(matrix);
+        if (!emb) {
+            return std::unexpected(emb.error());
+        }
+        out << "embedding =\n";
+        print_matrix(out, *emb);
+    } else if (fn == "graph_kuratowski_subgraph") {
+        auto ks = eval_graph_kuratowski_subgraph(matrix);
+        if (!ks) {
+            return std::unexpected(ks.error());
+        }
+        out << "kuratowski =\n";
+        print_matrix(out, *ks);
     } else if (fn == "graph_transitive_closure") {
         auto reach = eval_graph_transitive_closure(matrix);
         if (!reach) {
@@ -1648,7 +1804,10 @@ static Result<std::string> format_unary_matrix_fn_tail(const std::string& fn,
         out << "D =\n";
         print_matrix(out, D);
     } else {
-        return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+        // Not "unknown function". This list is hand-written and knows only the names
+        // somebody added to it; the caller asks the registry next, which knows all of
+        // them. Reporting here is what stopped it asking.
+        return std::nullopt;
     }
     return out.str();
 }
@@ -1667,6 +1826,24 @@ Result<Matrix<double>> Interpreter::parse_matrix(const std::string& text) const 
     s = s.substr(1, s.size() - 2);
     if (s.empty()) {
         return Matrix<double>(0, 0);
+    }
+    // "[RxC]" is the shape-only spelling for a matrix with no elements, which the
+    // element list cannot express. It is accepted from a user as well as from a
+    // session file: writing [0x3] for an empty three-column matrix is the only way to
+    // say that at all.
+    if (s.find_first_not_of("0123456789xX \t") == std::string::npos) {
+        const auto cross = s.find_first_of("xX");
+        if (cross != std::string::npos) {
+            const std::string rows_text = trim(s.substr(0, cross));
+            const std::string cols_text = trim(s.substr(cross + 1));
+            uint64_t rows = 0;
+            uint64_t cols = 0;
+            if (!rows_text.empty() && !cols_text.empty() && parse_uint64(rows_text, rows) &&
+                parse_uint64(cols_text, cols) && (rows == 0 || cols == 0) &&
+                rows <= 1000000 && cols <= 1000000) {
+                return Matrix<double>(static_cast<size_t>(rows), static_cast<size_t>(cols));
+            }
+        }
     }
 
     std::vector<std::vector<double>> rows;
@@ -1723,10 +1900,24 @@ bool Interpreter::try_parse_scalar_assignment(const std::string& line, std::stri
     return parse_number(trim(cmd.substr(eq + 1)), value);
 }
 
-Result<std::string> Interpreter::assign_scalar(const std::string& name, double value) {
-    state_.scalars[name] = value;
-    return name + " = " + std::to_string(value) + "\n";
+unsigned Interpreter::next_random_seed() {
+    // A fixed base so a session replays identically, advanced so that two calls are two
+    // draws rather than the same draw twice. The multiplier is an odd constant, which
+    // keeps successive seeds far apart in mt19937's state space -- adjacent seeds
+    // produce correlated first outputs.
+    return 0x9e3779b9u * ++random_draws_;
 }
+
+Result<std::string> Interpreter::assign_scalar(const std::string& name, double value) {
+    // Scalars and matrices live in separate maps and nothing cleared the other one, so
+    // `A = [1, 2; 3, 4]` followed by `A = 5` left both alive: the bare-name echo checks
+    // matrices first and printed the matrix, while a scalar expression using A read 5.
+    // One name, one value.
+    state_.matrices.erase(name);
+    state_.scalars[name] = value;
+    return name + " = " + format_scalar(value) + "\n";
+}
+
 
 bool Interpreter::try_parse_scalar_binary_assignment(const std::string& line, ScalarBinaryAssign& assign) {
     const std::string cmd = trim(line);
@@ -1825,6 +2016,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "graph_normalised_laplacian" || callee == "graph_eccentricity" ||
         callee == "graph_articulation_points" ||
         callee == "graph_bridges" || callee == "graph_maximum_matching" ||
+        callee == "graph_max_weight_matching" || callee == "graph_planar_embedding" ||
+        callee == "graph_kuratowski_subgraph" ||
         callee == "graph_transitive_closure" ||
         callee == "finance_min_variance_portfolio" ||
         callee == "fft_rfft" || callee == "fft_dft" ||
@@ -1970,6 +2163,8 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
         callee == "ml_gmm_predict" || callee == "ml_gmm_predict_proba" ||
         callee == "ml_isolation_forest_score" || callee == "geo_poly_union" ||
         callee == "geo_poly_intersect" || callee == "geo_poly_diff" ||
+        callee == "geo_boolean_union" || callee == "geo_boolean_intersect" ||
+        callee == "geo_boolean_diff" || callee == "geo_boolean_xor" ||
         callee == "geo_minkowski_sum" || callee == "geo_clip_polygon" ||
         callee == "stats_linear_regression" || callee == "stats_multiple_regression") {
         return arity == 2;
@@ -2464,12 +2659,22 @@ bool is_valid_matrix_call_arity(const std::string& callee, size_t arity) {
     if (callee == "sparse_to_dense") {
         return arity == 1;
     }
+    if (callee == "mat_row" || callee == "mat_col") {
+        return arity == 2;
+    }
+    if (callee == "mat_reshape") {
+        return arity == 3;
+    }
+    if (callee == "mat_submatrix") {
+        return arity == 5;
+    }
     return false;
 }
 
 bool is_scalar_matrix_call_callee(const std::string& callee) {
     return callee == "det" || callee == "trace" || callee == "norm" || callee == "rank" ||
            callee == "matrix_rank" ||
+           callee == "mat_rows" || callee == "mat_cols" || callee == "mat_numel" ||
            callee == "cond" || callee == "geo_convex_hull_area" || callee == "geo_polygon_area" ||
            callee == "geo_polygon_perimeter" || callee == "geo_signed_area" ||
            callee == "geo_moment_of_inertia" || callee == "geo_centroid_x" ||
@@ -2494,6 +2699,8 @@ bool is_scalar_matrix_call_callee(const std::string& callee) {
            callee == "graph_is_dag" || callee == "graph_is_connected" ||
            callee == "graph_is_strongly_connected" ||
            callee == "graph_is_tree" || callee == "graph_is_planar" ||
+           callee == "graph_is_planar_heuristic" ||
+           callee == "graph_max_weight_matching_value" ||
            callee == "poly_discriminant" ||
            callee == "stats_mean" || callee == "stats_median" ||
            callee == "stats_stddev" || callee == "stats_skewness" ||
@@ -2698,11 +2905,54 @@ std::vector<std::string> Interpreter::list_scalar_expr_variables(const std::stri
     return vars;
 }
 
+namespace {
+
+/// Whether a scalar-evaluation error means "this line is not mine" rather than
+/// "this line is mine and here is what is wrong with it".
+///
+/// The distinction decides which of two competing readings of a line gets to report.
+/// `sqrt(-1)` is a scalar call with a domain error, and the matrix reading's "unknown
+/// matrix: -1" would send the reader looking for a variable. `zeros(-1, 2)` is a
+/// matrix call, and the scalar reading's "unknown scalar function: zeros" would hide
+/// the size limit that actually rejected it. Only the scalar path's own two declines
+/// mean it never had an opinion.
+bool scalar_error_says_nothing(const Error& error) {
+    const auto* domain = std::get_if<DomainError>(&error);
+    // "unknown scalar: X" is the scalar reader failing to resolve a name, which says
+    // nothing about the line beyond "not something I can read". `det(Unknown)` is a
+    // matrix call over a name that does not exist, and reporting it as an unknown
+    // *scalar* names the wrong kind -- the same defect this precedence exists to fix,
+    // pointing the other way.
+    return domain != nullptr && (domain->reason == "invalid scalar expression" ||
+                                 domain->reason.rfind("unknown scalar function", 0) == 0 ||
+                                 domain->reason.rfind("unknown scalar:", 0) == 0);
+}
+
+bool scalar_error_is_a_decline(const Error& error) {
+    if (scalar_error_says_nothing(error)) {
+        return true;
+    }
+    // "is a matrix, not a scalar" is the scalar reader recognising that the line is
+    // not its kind, which is a decline however specifically it is worded. Counted as
+    // a diagnosis it beat `mat_row: expected a non-negative integer row index`,
+    // replacing the answer with a remark about the argument that was fine.
+    const auto* domain = std::get_if<DomainError>(&error);
+    return domain != nullptr &&
+           domain->reason.find("is a matrix, not a scalar") != std::string::npos;
+}
+
+} // namespace
+
 Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                              const std::vector<double>& args) {
     const std::string fn = lower(name);
     if (args.size() == 1) {
         const double arg = args[0];
+        // The same guard the cached evaluator applies. Two evaluators for one language
+        // that disagree about sqrt(-1) is the defect, whichever of them is right.
+        if (auto domain = detail::check_scalar_domain(fn, arg); !domain) {
+            return std::unexpected(domain.error());
+        }
         if (fn == "sin") {
             return std::sin(arg);
         }
@@ -2745,6 +2995,36 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "log10") {
             return std::log10(arg);
         }
+        if (fn == "log2") {
+            return std::log2(arg);
+        }
+        if (fn == "exp2") {
+            return std::exp2(arg);
+        }
+        if (fn == "expm1") {
+            return std::expm1(arg);
+        }
+        if (fn == "log1p") {
+            return std::log1p(arg);
+        }
+        if (fn == "cbrt") {
+            return std::cbrt(arg);
+        }
+        if (fn == "asinh") {
+            return std::asinh(arg);
+        }
+        if (fn == "acosh") {
+            return std::acosh(arg);
+        }
+        if (fn == "atanh") {
+            return std::atanh(arg);
+        }
+        if (fn == "round") {
+            return std::round(arg);
+        }
+        if (fn == "trunc") {
+            return std::trunc(arg);
+        }
         if (fn == "floor") {
             return std::floor(arg);
         }
@@ -2753,6 +3033,21 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         }
         if (fn == "erf") {
             return ms::erf(arg);
+        }
+        if (fn == "erfc") {
+            return ms::erfc(arg);
+        }
+        if (fn == "gamma") {
+            return gamma_func(arg);
+        }
+        if (fn == "zeta") {
+            return zeta(arg);
+        }
+        if (fn == "fresnel_c") {
+            return fresnel_c(arg);
+        }
+        if (fn == "fresnel_s") {
+            return fresnel_s(arg);
         }
         if (fn == "erfi") {
             return erfi(arg);
@@ -2774,56 +3069,56 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"combo_factorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::factorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_catalan") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_catalan", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::catalan_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::catalan_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_bell") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_bell", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_bell_num") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_bell_num", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_motzkin") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_motzkin", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::motzkin_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::motzkin_num(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_subfactorial") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_subfactorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::subfactorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::subfactorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_double_factorial") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_double_factorial", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::double_factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::double_factorial(static_cast<uint32_t>(arg)));
         }
         if (fn == "combo_involutions") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"combo_involutions", "expected non-negative integer n"});
             }
-            return static_cast<double>(combo::involutions(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::involutions(static_cast<uint32_t>(arg)));
         }
         if (fn == "info_channel_capacity_bsc") {
             return info::channel_capacity_bsc(arg);
@@ -2887,14 +3182,22 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"bernoulli_number", "expected non-negative integer n"});
             }
-            return bernoulli_number(static_cast<int>(arg));
+            auto n_checked = checked_int_argument(fn, "n", arg);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            return bernoulli_number(*n_checked);
         }
         if (fn == "euler_number") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"euler_number", "expected non-negative integer n"});
             }
-            return euler_number(static_cast<int>(arg));
+            auto n_checked = checked_int_argument(fn, "n", arg);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            return euler_number(*n_checked);
         }
         if (fn == "ellip_e") {
             return ellip_e(arg);
@@ -2912,120 +3215,198 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_partition", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::partition(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, numthy::partition(static_cast<uint32_t>(arg)));
         }
         if (fn == "numthy_num_divisors") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_num_divisors", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(
-                numthy::num_divisors(static_cast<uint64_t>(arg)));
+                numthy::num_divisors(*n_u64));
         }
         if (fn == "numthy_factor_count") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_factor_count", "expected non-negative integer n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(
-                numthy::factor(static_cast<uint64_t>(arg)).size());
+                numthy::factor(*n_u64).size());
         }
         if (fn == "numthy_sum_divisors") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_sum_divisors", "expected non-negative integer n"});
             }
-            return static_cast<double>(
-                numthy::sum_divisors(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return combo_count_value(fn, numthy::sum_divisors(*n_u64));
         }
         if (fn == "numthy_isprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_isprime", "expected non-negative integer n"});
             }
-            return numthy::isprime(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::isprime(*n_u64) ? 1.0 : 0.0;
         }
         if (fn == "numthy_is_carmichael") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_is_carmichael", "expected non-negative integer n"});
             }
-            return numthy::is_carmichael(static_cast<uint64_t>(arg)) ? 1.0 : 0.0;
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::is_carmichael(*n_u64) ? 1.0 : 0.0;
         }
         if (fn == "numthy_euler_phi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_euler_phi", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::euler_phi(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::euler_phi(*n_u64));
         }
         if (fn == "numthy_carmichael_lambda") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_carmichael_lambda", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::carmichael_lambda(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::carmichael_lambda(*n_u64));
         }
         if (fn == "numthy_mobius") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_mobius", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::mobius(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::mobius(*n_u64));
         }
         if (fn == "numthy_nextprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_nextprime", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::nextprime(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::nextprime(*n_u64));
         }
         if (fn == "numthy_prevprime") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_prevprime", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::prevprime(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::prevprime(*n_u64));
         }
         if (fn == "numthy_liouville") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_liouville", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::liouville(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return static_cast<double>(numthy::liouville(*n_u64));
         }
         if (fn == "numthy_von_mangoldt") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
             }
-            return numthy::von_mangoldt(static_cast<uint64_t>(arg));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return numthy::von_mangoldt(*n_u64);
         }
         if (fn == "numthy_prime_pi") {
             if (arg < 0.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_prime_pi", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::prime_pi(static_cast<uint64_t>(arg)));
+            auto n_u64 = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return sieve_count_value(fn, numthy::prime_pi(*n_u64));
         }
         if (fn == "numthy_prime_nth") {
-            if (arg < 1.0 || std::floor(arg) != arg) {
+            if (arg < 1.0) {
                 return std::unexpected(
                     DomainError{"numthy_prime_nth", "expected integer n >= 1"});
             }
-            return static_cast<double>(numthy::prime_nth(static_cast<uint64_t>(arg)));
+            auto n_arg = checked_u64_argument(fn, "n", arg, kMaxU64AsDouble);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            auto bounded_n = checked_prime_index(fn, static_cast<double>(*n_arg));
+            if (!bounded_n) {
+                return std::unexpected(bounded_n.error());
+            }
+            // prime_nth sieves and reports the same UINT64_MAX sentinel prime_pi does
+            // when the span is past what it can hold, so it is read the same way.
+            return sieve_count_value(fn, numthy::prime_nth(*n_arg));
         }
         if (fn == "numthy_primitive_root") {
             if (arg < 2.0 || std::floor(arg) != arg) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p >= 2"});
             }
-            const auto p = static_cast<uint64_t>(arg);
+            auto p_u64 = checked_u64_argument(fn, "p", arg, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            const auto p = *p_u64;
             if (!numthy::isprime(p)) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return static_cast<double>(numthy::primitive_root(static_cast<int>(p)));
+            // primitive_root takes an int. p was validated as a uint64_t prime, so a
+            // prime above INT_MAX -- 2147483659 is one -- narrowed to a negative int,
+            // failed the function's own primality check, and came back as its -1
+            // "none found" marker, which the REPL then printed as the answer.
+            if (p > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                return std::unexpected(DomainError{
+                    "numthy_primitive_root", "p is too large: expected p <= 2147483647"});
+            }
+            const int root = numthy::primitive_root(static_cast<int>(p));
+            if (root < 0) {
+                return std::unexpected(
+                    DomainError{"numthy_primitive_root", "no primitive root found"});
+            }
+            return static_cast<double>(root);
         }
         if (fn == "mpi_allreduce_sum") {
             return ms::distributed::allreduce_sum(repl_mpi_context(), arg);
@@ -3102,34 +3483,64 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (fn == "max") {
             return std::fmax(args[0], args[1]);
         }
+        if (fn == "hypot") {
+            return std::hypot(args[0], args[1]);
+        }
+        if (fn == "fmod") {
+            return std::fmod(args[0], args[1]);
+        }
         if (fn == "atan2") {
             return std::atan2(args[0], args[1]);
         }
         if (fn == "combo_nchoosek") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_nchoosek", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::binomial(static_cast<uint32_t>(n),
-                                                       static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                        static_cast<uint32_t>(k)));
         }
         if (fn == "combo_binomial") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_binomial", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::binomial(static_cast<uint32_t>(n),
-                                                       static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                        static_cast<uint32_t>(k)));
         }
         if (fn == "combo_eulerian") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_eulerian", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::eulerian_number(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::eulerian_number(static_cast<uint32_t>(n),
                                                               static_cast<uint32_t>(k)));
         }
         if (fn == "diffgeo_gaussian_curvature_sphere") {
@@ -3148,43 +3559,75 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return eval_cplx_residue_inv(args[0], args[1]);
         }
         if (fn == "combo_stirling2") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_stirling2", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::stirling2(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::stirling2(static_cast<uint32_t>(n),
                                                         static_cast<uint32_t>(k)));
         }
         if (fn == "combo_stirling1") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_stirling1", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::stirling1(static_cast<uint32_t>(n),
+            return combo_count_value(fn, combo::stirling1(static_cast<uint32_t>(n),
                                                         static_cast<uint32_t>(k)));
         }
         if (fn == "combo_permutations") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || k > n) {
                 return std::unexpected(DomainError{"combo_permutations", "expected 0 <= k <= n"});
             }
-            return static_cast<double>(combo::permutations(static_cast<uint32_t>(n),
-                                                          static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::permutations(static_cast<uint32_t>(n),
+                                                            static_cast<uint32_t>(k)));
         }
         if (fn == "combo_combinations_with_rep") {
-            const int n = static_cast<int>(args[0]);
-            const int k = static_cast<int>(args[1]);
+            auto n_arg = checked_int_argument(fn, "n", args[0]);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            const int n = *n_arg;
+            auto k_arg = checked_int_argument(fn, "k", args[1]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (n < 0 || k < 0 || std::floor(args[0]) != args[0] ||
                 std::floor(args[1]) != args[1]) {
                 return std::unexpected(
                     DomainError{"combo_combinations_with_rep",
                                 "expected non-negative integer n and k"});
             }
-            return static_cast<double>(combo::combinations_with_rep(static_cast<uint32_t>(n),
-                                                                    static_cast<uint32_t>(k)));
+            return combo_count_value(fn, combo::combinations_with_rep(
+                                            static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
         if (fn == "numthy_legendre_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -3195,8 +3638,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_legendre_symbol", "expected odd prime p"});
             }
+            auto p_u64 = checked_u64_argument(fn, "p", args[1], kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
             return static_cast<double>(numthy::legendre_symbol(static_cast<int64_t>(args[0]),
-                                                                static_cast<uint64_t>(args[1])));
+                                                                *p_u64));
         }
         if (fn == "numthy_jacobi_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -3207,8 +3654,12 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected positive odd n"});
             }
+            auto n_u64 = checked_u64_argument(fn, "n", args[1], kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
             return static_cast<double>(numthy::jacobi_symbol(static_cast<int64_t>(args[0]),
-                                                               static_cast<uint64_t>(args[1])));
+                                                               *n_u64));
         }
         if (fn == "numthy_kronecker_symbol") {
             if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
@@ -3239,8 +3690,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_is_primitive_root", "expected g >= 0 and p > 0"});
             }
-            return numthy::is_primitive_root(static_cast<uint64_t>(args[0]),
-                                             static_cast<uint64_t>(args[1]))
+            auto g_u64 = checked_u64_argument(fn, "g", args[0], kMaxU64AsDouble);
+            if (!g_u64) {
+                return std::unexpected(g_u64.error());
+            }
+            auto p_u64 = checked_u64_argument(fn, "p", args[1], kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            return numthy::is_primitive_root(*g_u64,
+                                             *p_u64)
                        ? 1.0
                        : 0.0;
         }
@@ -3261,7 +3720,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"special_polygamma", "expected non-negative integer n"});
             }
-            return polygamma(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return polygamma(*arg0_int, args[1]);
         }
         if (fn == "special_gamma_inc_reg") {
             return gamma_inc_reg(args[0], args[1]);
@@ -3274,14 +3737,22 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"special_pochhammer", "expected non-negative integer n"});
             }
-            return pochhammer(args[0], static_cast<int>(args[1]));
+            auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+            if (!arg1_int) {
+                return std::unexpected(arg1_int.error());
+            }
+            return pochhammer(args[0], *arg1_int);
         }
         if (fn == "special_falling_factorial") {
             if (args[1] < 0.0 || std::floor(args[1]) != args[1]) {
                 return std::unexpected(
                     DomainError{"special_falling_factorial", "expected non-negative integer n"});
             }
-            return falling_factorial(args[0], static_cast<int>(args[1]));
+            auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+            if (!arg1_int) {
+                return std::unexpected(arg1_int.error());
+            }
+            return falling_factorial(args[0], *arg1_int);
         }
         if (fn == "special_gamma_inc") {
             return gamma_inc(args[0], args[1]);
@@ -3294,28 +3765,44 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{fn, "expected non-negative integer nu"});
             }
-            return bessel_y(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_y(*arg0_int, args[1]);
         }
         if (fn == "bessel_i" || fn == "special_bessel_i") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{fn, "expected non-negative integer nu"});
             }
-            return bessel_i(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_i(*arg0_int, args[1]);
         }
         if (fn == "bessel_k" || fn == "special_bessel_k") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{fn, "expected non-negative integer nu"});
             }
-            return bessel_k(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_k(*arg0_int, args[1]);
         }
         if (fn == "bessel_j") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"bessel_j", "expected non-negative integer nu"});
             }
-            return bessel_j(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_j(*arg0_int, args[1]);
         }
         if (fn == "bessel_zero_jnu") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 1.0 ||
@@ -3323,231 +3810,367 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(DomainError{
                     "bessel_zero_jnu", "expected non-negative integer nu and positive integer n"});
             }
-            return bessel_zero_jnu(static_cast<int>(args[0]), static_cast<int>(args[1]));
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+            if (!arg1_int) {
+                return std::unexpected(arg1_int.error());
+            }
+            return bessel_zero_jnu(*arg0_int, *arg1_int);
         }
         if (fn == "chebyshev_t") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"chebyshev_t", "expected non-negative integer n"});
             }
-            return chebyshev_t(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return chebyshev_t(*arg0_int, args[1]);
         }
         if (fn == "chebyshev_u") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"chebyshev_u", "expected non-negative integer n"});
             }
-            return chebyshev_u(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return chebyshev_u(*arg0_int, args[1]);
         }
         if (fn == "hermite_h") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"hermite_h", "expected non-negative integer n"});
             }
-            return hermite_h(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return hermite_h(*arg0_int, args[1]);
         }
         if (fn == "laguerre_l") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"laguerre_l", "expected non-negative integer n"});
             }
-            return laguerre_l(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return laguerre_l(*arg0_int, args[1]);
         }
         if (fn == "legendre_q") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"legendre_q", "expected non-negative integer n"});
             }
-            return legendre_q(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return legendre_q(*arg0_int, args[1]);
         }
         if (fn == "hermite_he") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"hermite_he", "expected non-negative integer n"});
             }
-            return hermite_he(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return hermite_he(*arg0_int, args[1]);
         }
         if (fn == "chebyshev_v") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"chebyshev_v", "expected non-negative integer n"});
             }
-            return chebyshev_v(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return chebyshev_v(*arg0_int, args[1]);
         }
         if (fn == "chebyshev_w") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"chebyshev_w", "expected non-negative integer n"});
             }
-            return chebyshev_w(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return chebyshev_w(*arg0_int, args[1]);
         }
         if (fn == "sph_bessel_j") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"sph_bessel_j", "expected non-negative integer n"});
             }
-            return sph_bessel_j(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return sph_bessel_j(*arg0_int, args[1]);
         }
         if (fn == "sph_bessel_y") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"sph_bessel_y", "expected non-negative integer n"});
             }
-            return sph_bessel_y(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return sph_bessel_y(*arg0_int, args[1]);
         }
         if (fn == "spherical_in") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"spherical_in", "expected non-negative integer n"});
             }
-            return spherical_in(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return spherical_in(*arg0_int, args[1]);
         }
         if (fn == "spherical_jn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"spherical_jn", "expected non-negative integer n"});
             }
-            return spherical_jn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return spherical_jn(*arg0_int, args[1]);
         }
         if (fn == "polylog") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"polylog", "expected non-negative integer n"});
             }
-            return polylog(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return polylog(*arg0_int, args[1]);
         }
         if (fn == "debye") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"debye", "expected non-negative integer n"});
             }
-            return debye(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return debye(*arg0_int, args[1]);
         }
         if (fn == "spherical_kn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"spherical_kn", "expected non-negative integer n"});
             }
-            return spherical_kn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return spherical_kn(*arg0_int, args[1]);
         }
         if (fn == "spherical_yn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"spherical_yn", "expected non-negative integer n"});
             }
-            return spherical_yn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return spherical_yn(*arg0_int, args[1]);
         }
         if (fn == "bessel_h") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"bessel_h", "expected non-negative integer nu"});
             }
-            return bessel_h(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_h(*arg0_int, args[1]);
         }
         if (fn == "bessel_hy") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"bessel_hy", "expected non-negative integer nu"});
             }
-            return bessel_hy(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_hy(*arg0_int, args[1]);
         }
         if (fn == "bessel_l") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"bessel_l", "expected non-negative integer nu"});
             }
-            return bessel_l(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_l(*arg0_int, args[1]);
         }
         if (fn == "bessel_lu") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"bessel_lu", "expected non-negative integer nu"});
             }
-            return bessel_lu(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return bessel_lu(*arg0_int, args[1]);
         }
         if (fn == "hermite_hn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"hermite_hn", "expected non-negative integer n"});
             }
-            return hermite_hn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return hermite_hn(*arg0_int, args[1]);
         }
         if (fn == "struve_l") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"struve_l", "expected non-negative integer nu"});
             }
-            return struve_l(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return struve_l(*arg0_int, args[1]);
         }
         if (fn == "struve_h") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"struve_h", "expected non-negative integer nu"});
             }
-            return struve_h(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return struve_h(*arg0_int, args[1]);
         }
         if (fn == "struve_k") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"struve_k", "expected non-negative integer nu"});
             }
-            return struve_k(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return struve_k(*arg0_int, args[1]);
         }
         if (fn == "struve_hn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"struve_hn", "expected non-negative integer nu"});
             }
-            return struve_hn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return struve_hn(*arg0_int, args[1]);
         }
         if (fn == "struve_yn") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"struve_yn", "expected non-negative integer nu"});
             }
-            return struve_yn(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return struve_yn(*arg0_int, args[1]);
         }
         if (fn == "anger_j") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"anger_j", "expected non-negative integer nu"});
             }
-            return anger_j(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return anger_j(*arg0_int, args[1]);
         }
         if (fn == "weber_e") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"weber_e", "expected non-negative integer nu"});
             }
-            return weber_e(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return weber_e(*arg0_int, args[1]);
         }
         if (fn == "kelvin_bei") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"kelvin_bei", "expected non-negative integer nu"});
             }
-            return kelvin_bei(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return kelvin_bei(*arg0_int, args[1]);
         }
         if (fn == "kelvin_ber") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"kelvin_ber", "expected non-negative integer nu"});
             }
-            return kelvin_ber(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return kelvin_ber(*arg0_int, args[1]);
         }
         if (fn == "kelvin_ker") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"kelvin_ker", "expected non-negative integer nu"});
             }
-            return kelvin_ker(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return kelvin_ker(*arg0_int, args[1]);
         }
         if (fn == "kelvin_kei") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
                 return std::unexpected(
                     DomainError{"kelvin_kei", "expected non-negative integer nu"});
             }
-            return kelvin_kei(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return kelvin_kei(*arg0_int, args[1]);
         }
         if (fn == "bessel_zero_ynu") {
             if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 1.0 ||
@@ -3555,14 +4178,26 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(DomainError{
                     "bessel_zero_ynu", "expected non-negative integer nu and positive integer n"});
             }
-            return bessel_zero_ynu(static_cast<int>(args[0]), static_cast<int>(args[1]));
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+            if (!arg1_int) {
+                return std::unexpected(arg1_int.error());
+            }
+            return bessel_zero_ynu(*arg0_int, *arg1_int);
         }
         if (fn == "lambert_w" || fn == "special_lambert_w") {
             if (std::floor(args[0]) != args[0] || (args[0] != 0.0 && args[0] != -1.0)) {
                 return std::unexpected(
                     DomainError{fn, "expected integer branch 0 or -1"});
             }
-            return lambert_w(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return lambert_w(*arg0_int, args[1]);
         }
         if (fn == "hypergeo_0f1") {
             return hypergeo_0f1(args[0], args[1]);
@@ -3593,7 +4228,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"legendre_p", "expected non-negative integer n"});
             }
-            return legendre_p(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return legendre_p(*arg0_int, args[1]);
         }
         if (fn == "jacobi_dn") {
             return jacobi_dn(args[0], args[1]);
@@ -3657,13 +4296,29 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return geo::length(v);
         }
         if (fn == "numthy_gcd") {
-            const auto a = static_cast<uint64_t>(args[0]);
-            const auto b = static_cast<uint64_t>(args[1]);
+            auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            const auto a = *a_u64;
+            auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            const auto b = *b_u64;
             return static_cast<double>(numthy::gcd(a, b));
         }
         if (fn == "quantum_grover_optimal_iterations") {
-            const int n_qubits = static_cast<int>(args[0]);
-            const int n_marked = static_cast<int>(args[1]);
+            auto n_qubits_arg = checked_int_argument(fn, "n_qubits", args[0]);
+            if (!n_qubits_arg) {
+                return std::unexpected(n_qubits_arg.error());
+            }
+            const int n_qubits = *n_qubits_arg;
+            auto n_marked_arg = checked_int_argument(fn, "n_marked", args[1]);
+            if (!n_marked_arg) {
+                return std::unexpected(n_marked_arg.error());
+            }
+            const int n_marked = *n_marked_arg;
             if (n_qubits < 0 || args[0] != n_qubits || n_marked < 0 || args[1] != n_marked) {
                 return std::unexpected(DomainError{
                     "quantum_grover_optimal_iterations",
@@ -3672,12 +4327,24 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return static_cast<double>(quantum::grover_optimal_iterations(n_qubits, n_marked));
         }
         if (fn == "numthy_lcm") {
-            const auto a = static_cast<uint64_t>(args[0]);
-            const auto b = static_cast<uint64_t>(args[1]);
+            auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            const auto a = *a_u64;
+            auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            const auto b = *b_u64;
             return static_cast<double>(numthy::lcm(a, b));
         }
         if (fn == "numthy_jordan_totient") {
-            const int k = static_cast<int>(args[0]);
+            auto k_arg = checked_int_argument(fn, "k", args[0]);
+            if (!k_arg) {
+                return std::unexpected(k_arg.error());
+            }
+            const int k = *k_arg;
             if (k < 0 || args[0] != k) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer k"});
@@ -3686,8 +4353,13 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
-            return static_cast<double>(numthy::jordan_totient(
-                static_cast<uint32_t>(k), static_cast<uint64_t>(args[1])));
+            auto n_u64 = checked_u64_argument(fn, "n", args[1], kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return combo_count_value(fn, numthy::jordan_totient(
+                                             static_cast<uint32_t>(k),
+                                             *n_u64));
         }
         if (fn == "cplx_joukowski") {
             const cplx::C z{args[0], args[1]};
@@ -3717,8 +4389,18 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"bigint_pow", "expected non-negative integer exponent"});
             }
+            // Quadratic in the exponent -- binary exponentiation squares a number that
+            // is itself growing -- and, like bigint_factorial and bigint_fib, the result
+            // then has to round-trip through a double exactly. 10^309 already fails
+            // that, so this bound refuses nothing that could have worked; all it does is
+            // stop the computing.
+            auto exp_bounded =
+                checked_superlinear_argument("bigint_pow", "exponent", args[1], 2, 0.04);
+            if (!exp_bounded) {
+                return std::unexpected(exp_bounded.error());
+            }
             return bigint_to_scalar(
-                bignum::bigint_pow(*base, static_cast<long long>(args[1])), "bigint_pow");
+                bignum::bigint_pow(*base, static_cast<long long>(*exp_bounded)), "bigint_pow");
         }
         if (fn == "cplx_cauchy_integral") {
             return eval_cplx_cauchy_integral(args[0], args[1]);
@@ -3757,7 +4439,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return zeta_hurwitz(args[0], args[1]);
         }
         if (fn == "hermite_hf") {
-            return hermite_hf(static_cast<int>(args[0]), args[1]);
+            auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+            if (!arg0_int) {
+                return std::unexpected(arg0_int.error());
+            }
+            return hermite_hf(*arg0_int, args[1]);
         }
     }
     if (args.size() == 4 && fn == "geo_dist2d") {
@@ -3872,7 +4558,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::forward_rate(args[0], args[1], args[2], args[3]);
     }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_bond_price") {
-        const int n = static_cast<int>(args[2]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(
                 DomainError{"finance_bond_price", "expected non-negative integer periods n"});
@@ -3889,7 +4579,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_cplx_green_function_disk(args[0], args[1], args[2], args[3], radius);
     }
     if (args.size() == 3 && fn == "finance_bond_duration") {
-        const int n = static_cast<int>(args[2]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(
                 DomainError{"finance_bond_duration", "expected non-negative integer periods n"});
@@ -3897,7 +4591,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::bond_duration(args[0], args[1], n);
     }
     if (args.size() == 3 && fn == "finance_bond_modified_duration") {
-        const int n = static_cast<int>(args[2]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(DomainError{
                 "finance_bond_modified_duration", "expected non-negative integer periods n"});
@@ -3905,7 +4603,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::bond_modified_duration(args[0], args[1], n);
     }
     if (args.size() == 3 && fn == "finance_bond_convexity") {
-        const int n = static_cast<int>(args[2]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(
                 DomainError{"finance_bond_convexity", "expected non-negative integer periods n"});
@@ -3916,7 +4618,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_finance_bond_ytm(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "finance_compound") {
-        const int n = static_cast<int>(args[2]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(
                 DomainError{"finance_compound", "expected non-negative integer periods n_periods"});
@@ -3924,8 +4630,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::compound(args[0], args[1], n);
     }
     if (args.size() == 4 && fn == "finance_compound") {
-        const int n = static_cast<int>(args[2]);
-        const int cpp = static_cast<int>(args[3]);
+        auto n_arg = checked_int_argument(fn, "n", args[2]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
+        auto cpp_arg = checked_int_argument(fn, "cpp", args[3]);
+        if (!cpp_arg) {
+            return std::unexpected(cpp_arg.error());
+        }
+        const int cpp = *cpp_arg;
         if (n < 0 || args[2] != n) {
             return std::unexpected(
                 DomainError{"finance_compound", "expected non-negative integer periods n_periods"});
@@ -3946,8 +4660,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::capm(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "poly_bernstein") {
-        const int n = static_cast<int>(args[0]);
-        const int i = static_cast<int>(args[1]);
+        auto n_arg = checked_int_argument(fn, "n", args[0]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
+        auto i_arg = checked_int_argument(fn, "i", args[1]);
+        if (!i_arg) {
+            return std::unexpected(i_arg.error());
+        }
+        const int i = *i_arg;
         if (n < 0 || args[0] != n) {
             return std::unexpected(
                 DomainError{"poly_bernstein", "expected non-negative integer n"});
@@ -3959,49 +4681,115 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return poly::bernstein(n, i, args[2]);
     }
     if (args.size() == 3 && fn == "numthy_mod_pow") {
-        const auto base = static_cast<uint64_t>(args[0]);
-        const auto exp = static_cast<uint64_t>(args[1]);
-        const auto mod = static_cast<uint64_t>(args[2]);
+        auto base_u64 = checked_u64_argument(fn, "base", args[0], kMaxU64AsDouble);
+        if (!base_u64) {
+            return std::unexpected(base_u64.error());
+        }
+        const auto base = *base_u64;
+        auto exp_u64 = checked_u64_argument(fn, "exp", args[1], kMaxU64AsDouble);
+        if (!exp_u64) {
+            return std::unexpected(exp_u64.error());
+        }
+        const auto exp = *exp_u64;
+        auto mod_u64 = checked_u64_argument(fn, "mod", args[2], kMaxU64AsDouble);
+        if (!mod_u64) {
+            return std::unexpected(mod_u64.error());
+        }
+        const auto mod = *mod_u64;
         return static_cast<double>(numthy::mod_pow(base, exp, mod));
     }
     if (args.size() == 3 && fn == "gria_gf2n_mul") {
-        return static_cast<double>(gria::gf2n::mul(static_cast<uint64_t>(args[0]),
-                                                    static_cast<uint64_t>(args[1]),
-                                                    static_cast<uint64_t>(args[2])));
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto b_u64 = checked_u64_argument(fn, "b", args[1], kMaxU64AsDouble);
+        if (!b_u64) {
+            return std::unexpected(b_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[2], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return static_cast<double>(gria::gf2n::mul(*a_u64,
+                                                    *b_u64,
+                                                    *poly_u64));
     }
     if (args.size() == 3 && fn == "gria_gf2n_pow") {
-        return static_cast<double>(gria::gf2n::pow(static_cast<uint64_t>(args[0]),
-                                                   static_cast<uint64_t>(args[1]),
-                                                   static_cast<uint64_t>(args[2])));
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto exp_u64 = checked_u64_argument(fn, "exp", args[1], kMaxU64AsDouble);
+        if (!exp_u64) {
+            return std::unexpected(exp_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[2], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return static_cast<double>(gria::gf2n::pow(*a_u64,
+                                                   *exp_u64,
+                                                   *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_gf2n_inv") {
+        auto a_u64 = checked_u64_argument(fn, "a", args[0], kMaxU64AsDouble);
+        if (!a_u64) {
+            return std::unexpected(a_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[1], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
         return static_cast<double>(
-            gria::gf2n::inv(static_cast<uint64_t>(args[0]), static_cast<uint64_t>(args[1])));
+            gria::gf2n::inv(*a_u64, *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_lfsr_step") {
+        auto state_u64 = checked_u64_argument(fn, "state", args[0], kMaxU64AsDouble);
+        if (!state_u64) {
+            return std::unexpected(state_u64.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[1], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
         return static_cast<double>(
-            gria::lfsr::step(static_cast<uint64_t>(args[0]), static_cast<uint64_t>(args[1])));
+            gria::lfsr::step(*state_u64, *poly_u64));
     }
     if (args.size() == 2 && fn == "gria_alpha_lfsr") {
         if (args[1] < 1.0 || std::floor(args[1]) != args[1]) {
             return std::unexpected(DomainError{fn, "expected positive integer steps"});
         }
-        return gria::lfsr::alpha_lfsr(static_cast<uint64_t>(args[0]),
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[0], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return gria::lfsr::alpha_lfsr(*poly_u64,
                                       static_cast<size_t>(args[1]));
     }
     if (args.size() == 2 && fn == "gria_lfsr_is_maximal") {
         if (args[1] < 1.0 || std::floor(args[1]) != args[1]) {
             return std::unexpected(DomainError{fn, "expected positive integer n"});
         }
-        return gria::lfsr::is_maximal(static_cast<uint64_t>(args[0]), static_cast<int>(args[1]))
-                   ? 1.0
-                   : 0.0;
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        auto poly_u64 = checked_u64_argument(fn, "poly", args[0], kMaxU64AsDouble);
+        if (!poly_u64) {
+            return std::unexpected(poly_u64.error());
+        }
+        return gria::lfsr::is_maximal(*poly_u64, *arg1_int) ? 1.0 : 0.0;
     }
     if (args.size() == 3 && fn == "numthy_discrete_log") {
         return eval_numthy_discrete_log(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "jacobi_theta") {
-        const int n = static_cast<int>(args[0]);
+        auto n_arg = checked_int_argument(fn, "n", args[0]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (args[0] != n) {
             return std::unexpected(DomainError{"jacobi_theta", "expected integer n"});
         }
@@ -4017,8 +4805,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return norm_ppf(args[0], args[1], args[2]);
     }
     if (args.size() == 3 && fn == "prob_binom_pdf") {
-        const int k = static_cast<int>(args[0]);
-        const int n = static_cast<int>(args[1]);
+        auto k_arg = checked_int_argument(fn, "k", args[0]);
+        if (!k_arg) {
+            return std::unexpected(k_arg.error());
+        }
+        const int k = *k_arg;
+        auto n_arg = checked_int_argument(fn, "n", args[1]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (args[0] != k || args[1] != n) {
             return std::unexpected(
                 DomainError{"prob_binom_pdf", "expected integer k and n"});
@@ -4026,8 +4822,16 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return binom_pdf(k, n, args[2]);
     }
     if (args.size() == 3 && fn == "prob_binom_cdf") {
-        const int k = static_cast<int>(args[0]);
-        const int n = static_cast<int>(args[1]);
+        auto k_arg = checked_int_argument(fn, "k", args[0]);
+        if (!k_arg) {
+            return std::unexpected(k_arg.error());
+        }
+        const int k = *k_arg;
+        auto n_arg = checked_int_argument(fn, "n", args[1]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (args[0] != k || args[1] != n) {
             return std::unexpected(
                 DomainError{"prob_binom_cdf", "expected integer k and n"});
@@ -4108,14 +4912,22 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"hypergeo_0f1n", "expected non-negative integer n"});
         }
-        return hypergeo_0f1n(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        return hypergeo_0f1n(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "hypergeo_1f1n") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
             return std::unexpected(
                 DomainError{"hypergeo_1f1n", "expected non-negative integer n"});
         }
-        return hypergeo_1f1n(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        return hypergeo_1f1n(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "assoc_legendre_p") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
@@ -4123,7 +4935,15 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"assoc_legendre_p", "expected non-negative integer l and m"});
         }
-        return assoc_legendre_p(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        return assoc_legendre_p(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "legendre_pn") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
@@ -4131,7 +4951,15 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"legendre_pn", "expected non-negative integer n and m"});
         }
-        return legendre_pn(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        return legendre_pn(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "lerch_phi") {
         return lerch_phi(args[0], args[1], args[2]);
@@ -4142,7 +4970,15 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"laguerre_ln", "expected non-negative integer n and k"});
         }
-        return laguerre_ln(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        return laguerre_ln(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "chebyshev_tn") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
@@ -4150,7 +4986,15 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"chebyshev_tn", "expected non-negative integer n and k"});
         }
-        return chebyshev_tn(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        return chebyshev_tn(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "chebyshev_un") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0] || args[1] < 0.0 ||
@@ -4158,21 +5002,37 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"chebyshev_un", "expected non-negative integer n and k"});
         }
-        return chebyshev_un(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        return chebyshev_un(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "gegenbauer_c") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
             return std::unexpected(
                 DomainError{"gegenbauer_c", "expected non-negative integer n"});
         }
-        return gegenbauer_c(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        return gegenbauer_c(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "laguerre_la") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
             return std::unexpected(
                 DomainError{"laguerre_la", "expected non-negative integer n"});
         }
-        return laguerre_la(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        return laguerre_la(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "prob_uniform_pdf") {
         return uniform_pdf(args[0], args[1], args[2]);
@@ -4262,7 +5122,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return f_cdf(args[0], args[1], args[2]);
     }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_pv") {
-        const int n = static_cast<int>(args[1]);
+        auto n_arg = checked_int_argument(fn, "n", args[1]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[1] != n) {
             return std::unexpected(
                 DomainError{"finance_pv", "expected non-negative integer n"});
@@ -4271,7 +5135,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::pv(args[0], n, args[2], fv);
     }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_fv_annuity") {
-        const int n = static_cast<int>(args[1]);
+        auto n_arg = checked_int_argument(fn, "n", args[1]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[1] != n) {
             return std::unexpected(
                 DomainError{"finance_fv_annuity", "expected non-negative integer n"});
@@ -4280,7 +5148,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::fv_annuity(args[0], n, args[2], pv0);
     }
     if ((args.size() == 3 || args.size() == 4) && fn == "finance_pmt_annuity") {
-        const int n = static_cast<int>(args[1]);
+        auto n_arg = checked_int_argument(fn, "n", args[1]);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 0 || args[1] != n) {
             return std::unexpected(
                 DomainError{"finance_pmt_annuity", "expected non-negative integer n"});
@@ -4313,7 +5185,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::bs_vega(args[0], args[1], args[2], args[3], args[4]);
     }
     if (args.size() == 6 && fn == "finance_bs_delta") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_bs_delta", "expected integer call (0=put, 1=call)"});
@@ -4324,7 +5200,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_finance_bs_implied_vol(args[0], args[1], args[2], args[3], args[4], args[5]);
     }
     if (args.size() == 6 && fn == "finance_bs_theta") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_bs_theta", "expected integer call (0=put, 1=call)"});
@@ -4332,7 +5212,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::bs_theta(args[0], args[1], args[2], args[3], args[4], call != 0);
     }
     if (args.size() == 6 && fn == "finance_bs_rho") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_bs_rho", "expected integer call (0=put, 1=call)"});
@@ -4340,7 +5224,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::bs_rho(args[0], args[1], args[2], args[3], args[4], call != 0);
     }
     if (args.size() == 6 && fn == "finance_black76") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_black76", "expected integer call (0=put, 1=call)"});
@@ -4360,7 +5248,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::cir_bond_price(args[0], args[1], args[2], args[3], args[4]);
     }
     if (args.size() == 6 && fn == "finance_binomial_call") {
-        const int steps = static_cast<int>(args[5]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[5], 2, 11.0);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
+        }
+        const int steps = *steps_arg;
         if (steps < 0 || args[5] != steps) {
             return std::unexpected(
                 DomainError{"finance_binomial_call", "expected non-negative integer steps"});
@@ -4368,7 +5260,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::binomial_call(args[0], args[1], args[2], args[3], args[4], steps);
     }
     if (args.size() == 6 && fn == "finance_binomial_put") {
-        const int steps = static_cast<int>(args[5]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[5], 2, 11.0);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
+        }
+        const int steps = *steps_arg;
         if (steps < 0 || args[5] != steps) {
             return std::unexpected(
                 DomainError{"finance_binomial_put", "expected non-negative integer steps"});
@@ -4376,7 +5272,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::binomial_put(args[0], args[1], args[2], args[3], args[4], steps);
     }
     if (args.size() == 6 && fn == "finance_geo_asian_call") {
-        const int n_fixings = static_cast<int>(args[5]);
+        auto n_fixings_arg = checked_int_argument(fn, "n_fixings", args[5]);
+        if (!n_fixings_arg) {
+            return std::unexpected(n_fixings_arg.error());
+        }
+        const int n_fixings = *n_fixings_arg;
         if (n_fixings < 0 || args[5] != n_fixings) {
             return std::unexpected(
                 DomainError{"finance_geo_asian_call", "expected non-negative integer n_fixings"});
@@ -4384,7 +5284,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return finance::geo_asian_call(args[0], args[1], args[2], args[3], args[4], n_fixings);
     }
     if (args.size() == 6 && fn == "finance_geo_asian_put") {
-        const int n_fixings = static_cast<int>(args[5]);
+        auto n_fixings_arg = checked_int_argument(fn, "n_fixings", args[5]);
+        if (!n_fixings_arg) {
+            return std::unexpected(n_fixings_arg.error());
+        }
+        const int n_fixings = *n_fixings_arg;
         if (n_fixings < 0 || args[5] != n_fixings) {
             return std::unexpected(
                 DomainError{"finance_geo_asian_put", "expected non-negative integer n_fixings"});
@@ -4397,7 +5301,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return geo::dist_point_plane(p, pl);
     }
     if (args.size() == 7 && fn == "finance_digital_option") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_digital_option", "expected integer call (0=put, 1=call)"});
@@ -4406,12 +5314,20 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                        args[6]);
     }
     if (args.size() == 7 && fn == "finance_american_option") {
-        const int call = static_cast<int>(args[5]);
+        auto call_arg = checked_int_argument(fn, "call", args[5]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[5] != call) {
             return std::unexpected(
                 DomainError{"finance_american_option", "expected integer call (0=put, 1=call)"});
         }
-        const int steps = static_cast<int>(args[6]);
+        auto steps_arg = checked_superlinear_argument(fn, "steps", args[6], 2, 28.0);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
+        }
+        const int steps = *steps_arg;
         if (steps < 0 || args[6] != steps) {
             return std::unexpected(
                 DomainError{"finance_american_option", "expected non-negative integer steps"});
@@ -4420,92 +5336,98 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                         steps);
     }
     if (args.size() == 7 && fn == "finance_mc_european_call") {
-        const int n_paths = static_cast<int>(args[5]);
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_call", "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_call", "expected non-negative integer seed"});
+        const int n_paths = *n_paths_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         return finance::mc_european_call(args[0], args[1], args[2], args[3], args[4], n_paths,
                                          seed);
     }
     if (args.size() == 7 && fn == "finance_mc_european_put") {
-        const int n_paths = static_cast<int>(args[5]);
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_put", "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_european_put", "expected non-negative integer seed"});
+        const int n_paths = *n_paths_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         return finance::mc_european_put(args[0], args[1], args[2], args[3], args[4], n_paths,
                                         seed);
     }
     if (args.size() == 8 && fn == "finance_mc_asian_call") {
-        const int n_paths = static_cast<int>(args[5]);
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const int n_steps = static_cast<int>(args[6]);
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer n_steps"});
+        const int n_paths = *n_paths_arg;
+        auto n_steps_arg = budget.take("n_steps", args[6]);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_call", "expected non-negative integer seed"});
+        const int n_steps = *n_steps_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         return finance::mc_asian_call(args[0], args[1], args[2], args[3], args[4], n_paths,
                                       n_steps, seed);
     }
     if (args.size() == 8 && fn == "finance_mc_asian_put") {
-        const int n_paths = static_cast<int>(args[5]);
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const int n_steps = static_cast<int>(args[6]);
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer n_steps"});
+        const int n_paths = *n_paths_arg;
+        auto n_steps_arg = budget.take("n_steps", args[6]);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(
-                DomainError{"finance_mc_asian_put", "expected non-negative integer seed"});
+        const int n_steps = *n_steps_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         return finance::mc_asian_put(args[0], args[1], args[2], args[3], args[4], n_paths,
                                      n_steps, seed);
     }
     if (args.size() == 7 &&
         (fn == "finance_mc_lookback_floating_call" || fn == "finance_mc_lookback_floating_put")) {
-        const int n_paths = static_cast<int>(args[4]);
-        if (n_paths < 0 || args[4] != n_paths) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[4]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const int n_steps = static_cast<int>(args[5]);
-        if (n_steps < 0 || args[5] != n_steps) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_steps"});
+        const int n_paths = *n_paths_arg;
+        auto n_steps_arg = budget.take("n_steps", args[5]);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
-        const double seed_d = args[6];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+        const int n_steps = *n_steps_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[6]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         if (fn == "finance_mc_lookback_floating_call") {
             return finance::mc_lookback_floating_call(args[0], args[1], args[2], args[3],
                                                        n_paths, n_steps, seed);
@@ -4515,21 +5437,23 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
     }
     if (args.size() == 8 &&
         (fn == "finance_mc_lookback_fixed_call" || fn == "finance_mc_lookback_fixed_put")) {
-        const int n_paths = static_cast<int>(args[5]);
-        if (n_paths < 0 || args[5] != n_paths) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_paths"});
+        // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+        WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+        auto n_paths_arg = budget.take("n_paths", args[5]);
+        if (!n_paths_arg) {
+            return std::unexpected(n_paths_arg.error());
         }
-        const int n_steps = static_cast<int>(args[6]);
-        if (n_steps < 0 || args[6] != n_steps) {
-            return std::unexpected(
-                DomainError{fn, "expected non-negative integer n_steps"});
+        const int n_paths = *n_paths_arg;
+        auto n_steps_arg = budget.take("n_steps", args[6]);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
         }
-        const double seed_d = args[7];
-        const auto seed = static_cast<unsigned>(seed_d);
-        if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-            return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+        const int n_steps = *n_steps_arg;
+        auto seed_arg = checked_seed_argument(fn, "seed", args[7]);
+        if (!seed_arg) {
+            return std::unexpected(seed_arg.error());
         }
+        const unsigned seed = *seed_arg;
         if (fn == "finance_mc_lookback_fixed_call") {
             return finance::mc_lookback_fixed_call(args[0], args[1], args[2], args[3], args[4],
                                                     n_paths, n_steps, seed);
@@ -4538,17 +5462,29 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                               n_paths, n_steps, seed);
     }
     if (args.size() == 9 && fn == "finance_barrier_option") {
-        const int call = static_cast<int>(args[6]);
+        auto call_arg = checked_int_argument(fn, "call", args[6]);
+        if (!call_arg) {
+            return std::unexpected(call_arg.error());
+        }
+        const int call = *call_arg;
         if (args[6] != call) {
             return std::unexpected(
                 DomainError{"finance_barrier_option", "expected integer call (0=put, 1=call)"});
         }
-        const int knock_in = static_cast<int>(args[7]);
+        auto knock_in_arg = checked_int_argument(fn, "knock_in", args[7]);
+        if (!knock_in_arg) {
+            return std::unexpected(knock_in_arg.error());
+        }
+        const int knock_in = *knock_in_arg;
         if (args[7] != knock_in) {
             return std::unexpected(DomainError{
                 "finance_barrier_option", "expected integer knock_in (0=knock-out, 1=knock-in)"});
         }
-        const int up = static_cast<int>(args[8]);
+        auto up_arg = checked_int_argument(fn, "up", args[8]);
+        if (!up_arg) {
+            return std::unexpected(up_arg.error());
+        }
+        const int up = *up_arg;
         if (args[8] != up) {
             return std::unexpected(
                 DomainError{"finance_barrier_option", "expected integer up (0=down, 1=up)"});
@@ -4557,17 +5493,29 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                        call != 0, knock_in != 0, up != 0);
     }
     if (args.size() == 8 && fn == "finance_trinomial_option") {
-        const int n_steps = static_cast<int>(args[5]);
+        auto n_steps_arg = checked_superlinear_argument(fn, "n_steps", args[5], 2, 28.0);
+        if (!n_steps_arg) {
+            return std::unexpected(n_steps_arg.error());
+        }
+        const int n_steps = *n_steps_arg;
         if (n_steps < 0 || args[5] != n_steps) {
             return std::unexpected(
                 DomainError{"finance_trinomial_option", "expected non-negative integer n_steps"});
         }
-        const int is_call = static_cast<int>(args[6]);
+        auto is_call_arg = checked_int_argument(fn, "is_call", args[6]);
+        if (!is_call_arg) {
+            return std::unexpected(is_call_arg.error());
+        }
+        const int is_call = *is_call_arg;
         if (args[6] != is_call) {
             return std::unexpected(DomainError{
                 "finance_trinomial_option", "expected integer is_call (0=put, 1=call)"});
         }
-        const int is_american = static_cast<int>(args[7]);
+        auto is_american_arg = checked_int_argument(fn, "is_american", args[7]);
+        if (!is_american_arg) {
+            return std::unexpected(is_american_arg.error());
+        }
+        const int is_american = *is_american_arg;
         if (args[7] != is_american) {
             return std::unexpected(DomainError{
                 "finance_trinomial_option",
@@ -4596,14 +5544,30 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(
                 DomainError{"mathieu_a", "expected non-negative integer n"});
         }
-        return mathieu_a(static_cast<int>(args[0]), args[1]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_a(*arg0_int, args[1]);
     }
     if (args.size() == 2 && fn == "mathieu_b") {
         if (args[0] < 0.0 || std::floor(args[0]) != args[0]) {
             return std::unexpected(
                 DomainError{"mathieu_b", "expected non-negative integer n"});
         }
-        return mathieu_b(static_cast<int>(args[0]), args[1]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_b(*arg0_int, args[1]);
     }
     if (args.size() == 2 && fn == "pcf_u") {
         return pcf_u(args[0], args[1]);
@@ -4615,30 +5579,96 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return pcf_w(args[0], args[1]);
     }
     if (args.size() == 3 && fn == "spheroidal_lambda") {
-        return spheroidal_lambda(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
+        if (!c_sized) {
+            return std::unexpected(c_sized.error());
+        }
+        return spheroidal_lambda(*arg0_int, *arg1_int, args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_ce") {
-        return mathieu_ce(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_ce(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_se") {
-        return mathieu_se(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_se(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_mc") {
-        return mathieu_mc(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_mc(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_ms") {
-        return mathieu_ms(static_cast<int>(args[0]), args[1], args[2]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
+        return mathieu_ms(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "painleve1") {
         return painleve1(args[0], args[1], args[2]);
     }
     if (args.size() == 4 && fn == "spheroidal_s1") {
-        return spheroidal_s1(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2],
-                           args[3]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
+        if (!c_sized) {
+            return std::unexpected(c_sized.error());
+        }
+        return spheroidal_s1(*arg0_int, *arg1_int, args[2], args[3]);
     }
     if (args.size() == 4 && fn == "spheroidal_s2") {
-        return spheroidal_s2(static_cast<int>(args[0]), static_cast<int>(args[1]), args[2],
-                           args[3]);
+        auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
+        if (!arg0_int) {
+            return std::unexpected(arg0_int.error());
+        }
+        auto arg1_int = checked_int_argument(fn, "argument 2", args[1]);
+        if (!arg1_int) {
+            return std::unexpected(arg1_int.error());
+        }
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
+        if (!c_sized) {
+            return std::unexpected(c_sized.error());
+        }
+        return spheroidal_s2(*arg0_int, *arg1_int, args[2], args[3]);
     }
     if (args.size() == 4 && fn == "painleve2") {
         return painleve2(args[0], args[1], args[2], args[3]);
@@ -4669,7 +5699,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return heun_g(args[0], args[1], args[2], args[3], args[4], args[5], args[6]);
     }
     if (fn == "gria_langton_lambda" && args.size() == 1) {
-        const int rule = static_cast<int>(args[0]);
+        auto rule_arg = checked_int_argument(fn, "rule", args[0]);
+        if (!rule_arg) {
+            return std::unexpected(rule_arg.error());
+        }
+        const int rule = *rule_arg;
         if (rule < 0 || rule > 255 || args[0] != rule) {
             return std::unexpected(
                 DomainError{"gria_langton_lambda", "expected integer rule in [0,255]"});
@@ -4677,16 +5711,28 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_gria_langton_lambda(rule);
     }
     if (fn == "gria_alpha_ca" && args.size() == 3) {
-        const int rule = static_cast<int>(args[0]);
+        auto rule_arg = checked_int_argument(fn, "rule", args[0]);
+        if (!rule_arg) {
+            return std::unexpected(rule_arg.error());
+        }
+        const int rule = *rule_arg;
         if (rule < 0 || rule > 255 || args[0] != rule) {
             return std::unexpected(DomainError{"gria_alpha_ca", "expected integer rule in [0,255]"});
         }
-        const int steps = static_cast<int>(args[1]);
-        if (steps < 0 || args[1] != steps) {
-            return std::unexpected(
-                DomainError{"gria_alpha_ca", "expected non-negative integer steps"});
+        // alpha_ca reserves steps*width doubles to hold the history it measures the
+        // entropy of, so the two arguments have to be charged against one budget: each
+        // is ordinary at 1e7 and together they reserved 800 TB and aborted the process.
+        WorkBudget budget(fn, 177.0);
+        auto steps_arg = budget.take("steps", args[1]);
+        if (!steps_arg) {
+            return std::unexpected(steps_arg.error());
         }
-        const int width = static_cast<int>(args[2]);
+        const int steps = *steps_arg;
+        auto width_arg = budget.take("width", args[2]);
+        if (!width_arg) {
+            return std::unexpected(width_arg.error());
+        }
+        const int width = *width_arg;
         if (width < 1 || args[2] != width) {
             return std::unexpected(
                 DomainError{"gria_alpha_ca", "expected positive integer width"});
@@ -4704,7 +5750,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_diffgeo_helix_torsion(t, a, b);
     }
     if (fn == "diffgeo_sphere_gauss_bonnet" && args.size() == 1) {
-        const int n = static_cast<int>(args[0]);
+        auto n_arg = checked_superlinear_argument(fn, "n", args[0], 2, 1970.0);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 1 || args[0] != n) {
             return std::unexpected(
                 DomainError{"diffgeo_sphere_gauss_bonnet", "expected positive integer n"});
@@ -4712,7 +5762,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         return eval_diffgeo_sphere_gauss_bonnet(n);
     }
     if (fn == "diffgeo_sphere_gauss_bonnet_residual" && args.size() == 1) {
-        const int n = static_cast<int>(args[0]);
+        auto n_arg = checked_superlinear_argument(fn, "n", args[0], 2, 1970.0);
+        if (!n_arg) {
+            return std::unexpected(n_arg.error());
+        }
+        const int n = *n_arg;
         if (n < 1 || args[0] != n) {
             return std::unexpected(DomainError{
                 "diffgeo_sphere_gauss_bonnet_residual", "expected positive integer n"});
@@ -4735,6 +5789,20 @@ Result<double> Interpreter::eval_scalar_op(char op, double left, double right) {
             return std::unexpected(DomainError{"divide", "division by zero"});
         }
         return left / right;
+    case '^': {
+        // std::pow returns NaN for a negative base under a fractional exponent, and
+        // infinity for 0 under a negative one. Both are real answers to a question the
+        // user did not ask, and a NaN that reaches the display prints as a value. The
+        // two cases are named instead.
+        if (left < 0.0 && right != std::floor(right)) {
+            return std::unexpected(DomainError{
+                "power", "a negative base has no real power at a fractional exponent"});
+        }
+        if (left == 0.0 && right < 0.0) {
+            return std::unexpected(DomainError{"power", "zero to a negative power"});
+        }
+        return std::pow(left, right);
+    }
     default:
         return std::unexpected(DomainError{"eval", "unsupported operator"});
     }
@@ -4780,6 +5848,7 @@ Result<std::string> Interpreter::assign_matrix_call(const MatrixCallAssign& assi
         return std::unexpected(
             DomainError{"repl", "matrix too large (max 262144 elements)"});
     }
+    state_.scalars.erase(assign.target);
     state_.matrices[assign.target] = *result;
     std::ostringstream out;
     out << assign.target << " =\n";
@@ -4823,6 +5892,12 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
             }
         }
         value = static_cast<double>(matrix_rank(*matrix, tol));
+    } else if (assign.callee == "mat_rows") {
+        value = static_cast<double>(matrix->rows());
+    } else if (assign.callee == "mat_cols") {
+        value = static_cast<double>(matrix->cols());
+    } else if (assign.callee == "mat_numel") {
+        value = static_cast<double>(matrix->rows() * matrix->cols());
     } else if (assign.callee == "cond") {
         value = cond(*matrix);
     } else if (assign.callee == "geo_convex_hull_area") {
@@ -4954,6 +6029,10 @@ Result<std::string> Interpreter::assign_scalar_matrix_call(const ScalarMatrixCal
         value = eval_graph_is_tree(*matrix);
     } else if (assign.callee == "graph_is_planar") {
         value = eval_graph_is_planar(*matrix);
+    } else if (assign.callee == "graph_is_planar_heuristic") {
+        value = eval_graph_is_planar_heuristic(*matrix);
+    } else if (assign.callee == "graph_max_weight_matching_value") {
+        value = eval_graph_max_weight_matching_value(*matrix, false);
     }
     if (!value) {
         return std::unexpected(value.error());
@@ -5020,20 +6099,27 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
                 }
                 sd = *sd_expr;
             }
-            seed = static_cast<int>(sd);
-            if (sd != seed) {
+            // A seed drives no work and sizes nothing, so it has no bound -- but the
+            // conversion is undefined for a double outside int's range all the same,
+            // and `sd != seed` was reading its result.
+            if (!std::isfinite(sd) || sd != std::floor(sd) || std::abs(sd) > 2147483647.0) {
                 return std::unexpected(
                     DomainError{"ml_train_test_split", "expected integer seed"});
             }
+            seed = static_cast<int>(sd);
         }
         auto split = ml::train_test_split(*X, *y, test_size, seed);
         const Matrix<double> Xtr = grid_to_matrix(split.first.first);
         const Matrix<double> ytr = vector_to_column(split.first.second);
         const Matrix<double> Xte = grid_to_matrix(split.second.first);
         const Matrix<double> yte = vector_to_column(split.second.second);
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = Xtr;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = ytr;
+        state_.scalars.erase(assign.targets[2]);
         state_.matrices[assign.targets[2]] = Xte;
+        state_.scalars.erase(assign.targets[3]);
         state_.matrices[assign.targets[3]] = yte;
         out << assign.targets[0] << " =\n";
         print_matrix(out, Xtr);
@@ -5061,13 +6147,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [L, U, P] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = U;
         out << assign.targets[0] << " =\n";
         print_matrix(out, L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, U);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, P);
@@ -5081,13 +6170,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [L, U, P] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = U;
         out << assign.targets[0] << " =\n";
         print_matrix(out, L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, U);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, P);
@@ -5101,7 +6193,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
             return std::unexpected(factored.error());
         }
         const auto& [Q, R] = *factored;
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = Q;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = R;
         out << assign.targets[0] << " =\n";
         print_matrix(out, Q);
@@ -5115,13 +6209,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->U;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->S;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->U);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->S);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->V;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->V);
@@ -5134,7 +6231,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->values;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->vectors;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->values);
@@ -5148,7 +6247,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->values;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->vectors;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->values);
@@ -5162,13 +6263,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->L;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->D;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->L);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->D);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->P;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->P);
@@ -5181,7 +6285,9 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->T;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->Q;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->T);
@@ -5195,13 +6301,16 @@ Result<std::string> Interpreter::assign_multi_matrix_call(const MultiMatrixCallA
         if (!decomp) {
             return std::unexpected(decomp.error());
         }
+        state_.scalars.erase(assign.targets[0]);
         state_.matrices[assign.targets[0]] = decomp->U;
+        state_.scalars.erase(assign.targets[1]);
         state_.matrices[assign.targets[1]] = decomp->B;
         out << assign.targets[0] << " =\n";
         print_matrix(out, decomp->U);
         out << assign.targets[1] << " =\n";
         print_matrix(out, decomp->B);
         if (assign.targets.size() == 3) {
+            state_.scalars.erase(assign.targets[2]);
             state_.matrices[assign.targets[2]] = decomp->V;
             out << assign.targets[2] << " =\n";
             print_matrix(out, decomp->V);
@@ -5242,6 +6351,7 @@ Result<Matrix<double>> Interpreter::eval_matrix_operand(const std::string& text)
         }
         Matrix<double> result = it->second;
         if (existed) {
+            state_.scalars.erase(kTmp);
             state_.matrices[kTmp] = saved;
         } else {
             state_.matrices.erase(kTmp);
@@ -5263,18 +6373,22 @@ Result<Matrix<double>> Interpreter::resolve_matrix(const std::string& name) cons
 }
 
 void print_matrix(std::ostream& out, const Matrix<double>& m) {
-    out << std::fixed << std::setprecision(6);
+    // Per-element through the shared formatter rather than a stream manipulator, so
+    // that a matrix and a scalar spell the same value the same way. std::fixed with
+    // six decimals rendered anything below 5e-7 as 0.000000, which is how a session
+    // could print a matrix of zeros for data that was not zero.
     for (size_t i = 0; i < m.rows(); ++i) {
         out << "  [";
         for (size_t j = 0; j < m.cols(); ++j) {
             if (j > 0) {
                 out << ", ";
             }
-            out << m(i, j);
+            out << format_scalar(m(i, j));
         }
         out << "]\n";
     }
 }
+
 
 Result<std::string> format_cuda_lu_result(const ColMatrix<double>& matrix) {
     auto result = cuda::lu(matrix);
@@ -5304,6 +6418,14 @@ Result<Matrix<double>> eval_cuda_add_matrices(const Matrix<double>& left, const 
 
 std::string matrix_to_line(const Matrix<double>& m) {
     std::ostringstream out;
+    // A matrix with no elements still has a shape, and the bracket form cannot carry
+    // one: a 3x0 matrix wrote "[; ; ]", which parse_matrix rejects outright, so saving
+    // a session containing one produced a file that would not load. A 0x3 matrix wrote
+    // "[]" and came back 0x0, silently a different matrix.
+    if (m.rows() == 0 || m.cols() == 0) {
+        out << "[" << m.rows() << "x" << m.cols() << "]";
+        return out.str();
+    }
     out << "[";
     for (size_t i = 0; i < m.rows(); ++i) {
         if (i > 0) {
@@ -5313,7 +6435,7 @@ std::string matrix_to_line(const Matrix<double>& m) {
             if (j > 0) {
                 out << ", ";
             }
-            out << m(i, j);
+            out << format_exact(m(i, j));
         }
     }
     out << "]";
@@ -5387,7 +6509,7 @@ void write_double_list(std::ostream& out, const char* label, const std::vector<d
         if (i > 0) {
             out << ',';
         }
-        out << values[i];
+        out << format_exact(values[i]);
     }
     out << '\n';
 }
@@ -5480,7 +6602,7 @@ Result<std::string> Interpreter::set_plot(const Matrix<double>& xs, const Matrix
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
     const char* label = kind == PlotSeries::Kind::Scatter ? "scatter" : "plot";
-    return std::string{label} + " updated (" + std::to_string(state_.plot.y.size()) + " points)\n" +
+    return std::string{label} + " updated (" + format_scalar(state_.plot.y.size()) + " points)\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5496,7 +6618,7 @@ Result<std::string> Interpreter::set_plot_heatmap(const Matrix<double>& m) {
     state_.plot.nnz = 0;
     state_.plot.grid = m;
     state_.plot.valid = true;
-    return "imshow updated (" + std::to_string(m.rows()) + "x" + std::to_string(m.cols()) + ")\n" +
+    return "imshow updated (" + format_scalar(m.rows()) + "x" + format_scalar(m.cols()) + ")\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5517,7 +6639,7 @@ Result<std::string> Interpreter::set_plot_spy(const Matrix<double>& m) {
     state_.plot.nnz = count;
     state_.plot.grid = m;
     state_.plot.valid = true;
-    return "spy updated (" + std::to_string(count) + " nonzeros)\n" + format_plot_preview(state_.plot);
+    return "spy updated (" + format_scalar(count) + " nonzeros)\n" + format_plot_preview(state_.plot);
 }
 
 Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& z) {
@@ -5532,7 +6654,7 @@ Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& z) {
     state_.plot.nnz = 0;
     state_.plot.grid = z;
     state_.plot.valid = true;
-    return "surf updated (" + std::to_string(z.rows()) + "x" + std::to_string(z.cols()) +
+    return "surf updated (" + format_scalar(z.rows()) + "x" + format_scalar(z.cols()) +
            " grid)\n" + format_plot_preview(state_.plot);
 }
 
@@ -5553,7 +6675,7 @@ Result<std::string> Interpreter::set_plot_surf(const Matrix<double>& x, const Ma
     state_.plot.nnz = 0;
     state_.plot.grid = z;
     state_.plot.valid = true;
-    return "surf updated (" + std::to_string(z.rows()) + "x" + std::to_string(z.cols()) +
+    return "surf updated (" + format_scalar(z.rows()) + "x" + format_scalar(z.cols()) +
            " mesh)\n" + format_plot_preview(state_.plot);
 }
 
@@ -5566,7 +6688,7 @@ Result<std::string> Interpreter::set_plot_bars(std::vector<double> x, std::vecto
     state_.plot.kind = PlotSeries::Kind::Bar;
     state_.plot.grid = Matrix<double>{};
     state_.plot.valid = true;
-    return "histogram updated (" + std::to_string(state_.plot.y.size()) + " bins)\n" +
+    return "histogram updated (" + format_scalar(state_.plot.y.size()) + " bins)\n" +
            format_plot_preview(state_.plot);
 }
 
@@ -5579,14 +6701,23 @@ std::vector<std::pair<std::string, std::string>> Interpreter::list_session_objec
     return out;
 }
 
+// A session file holds data, not a script. It used to be read under the script
+// reader's limits -- 8192 bytes a line, 256kB a file -- which a single 600-element
+// vector already exceeds. These are sized for what a session can hold.
+constexpr std::uintmax_t kMaxSessionBytes = 64ULL * 1024 * 1024;
+constexpr std::size_t kMaxSessionLine = 16ULL * 1024 * 1024;
+
 Result<void> Interpreter::save_session(const std::string& path) const {
-    std::ofstream out(path);
-    if (!out) {
-        return std::unexpected(DomainError{"save", "cannot open: " + path});
-    }
+    // Built in memory and checked before anything is written. It used to stream
+    // straight to the file with no size check at all, while load_session refused any
+    // line past 8192 bytes and any file past 256kB -- so `L = linspace(0, 1, 600)`
+    // saved cleanly as a 12kB line and then could never be loaded, and the load had
+    // already cleared the live session by the time it found out. The limits below are
+    // the session reader's, which are sized for data rather than for a script.
+    std::ostringstream out;
     out << "# MathScript session\n";
     for (const auto& [name, value] : state_.scalars) {
-        out << "scalar " << name << " = " << value << "\n";
+        out << "scalar " << name << " = " << format_exact(value) << "\n";
     }
     for (const auto& [name, matrix] : state_.matrices) {
         out << "matrix " << name << " = " << matrix_to_line(matrix) << "\n";
@@ -5603,6 +6734,33 @@ Result<void> Interpreter::save_session(const std::string& path) const {
         if (state_.plot.grid.rows() > 0 && state_.plot.grid.cols() > 0) {
             out << "plot grid = " << matrix_to_line(state_.plot.grid) << "\n";
         }
+    }
+
+    const std::string text = out.str();
+    if (text.size() > kMaxSessionBytes) {
+        return std::unexpected(
+            DomainError{"save", "session is too large to write and read back"});
+    }
+    for (std::size_t start = 0; start < text.size();) {
+        const std::size_t end = text.find('\n', start);
+        const std::size_t length = (end == std::string::npos ? text.size() : end) - start;
+        if (length > kMaxSessionLine) {
+            return std::unexpected(
+                DomainError{"save", "a value is too large to write and read back"});
+        }
+        if (end == std::string::npos) {
+            break;
+        }
+        start = end + 1;
+    }
+
+    std::ofstream file(path);
+    if (!file) {
+        return std::unexpected(DomainError{"save", "cannot open: " + path});
+    }
+    file << text;
+    if (!file) {
+        return std::unexpected(DomainError{"save", "cannot write: " + path});
     }
     return {};
 }
@@ -5731,19 +6889,32 @@ Result<std::string> Interpreter::run_file(const std::string& path) {
 }
 
 Result<void> Interpreter::load_session(const std::string& path) {
-    if (auto checked = check_script_file(path, "load"); !checked) {
-        return std::unexpected(checked.error());
+    std::error_code ec;
+    const auto status = std::filesystem::status(path, ec);
+    if (ec || !std::filesystem::is_regular_file(status)) {
+        return std::unexpected(DomainError{"load", "cannot open: " + path});
+    }
+    const auto size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return std::unexpected(DomainError{"load", "cannot open: " + path});
+    }
+    if (size > kMaxSessionBytes) {
+        return std::unexpected(DomainError{"load", "session too large: " + path});
     }
     std::ifstream in(path);
     if (!in) {
         return std::unexpected(DomainError{"load", "cannot open: " + path});
     }
-    reset();
+    // Parsed into a local state and swapped in only once the whole file has been read.
+    // reset() used to run first, so a malformed line halfway down left the interpreter
+    // holding whatever had been read so far and the previous session gone -- a failed
+    // load destroyed the session it failed to replace.
+    SessionState loaded{};
     PlotSeries pending_plot{};
     bool have_plot = false;
     std::string line;
     while (std::getline(in, line)) {
-        if (line.size() > kMaxScriptLine) {
+        if (line.size() > kMaxSessionLine) {
             return std::unexpected(DomainError{"load", "session line too long"});
         }
         line = trim(line);
@@ -5791,7 +6962,7 @@ Result<void> Interpreter::load_session(const std::string& path) {
             continue;
         }
         if (line.rfind("history ", 0) == 0) {
-            state_.history.push_back(unescape_history_command(trim(line.substr(8))));
+            loaded.history.push_back(unescape_history_command(trim(line.substr(8))));
             continue;
         }
         const auto eq = line.find('=');
@@ -5811,19 +6982,24 @@ Result<void> Interpreter::load_session(const std::string& path) {
             if (!parse_number(rhs, value)) {
                 return std::unexpected(DomainError{"load", "invalid scalar: " + name});
             }
-            state_.scalars[name] = value;
+            loaded.matrices.erase(name);
+            loaded.scalars[name] = value;
         } else if (kind == "matrix") {
             auto matrix = parse_matrix(rhs);
             if (!matrix) {
                 return std::unexpected(matrix.error());
             }
-            state_.matrices[name] = *matrix;
+            loaded.scalars.erase(name);
+            loaded.matrices[name] = *matrix;
         }
     }
     if (have_plot) {
         pending_plot.valid = true;
-        state_.plot = std::move(pending_plot);
+        loaded.plot = std::move(pending_plot);
     }
+    // Nothing has touched the live session until here.
+    reset();
+    state_ = std::move(loaded);
     return {};
 }
 
@@ -5857,6 +7033,35 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
     const std::string rhs = trim(cmd.substr(eq + 1));
     if (lhs.empty()) {
         return std::unexpected(DomainError{"assign", "missing variable name"});
+    }
+    // The target has to be a name, or a comma-separated list of them for the
+    // decompositions that return several (`L, U = lu(M)`). Nothing checked, so
+    // `A(1, 1) = 9` stored a variable literally called "A(1, 1)" and echoed
+    // "A(1, 1) = 9.000000", which reads as a successful element write -- while A itself
+    // was untouched and the 9 was unreachable, since no lookup can spell that name
+    // back. Element assignment is not implemented; saying so is the honest answer.
+    {
+        bool targets_are_names = true;
+        std::size_t start = 0;
+        while (start <= lhs.size()) {
+            const auto comma = lhs.find(',', start);
+            const std::string target =
+                trim(lhs.substr(start, comma == std::string::npos ? std::string::npos
+                                                                  : comma - start));
+            if (!is_identifier(target)) {
+                targets_are_names = false;
+                break;
+            }
+            if (comma == std::string::npos) {
+                break;
+            }
+            start = comma + 1;
+        }
+        if (!targets_are_names) {
+            return std::unexpected(DomainError{
+                "assign", "invalid variable name: " + lhs +
+                              " (element assignment like A(i,j) = v is not supported)"});
+        }
     }
 
     double scalar = 0.0;
@@ -5910,6 +7115,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(axiom_matrix_call.target);
             state_.matrices[axiom_matrix_call.target] = *value;
             std::ostringstream out;
             out << axiom_matrix_call.target << " =\n";
@@ -6165,6 +7371,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!decoded) {
                     return std::unexpected(decoded.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *decoded;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6176,6 +7383,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!evolved) {
                     return std::unexpected(evolved.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *evolved;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6183,7 +7391,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "combo_rank_combination") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || scalar_arg != n) {
                     return std::unexpected(DomainError{
                         "combo_rank_combination", "expected non-negative integer n"});
@@ -6195,7 +7408,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return assign_scalar(matrix_scalar_call.target, *rank);
             }
             if (matrix_scalar_call.callee == "combo_next_comb") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || scalar_arg != n) {
                     return std::unexpected(DomainError{
                         "combo_next_comb", "expected non-negative integer n"});
@@ -6204,6 +7422,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!next) {
                     return std::unexpected(next.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *next;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6211,7 +7430,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "combo_prev_comb") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || scalar_arg != n) {
                     return std::unexpected(DomainError{
                         "combo_prev_comb", "expected non-negative integer n"});
@@ -6220,6 +7444,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!prev) {
                     return std::unexpected(prev.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *prev;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6227,7 +7452,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "signal_moving_average") {
-                const int window = static_cast<int>(scalar_arg);
+                auto window_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "window", scalar_arg);
+                if (!window_checked) {
+                    return std::unexpected(window_checked.error());
+                }
+                const int window = *window_checked;
                 if (window < 1 || scalar_arg != window) {
                     return std::unexpected(DomainError{
                         "signal_moving_average", "expected positive integer window"});
@@ -6236,6 +7466,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!smoothed) {
                     return std::unexpected(smoothed.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *smoothed;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6247,6 +7478,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *filtered;
                 return format_labeled_matrix(matrix_scalar_call.target, *filtered);
             }
@@ -6259,11 +7491,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!resampled) {
                     return std::unexpected(resampled.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *resampled;
                 return format_labeled_matrix(matrix_scalar_call.target, *resampled);
             }
             if (matrix_scalar_call.callee == "graph_bfs") {
-                const int source = static_cast<int>(scalar_arg);
+                auto source_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "source", scalar_arg);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
                 if (source < 0 || scalar_arg != source) {
                     return std::unexpected(DomainError{
                         "graph_bfs", "expected non-negative integer source"});
@@ -6272,6 +7510,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!order) {
                     return std::unexpected(order.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *order;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6279,7 +7518,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "graph_dfs") {
-                const int source = static_cast<int>(scalar_arg);
+                auto source_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "source", scalar_arg);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
                 if (source < 0 || scalar_arg != source) {
                     return std::unexpected(DomainError{
                         "graph_dfs", "expected non-negative integer source"});
@@ -6288,6 +7532,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!order) {
                     return std::unexpected(order.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *order;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6295,7 +7540,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "graph_k_core_subgraph") {
-                const int k = static_cast<int>(scalar_arg);
+                auto k_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "k", scalar_arg);
+                if (!k_checked) {
+                    return std::unexpected(k_checked.error());
+                }
+                const int k = *k_checked;
                 if (scalar_arg != k) {
                     return std::unexpected(DomainError{
                         "graph_k_core_subgraph", "expected integer k"});
@@ -6304,6 +7554,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!sub) {
                     return std::unexpected(sub.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *sub;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6311,7 +7562,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "graph_bipartite_match") {
-                const int left_size = static_cast<int>(scalar_arg);
+                auto left_size_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "left_size", scalar_arg);
+                if (!left_size_checked) {
+                    return std::unexpected(left_size_checked.error());
+                }
+                const int left_size = *left_size_checked;
                 if (left_size < 0 || scalar_arg != left_size) {
                     return std::unexpected(DomainError{
                         "graph_bipartite_match", "expected non-negative integer left_size"});
@@ -6338,7 +7594,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 value = eval_stats_vif(*matrix, scalar_arg, matrix_scalar_call.callee.c_str());
             }
             if (matrix_scalar_call.callee == "stats_acf") {
-                const int max_lag = static_cast<int>(scalar_arg);
+                auto max_lag_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "max_lag", scalar_arg);
+                if (!max_lag_checked) {
+                    return std::unexpected(max_lag_checked.error());
+                }
+                const int max_lag = *max_lag_checked;
                 if (max_lag < 0 || scalar_arg != max_lag) {
                     return std::unexpected(DomainError{
                         "stats_acf", "expected non-negative integer max_lag"});
@@ -6347,6 +7608,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!acf_col) {
                     return std::unexpected(acf_col.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *acf_col;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6354,7 +7616,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "fft_irfft") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 1 || scalar_arg != n) {
                     return std::unexpected(DomainError{
                         "fft_irfft", "expected positive integer n"});
@@ -6363,6 +7630,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!signal) {
                     return std::unexpected(signal.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *signal;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6374,6 +7642,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!integrated) {
                     return std::unexpected(integrated.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *integrated;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6385,6 +7654,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!shifted) {
                     return std::unexpected(shifted.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *shifted;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6396,6 +7666,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!scaled) {
                     return std::unexpected(scaled.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *scaled;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6403,7 +7674,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "poly_pow") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || scalar_arg != n) {
                     return std::unexpected(
                         DomainError{"poly_pow", "expected non-negative integer n"});
@@ -6412,6 +7688,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!powered) {
                     return std::unexpected(powered.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *powered;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6419,7 +7696,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "poly_cheb_expand") {
-                const int n = static_cast<int>(scalar_arg);
+                auto n_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "n", scalar_arg);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || scalar_arg != n) {
                     return std::unexpected(
                         DomainError{"poly_cheb_expand", "expected non-negative integer n"});
@@ -6428,6 +7710,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!cheb) {
                     return std::unexpected(cheb.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *cheb;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6435,7 +7718,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 return out.str();
             }
             if (matrix_scalar_call.callee == "gria_ca_step") {
-                const int rule = static_cast<int>(scalar_arg);
+                auto rule_checked =
+                    checked_int_argument(matrix_scalar_call.callee, "rule", scalar_arg);
+                if (!rule_checked) {
+                    return std::unexpected(rule_checked.error());
+                }
+                const int rule = *rule_checked;
                 if (rule < 0 || rule > 255 || scalar_arg != rule) {
                     return std::unexpected(
                         DomainError{"gria_ca_step", "expected integer rule in [0,255]"});
@@ -6444,6 +7732,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!next) {
                     return std::unexpected(next.error());
                 }
+                state_.scalars.erase(matrix_scalar_call.target);
                 state_.matrices[matrix_scalar_call.target] = *next;
                 std::ostringstream out;
                 out << matrix_scalar_call.target << " =\n";
@@ -6841,6 +8130,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6852,6 +8142,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6863,6 +8154,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6874,6 +8166,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6885,6 +8178,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6896,6 +8190,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6907,6 +8202,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6918,6 +8214,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6929,6 +8226,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6940,6 +8238,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6951,6 +8250,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6962,6 +8262,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6973,6 +8274,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6984,6 +8286,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -6995,6 +8298,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7006,6 +8310,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7017,6 +8322,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7028,6 +8334,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7039,6 +8346,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7050,6 +8358,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7061,6 +8370,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7072,6 +8382,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7083,6 +8394,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7094,6 +8406,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7105,6 +8418,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7116,6 +8430,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7127,6 +8442,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7138,6 +8454,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7149,6 +8466,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7160,6 +8478,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7171,6 +8490,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7182,6 +8502,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7193,6 +8514,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7204,6 +8526,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7215,6 +8538,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7226,6 +8550,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7237,6 +8562,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7248,6 +8574,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7259,6 +8586,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7270,6 +8598,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7281,6 +8610,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7292,6 +8622,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7303,6 +8634,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7314,6 +8646,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7325,6 +8658,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7336,6 +8670,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7347,6 +8682,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7358,6 +8694,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7369,6 +8706,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7380,6 +8718,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7391,6 +8730,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7402,6 +8742,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7413,6 +8754,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7424,6 +8766,23 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
+                state_.matrices[matrix_dual_call.target] = *value;
+                std::ostringstream out;
+                out << matrix_dual_call.target << " =\n";
+                print_matrix(out, *value);
+                return out.str();
+            }
+            if (matrix_dual_call.callee == "geo_boolean_union" ||
+                matrix_dual_call.callee == "geo_boolean_intersect" ||
+                matrix_dual_call.callee == "geo_boolean_diff" ||
+                matrix_dual_call.callee == "geo_boolean_xor") {
+                auto value = eval_geo_poly_boolean_general(matrix_dual_call.callee.c_str(),
+                                                           *arg_a_m, *arg_b_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7438,6 +8797,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7449,6 +8809,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7460,6 +8821,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7471,6 +8833,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_dual_call.target);
                 state_.matrices[matrix_dual_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_dual_call.target << " =\n";
@@ -7501,6 +8864,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7512,6 +8876,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7523,6 +8888,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7534,6 +8900,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_triple_call.target);
                 state_.matrices[matrix_triple_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_triple_call.target << " =\n";
@@ -7568,6 +8935,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7579,6 +8947,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7590,6 +8959,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7601,6 +8971,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(matrix_quad_call.target);
                 state_.matrices[matrix_quad_call.target] = *value;
                 std::ostringstream out;
                 out << matrix_quad_call.target << " =\n";
@@ -7631,6 +9002,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(lhs);
             state_.matrices[lhs] = *value;
             std::ostringstream out;
             out << lhs << " =\n";
@@ -7647,6 +9019,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
             if (!value) {
                 return std::unexpected(value.error());
             }
+            state_.scalars.erase(lhs);
             state_.matrices[lhs] = *value;
             std::ostringstream out;
             out << lhs << " =\n";
@@ -7692,8 +9065,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_binomial_call",
                         "expected finance_binomial_call(S,K,T,r,sigma,steps)"});
                 }
-                const int steps = static_cast<int>(steps_d);
-                if (steps < 0 || steps_d != steps) {
+                auto steps_checked = checked_superlinear_argument(callee, "steps", steps_d, 2, 11.0);
+                if (!steps_checked) {
+                    return std::unexpected(steps_checked.error());
+                }
+                const int steps = *steps_checked;
+                if (steps < 0) {
                     return std::unexpected(DomainError{
                         "finance_binomial_call", "expected non-negative integer steps"});
                 }
@@ -7722,8 +9099,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_binomial_put",
                         "expected finance_binomial_put(S,K,T,r,sigma,steps)"});
                 }
-                const int steps = static_cast<int>(steps_d);
-                if (steps < 0 || steps_d != steps) {
+                auto steps_checked = checked_superlinear_argument(callee, "steps", steps_d, 2, 11.0);
+                if (!steps_checked) {
+                    return std::unexpected(steps_checked.error());
+                }
+                const int steps = *steps_checked;
+                if (steps < 0) {
                     return std::unexpected(DomainError{
                         "finance_binomial_put", "expected non-negative integer steps"});
                 }
@@ -7752,8 +9133,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_geo_asian_call",
                         "expected finance_geo_asian_call(S,K,T,r,sigma,n_fixings)"});
                 }
-                const int n_fixings = static_cast<int>(n_fixings_d);
-                if (n_fixings < 0 || n_fixings_d != n_fixings) {
+                auto n_fixings_checked = checked_int_argument(callee, "n_fixings", n_fixings_d);
+                if (!n_fixings_checked) {
+                    return std::unexpected(n_fixings_checked.error());
+                }
+                const int n_fixings = *n_fixings_checked;
+                if (n_fixings < 0) {
                     return std::unexpected(DomainError{
                         "finance_geo_asian_call", "expected non-negative integer n_fixings"});
                 }
@@ -7783,8 +9168,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_geo_asian_put",
                         "expected finance_geo_asian_put(S,K,T,r,sigma,n_fixings)"});
                 }
-                const int n_fixings = static_cast<int>(n_fixings_d);
-                if (n_fixings < 0 || n_fixings_d != n_fixings) {
+                auto n_fixings_checked = checked_int_argument(callee, "n_fixings", n_fixings_d);
+                if (!n_fixings_checked) {
+                    return std::unexpected(n_fixings_checked.error());
+                }
+                const int n_fixings = *n_fixings_checked;
+                if (n_fixings < 0) {
                     return std::unexpected(DomainError{
                         "finance_geo_asian_put", "expected non-negative integer n_fixings"});
                 }
@@ -7813,7 +9202,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_bs_delta",
                         "expected finance_bs_delta(S,K,T,r,sigma,call)"});
                 }
-                const int call = static_cast<int>(call_d);
+                auto call_checked = checked_int_argument(callee, "call", call_d);
+                if (!call_checked) {
+                    return std::unexpected(call_checked.error());
+                }
+                const int call = *call_checked;
                 if (call_d != call) {
                     return std::unexpected(DomainError{
                         "finance_bs_delta", "expected integer call (0=put, 1=call)"});
@@ -7844,7 +9237,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_bs_theta",
                         "expected finance_bs_theta(S,K,T,r,sigma,call)"});
                 }
-                const int call = static_cast<int>(call_d);
+                auto call_checked = checked_int_argument(callee, "call", call_d);
+                if (!call_checked) {
+                    return std::unexpected(call_checked.error());
+                }
+                const int call = *call_checked;
                 if (call_d != call) {
                     return std::unexpected(DomainError{
                         "finance_bs_theta", "expected integer call (0=put, 1=call)"});
@@ -7875,7 +9272,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "finance_bs_rho",
                         "expected finance_bs_rho(S,K,T,r,sigma,call)"});
                 }
-                const int call = static_cast<int>(call_d);
+                auto call_checked = checked_int_argument(callee, "call", call_d);
+                if (!call_checked) {
+                    return std::unexpected(call_checked.error());
+                }
+                const int call = *call_checked;
                 if (call_d != call) {
                     return std::unexpected(DomainError{
                         "finance_bs_rho", "expected integer call (0=put, 1=call)"});
@@ -7902,9 +9303,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "quantum_entanglement_entropy",
                         "expected quantum_entanglement_entropy(psi, dim_a, dim_b)"});
                 }
-                const int dim_a = static_cast<int>(dim_a_d);
-                const int dim_b = static_cast<int>(dim_b_d);
-                if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+                auto dim_a_checked = checked_int_argument(callee, "dim_a", dim_a_d);
+                if (!dim_a_checked) {
+                    return std::unexpected(dim_a_checked.error());
+                }
+                const int dim_a = *dim_a_checked;
+                auto dim_b_checked = checked_int_argument(callee, "dim_b", dim_b_d);
+                if (!dim_b_checked) {
+                    return std::unexpected(dim_b_checked.error());
+                }
+                const int dim_b = *dim_b_checked;
+                if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                     return std::unexpected(DomainError{
                         "quantum_entanglement_entropy", "expected positive integer dim_a and dim_b"});
                 }
@@ -7980,9 +9389,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "quantum_schmidt_rank",
                         "expected quantum_schmidt_rank(psi, dim_a, dim_b)"});
                 }
-                const int dim_a = static_cast<int>(dim_a_d);
-                const int dim_b = static_cast<int>(dim_b_d);
-                if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+                auto dim_a_checked = checked_int_argument(callee, "dim_a", dim_a_d);
+                if (!dim_a_checked) {
+                    return std::unexpected(dim_a_checked.error());
+                }
+                const int dim_a = *dim_a_checked;
+                auto dim_b_checked = checked_int_argument(callee, "dim_b", dim_b_d);
+                if (!dim_b_checked) {
+                    return std::unexpected(dim_b_checked.error());
+                }
+                const int dim_b = *dim_b_checked;
+                if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                     return std::unexpected(DomainError{
                         "quantum_schmidt_rank", "expected positive integer dim_a and dim_b"});
                 }
@@ -8011,9 +9428,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "quantum_schmidt_number",
                         "expected quantum_schmidt_number(psi, dim_a, dim_b)"});
                 }
-                const int dim_a = static_cast<int>(dim_a_d);
-                const int dim_b = static_cast<int>(dim_b_d);
-                if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+                auto dim_a_checked = checked_int_argument(callee, "dim_a", dim_a_d);
+                if (!dim_a_checked) {
+                    return std::unexpected(dim_a_checked.error());
+                }
+                const int dim_a = *dim_a_checked;
+                auto dim_b_checked = checked_int_argument(callee, "dim_b", dim_b_d);
+                if (!dim_b_checked) {
+                    return std::unexpected(dim_b_checked.error());
+                }
+                const int dim_b = *dim_b_checked;
+                if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                     return std::unexpected(DomainError{
                         "quantum_schmidt_number", "expected positive integer dim_a and dim_b"});
                 }
@@ -8064,9 +9489,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(DomainError{
                         "graph_max_flow", "expected graph_max_flow(A, source, sink)"});
                 }
-                const int source = static_cast<int>(source_d);
-                const int sink = static_cast<int>(sink_d);
-                if (source_d != source || sink_d != sink) {
+                auto source_checked = checked_int_argument(callee, "source", source_d);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
+                auto sink_checked = checked_int_argument(callee, "sink", sink_d);
+                if (!sink_checked) {
+                    return std::unexpected(sink_checked.error());
+                }
+                const int sink = *sink_checked;
+                if (source_d != source) {
                     return std::unexpected(DomainError{
                         "graph_max_flow", "expected integer source and sink"});
                 }
@@ -8093,9 +9526,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(DomainError{
                         "graph_min_cut", "expected graph_min_cut(A, source, sink)"});
                 }
-                const int source = static_cast<int>(source_d);
-                const int sink = static_cast<int>(sink_d);
-                if (source_d != source || sink_d != sink) {
+                auto source_checked = checked_int_argument(callee, "source", source_d);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
+                auto sink_checked = checked_int_argument(callee, "sink", sink_d);
+                if (!sink_checked) {
+                    return std::unexpected(sink_checked.error());
+                }
+                const int sink = *sink_checked;
+                if (source_d != source) {
                     return std::unexpected(DomainError{
                         "graph_min_cut", "expected integer source and sink"});
                 }
@@ -8132,6 +9573,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!w) {
                     return std::unexpected(w.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *w;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8167,6 +9609,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8235,6 +9678,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8260,8 +9704,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "signal_cheby1",
                         "expected signal_cheby1(order, rp_db, cutoff, fs[, type])"});
                 }
-                const int order = static_cast<int>(order_d);
-                if (order < 1 || order_d != order) {
+                auto order_checked = checked_int_argument(callee, "order", order_d);
+                if (!order_checked) {
+                    return std::unexpected(order_checked.error());
+                }
+                const int order = *order_checked;
+                if (order < 1) {
                     return std::unexpected(
                         DomainError{"signal_cheby1", "expected integer order >= 1"});
                 }
@@ -8277,6 +9725,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coeffs) {
                     return std::unexpected(coeffs.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coeffs;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8302,8 +9751,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "signal_cheby2",
                         "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
                 }
-                const int order = static_cast<int>(order_d);
-                if (order < 1 || order_d != order) {
+                auto order_checked = checked_int_argument(callee, "order", order_d);
+                if (!order_checked) {
+                    return std::unexpected(order_checked.error());
+                }
+                const int order = *order_checked;
+                if (order < 1) {
                     return std::unexpected(
                         DomainError{"signal_cheby2", "expected integer order >= 1"});
                 }
@@ -8319,6 +9772,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coeffs) {
                     return std::unexpected(coeffs.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coeffs;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8347,6 +9801,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!psd) {
                     return std::unexpected(psd.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *psd;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8378,8 +9833,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     }
                     nperseg_d = *n_expr;
                 }
-                const int nperseg = static_cast<int>(nperseg_d);
-                if (nperseg < 1 || nperseg_d != nperseg) {
+                auto nperseg_checked = checked_int_argument(callee, "nperseg", nperseg_d);
+                if (!nperseg_checked) {
+                    return std::unexpected(nperseg_checked.error());
+                }
+                const int nperseg = *nperseg_checked;
+                if (nperseg < 1) {
                     return std::unexpected(
                         DomainError{"signal_welch_psd", "expected positive integer nperseg"});
                 }
@@ -8387,6 +9846,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!psd) {
                     return std::unexpected(psd.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *psd;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8416,8 +9876,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "signal_czt_zoom",
                         "expected signal_czt_zoom(x, f_start, f_stop, m, fs)"});
                 }
-                const int m = static_cast<int>(m_d);
-                if (m < 1 || m_d != m) {
+                auto m_checked = checked_int_argument(callee, "m", m_d);
+                if (!m_checked) {
+                    return std::unexpected(m_checked.error());
+                }
+                const int m = *m_checked;
+                if (m < 1) {
                     return std::unexpected(
                         DomainError{"signal_czt_zoom", "expected positive integer m"});
                 }
@@ -8425,6 +9889,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!zoom) {
                     return std::unexpected(zoom.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *zoom;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8456,8 +9921,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "signal_czt",
                         "expected signal_czt(x, m, w_re, w_im, a_re, a_im)"});
                 }
-                const int m = static_cast<int>(m_d);
-                if (m < 1 || m_d != m) {
+                auto m_checked = checked_int_argument(callee, "m", m_d);
+                if (!m_checked) {
+                    return std::unexpected(m_checked.error());
+                }
+                const int m = *m_checked;
+                if (m < 1) {
                     return std::unexpected(
                         DomainError{"signal_czt", "expected positive integer m"});
                 }
@@ -8465,6 +9934,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!spectrum) {
                     return std::unexpected(spectrum.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *spectrum;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8501,8 +9971,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     }
                     nperseg_d = *n_expr;
                 }
-                const int nperseg = static_cast<int>(nperseg_d);
-                if (nperseg < 1 || nperseg_d != nperseg) {
+                auto nperseg_checked = checked_int_argument(callee, "nperseg", nperseg_d);
+                if (!nperseg_checked) {
+                    return std::unexpected(nperseg_checked.error());
+                }
+                const int nperseg = *nperseg_checked;
+                if (nperseg < 1) {
                     return std::unexpected(
                         DomainError{"signal_coherence", "expected positive integer nperseg"});
                 }
@@ -8510,6 +9984,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!coh) {
                     return std::unexpected(coh.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *coh;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8554,6 +10029,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *value;
                 return format_labeled_matrix(lhs, *value);
             }
@@ -8586,6 +10062,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!resampled) {
                     return std::unexpected(resampled.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *resampled;
                 return format_labeled_matrix(lhs, *resampled);
             }
@@ -8619,6 +10096,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!smoothed) {
                     return std::unexpected(smoothed.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *smoothed;
                 return format_labeled_matrix(lhs, *smoothed);
             }
@@ -8645,6 +10123,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!filtered) {
                     return std::unexpected(filtered.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *filtered;
                 return format_labeled_matrix(lhs, *filtered);
             }
@@ -8670,6 +10149,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!mag) {
                     return std::unexpected(mag.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *mag;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8699,6 +10179,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!freq) {
                     return std::unexpected(freq.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *freq;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8722,9 +10203,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(DomainError{
                         "graph_astar", "expected graph_astar(A, source, target, h)"});
                 }
-                const int source = static_cast<int>(source_d);
-                const int target = static_cast<int>(target_d);
-                if (source_d != source || target_d != target) {
+                auto source_checked = checked_int_argument(callee, "source", source_d);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
+                auto target_checked = checked_int_argument(callee, "target", target_d);
+                if (!target_checked) {
+                    return std::unexpected(target_checked.error());
+                }
+                const int target = *target_checked;
+                if (source_d != source) {
                     return std::unexpected(DomainError{
                         "graph_astar", "expected integer source and target"});
                 }
@@ -8736,6 +10225,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!path) {
                     return std::unexpected(path.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *path;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -8773,12 +10263,20 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     }
                     n_steps_d = *steps_expr;
                 }
-                const int rule = static_cast<int>(rule_d);
-                if (rule_d != rule || rule < 0 || rule > 255) {
+                auto rule_checked = checked_int_argument(callee, "rule", rule_d);
+                if (!rule_checked) {
+                    return std::unexpected(rule_checked.error());
+                }
+                const int rule = *rule_checked;
+                if (rule < 0 || rule > 255) {
                     return std::unexpected(
                         DomainError{"gria_settling_time", "expected integer rule in [0,255]"});
                 }
-                const int n_steps = static_cast<int>(n_steps_d);
+                auto n_steps_checked = checked_int_argument(callee, "n_steps", n_steps_d);
+                if (!n_steps_checked) {
+                    return std::unexpected(n_steps_checked.error());
+                }
+                const int n_steps = *n_steps_checked;
                 if (n_steps_d != n_steps) {
                     return std::unexpected(
                         DomainError{"gria_settling_time", "expected integer n_steps"});
@@ -8882,8 +10380,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     }
                     rule_d = *rule_expr;
                 }
-                const int rule = static_cast<int>(rule_d);
-                if (rule_d != rule || rule < 0 || rule > 255) {
+                auto rule_checked = checked_int_argument(callee, "rule", rule_d);
+                if (!rule_checked) {
+                    return std::unexpected(rule_checked.error());
+                }
+                const int rule = *rule_checked;
+                if (rule < 0 || rule > 255) {
                     return std::unexpected(
                         DomainError{"gria_langton_lambda", "expected integer rule in [0,255]"});
                 }
@@ -8908,18 +10410,33 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(DomainError{
                         "gria_alpha_ca", "expected gria_alpha_ca(rule, steps, width)"});
                 }
-                const int rule = static_cast<int>(rule_d);
-                const int steps = static_cast<int>(steps_d);
-                const int width = static_cast<int>(width_d);
+                auto rule_checked = checked_int_argument(callee, "rule", rule_d);
+                if (!rule_checked) {
+                    return std::unexpected(rule_checked.error());
+                }
+                const int rule = *rule_checked;
+                // See the gria_alpha_ca guard in eval_scalar_call: steps and width are
+                // charged against one budget because the history is their product.
+                WorkBudget budget(callee, 177.0);
+                auto steps_checked = budget.take("steps", steps_d);
+                if (!steps_checked) {
+                    return std::unexpected(steps_checked.error());
+                }
+                const int steps = *steps_checked;
+                auto width_checked = budget.take("width", width_d);
+                if (!width_checked) {
+                    return std::unexpected(width_checked.error());
+                }
+                const int width = *width_checked;
                 if (rule_d != rule || rule < 0 || rule > 255) {
                     return std::unexpected(
                         DomainError{"gria_alpha_ca", "expected integer rule in [0,255]"});
                 }
-                if (steps_d != steps || steps < 0) {
+                if (steps < 0) {
                     return std::unexpected(
                         DomainError{"gria_alpha_ca", "expected non-negative integer steps"});
                 }
-                if (width_d != width || width < 1) {
+                if (width < 1) {
                     return std::unexpected(
                         DomainError{"gria_alpha_ca", "expected positive integer width"});
                 }
@@ -8949,9 +10466,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "info_joint_entropy",
                         "expected info_joint_entropy(joint, rows, cols)"});
                 }
-                const int rows = static_cast<int>(rows_d);
-                const int cols = static_cast<int>(cols_d);
-                if (rows < 1 || cols < 1 || rows_d != rows || cols_d != cols) {
+                auto rows_checked = checked_int_argument(callee, "rows", rows_d);
+                if (!rows_checked) {
+                    return std::unexpected(rows_checked.error());
+                }
+                const int rows = *rows_checked;
+                auto cols_checked = checked_int_argument(callee, "cols", cols_d);
+                if (!cols_checked) {
+                    return std::unexpected(cols_checked.error());
+                }
+                const int cols = *cols_checked;
+                if (rows < 1 || cols < 1 || cols_d != cols) {
                     return std::unexpected(DomainError{
                         "info_joint_entropy", "expected positive integer rows and cols"});
                 }
@@ -8997,7 +10522,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     } else if (callee == "control_bode_phase") {
                         value = eval_control_bode_phase(*arg_a_m, *arg_b_m, arg2);
                     } else if (callee == "topo_wasserstein_distance") {
-                        const int dim = static_cast<int>(arg2);
+                        auto dim_checked = checked_int_argument(callee, "dim", arg2);
+                        if (!dim_checked) {
+                            return std::unexpected(dim_checked.error());
+                        }
+                        const int dim = *dim_checked;
                         if (dim < 0 || arg2 != dim) {
                             return std::unexpected(DomainError{
                                 "topo_wasserstein_distance",
@@ -9005,7 +10534,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         }
                         value = eval_topo_wasserstein_distance(*arg_a_m, *arg_b_m, dim);
                     } else {
-                        const int dim = static_cast<int>(arg2);
+                        auto dim_checked = checked_int_argument(callee, "dim", arg2);
+                        if (!dim_checked) {
+                            return std::unexpected(dim_checked.error());
+                        }
+                        const int dim = *dim_checked;
                         if (dim < 0 || arg2 != dim) {
                             return std::unexpected(DomainError{
                                 "topo_bottleneck_distance",
@@ -9044,7 +10577,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 } else if (callee == "cplx_winding_number") {
                     value = eval_cplx_winding_number(*matrix_m, arg1, arg2);
                 } else {
-                    const int max_dim = static_cast<int>(arg2);
+                    auto max_dim_checked = checked_int_argument(callee, "max_dim", arg2);
+                    if (!max_dim_checked) {
+                        return std::unexpected(max_dim_checked.error());
+                    }
+                    const int max_dim = *max_dim_checked;
                     if (max_dim < 0 || arg2 != max_dim) {
                         return std::unexpected(DomainError{
                             "topo_vietoris_rips_betti0",
@@ -9077,6 +10614,44 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(poly_m.error());
                 }
                 auto value = eval_geo_point_in_polygon(px, py, *poly_m);
+                if (!value) {
+                    return std::unexpected(value.error());
+                }
+                return assign_scalar(lhs, *value);
+            }
+            if (callee == "mat_at") {
+                const auto call_args = split_call_args(rhs);
+                if (!call_args || call_args->size() != 3) {
+                    return std::unexpected(
+                        DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                }
+                auto A_m = eval_matrix_operand(trim_copy(call_args->front()));
+                if (!A_m) {
+                    return std::unexpected(A_m.error());
+                }
+                // The indices may be expressions over the session's scalars,
+                // not just literals: `mat_at(A, i, i)` has to work.
+                auto index_arg = [this](const std::string& text) -> Result<double> {
+                    double literal = 0.0;
+                    if (parse_number(text, literal)) {
+                        return literal;
+                    }
+                    auto expr = eval_scalar_expr(state_, text);
+                    if (!expr) {
+                        return std::unexpected(
+                            DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                    }
+                    return *expr;
+                };
+                auto i = index_arg(trim_copy((*call_args)[1]));
+                if (!i) {
+                    return std::unexpected(i.error());
+                }
+                auto j = index_arg(trim_copy((*call_args)[2]));
+                if (!j) {
+                    return std::unexpected(j.error());
+                }
+                auto value = eval_mat_at(*A_m, *i, *j);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -9153,9 +10728,17 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "info_conditional_entropy",
                         "expected info_conditional_entropy(joint, rows, cols)"});
                 }
-                const int rows = static_cast<int>(rows_d);
-                const int cols = static_cast<int>(cols_d);
-                if (rows < 1 || cols < 1 || rows_d != rows || cols_d != cols) {
+                auto rows_checked = checked_int_argument(callee, "rows", rows_d);
+                if (!rows_checked) {
+                    return std::unexpected(rows_checked.error());
+                }
+                const int rows = *rows_checked;
+                auto cols_checked = checked_int_argument(callee, "cols", cols_d);
+                if (!cols_checked) {
+                    return std::unexpected(cols_checked.error());
+                }
+                const int cols = *cols_checked;
+                if (rows < 1 || cols < 1 || cols_d != cols) {
                     return std::unexpected(DomainError{
                         "info_conditional_entropy", "expected positive integer rows and cols"});
                 }
@@ -9184,8 +10767,12 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "info_sample_entropy",
                         "expected info_sample_entropy(x, m, r)"});
                 }
-                const int m = static_cast<int>(m_d);
-                if (m < 1 || m_d != m) {
+                auto m_checked = checked_int_argument(callee, "m", m_d);
+                if (!m_checked) {
+                    return std::unexpected(m_checked.error());
+                }
+                const int m = *m_checked;
+                if (m < 1) {
                     return std::unexpected(DomainError{
                         "info_sample_entropy", "expected positive integer m"});
                 }
@@ -9249,7 +10836,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "info_permutation_entropy",
                             "expected info_permutation_entropy(x[, order[, delay]])"});
                     }
-                    order = static_cast<int>(order_d);
+                    auto order_checked = checked_int_argument(callee, "order", order_d);
+                    if (!order_checked) {
+                        return std::unexpected(order_checked.error());
+                    }
+                    order = *order_checked;
                     if (order < 1 || order_d != order) {
                         return std::unexpected(DomainError{
                             "info_permutation_entropy", "expected positive integer order"});
@@ -9262,7 +10853,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "info_permutation_entropy",
                             "expected info_permutation_entropy(x[, order[, delay]])"});
                     }
-                    delay = static_cast<int>(delay_d);
+                    auto delay_checked = checked_int_argument(callee, "delay", delay_d);
+                    if (!delay_checked) {
+                        return std::unexpected(delay_checked.error());
+                    }
+                    delay = *delay_checked;
                     if (delay < 1 || delay_d != delay) {
                         return std::unexpected(DomainError{
                             "info_permutation_entropy", "expected positive integer delay"});
@@ -9298,7 +10893,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "info_transfer_entropy",
                             "expected info_transfer_entropy(x, y[, bins[, lag]])"});
                     }
-                    bins = static_cast<int>(bins_d);
+                    auto bins_checked = checked_int_argument(callee, "bins", bins_d);
+                    if (!bins_checked) {
+                        return std::unexpected(bins_checked.error());
+                    }
+                    bins = *bins_checked;
                     if (bins < 1 || bins_d != bins) {
                         return std::unexpected(DomainError{
                             "info_transfer_entropy", "expected positive integer bins"});
@@ -9311,7 +10910,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "info_transfer_entropy",
                             "expected info_transfer_entropy(x, y[, bins[, lag]])"});
                     }
-                    lag = static_cast<int>(lag_d);
+                    auto lag_checked = checked_int_argument(callee, "lag", lag_d);
+                    if (!lag_checked) {
+                        return std::unexpected(lag_checked.error());
+                    }
+                    lag = *lag_checked;
                     if (lag < 1 || lag_d != lag) {
                         return std::unexpected(DomainError{
                             "info_transfer_entropy", "expected positive integer lag"});
@@ -9390,7 +10993,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "stats_bootstrap_mean",
                             "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                     }
-                    n_boot = static_cast<int>(n_boot_d);
+                    auto n_boot_checked = checked_int_argument(callee, "n_boot", n_boot_d);
+                    if (!n_boot_checked) {
+                        return std::unexpected(n_boot_checked.error());
+                    }
+                    n_boot = *n_boot_checked;
                     if (n_boot < 1 || n_boot_d != n_boot) {
                         return std::unexpected(DomainError{
                             "stats_bootstrap_mean", "expected positive integer n_boot"});
@@ -9403,11 +11010,11 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                             "stats_bootstrap_mean",
                             "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                     }
-                    if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
-                        return std::unexpected(DomainError{
-                            "stats_bootstrap_mean", "expected non-negative integer seed"});
+                    auto seed_arg = checked_seed_argument("stats_bootstrap_mean", "seed", seed_d);
+                    if (!seed_arg) {
+                        return std::unexpected(seed_arg.error());
                     }
-                    seed = static_cast<unsigned>(seed_d);
+                    seed = *seed_arg;
                 }
                 auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
                 if (!value) {
@@ -9436,10 +11043,22 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                         "quantum_partial_trace",
                         "expected quantum_partial_trace(rho, d1, d2, subsystem)"});
                 }
-                const int d1 = static_cast<int>(d1_d);
-                const int d2 = static_cast<int>(d2_d);
-                const int subsystem = static_cast<int>(sub_d);
-                if (d1 < 1 || d2 < 1 || d1_d != d1 || d2_d != d2 ||
+                auto d1_checked = checked_int_argument(callee, "d1", d1_d);
+                if (!d1_checked) {
+                    return std::unexpected(d1_checked.error());
+                }
+                const int d1 = *d1_checked;
+                auto d2_checked = checked_int_argument(callee, "d2", d2_d);
+                if (!d2_checked) {
+                    return std::unexpected(d2_checked.error());
+                }
+                const int d2 = *d2_checked;
+                auto subsystem_checked = checked_int_argument(callee, "subsystem", sub_d);
+                if (!subsystem_checked) {
+                    return std::unexpected(subsystem_checked.error());
+                }
+                const int subsystem = *subsystem_checked;
+                if (d1 < 1 || d2 < 1 || d1_d != d1 ||
                     (subsystem != 0 && subsystem != 1) || sub_d != subsystem) {
                     return std::unexpected(DomainError{
                         "quantum_partial_trace",
@@ -9449,6 +11068,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                 if (!result) {
                     return std::unexpected(result.error());
                 }
+                state_.scalars.erase(lhs);
                 state_.matrices[lhs] = *result;
                 std::ostringstream out;
                 out << lhs << " =\n";
@@ -9461,6 +11081,7 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
         if (!matrix) {
             return std::unexpected(matrix.error());
         }
+        state_.scalars.erase(lhs);
         state_.matrices[lhs] = *matrix;
         std::ostringstream out;
         out << lhs << " =\n";
@@ -9471,6 +11092,15 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
 Result<std::string> Interpreter::execute(const std::string& line) {
     if (cancel_requested()) {
         return std::string{};
+    }
+    // Command dispatch runs the line through a long chain of std::regex matches, and
+    // libstdc++'s regex executor recurses once per input character through repetition
+    // operators: a six-figure line overflows the stack inside _M_dfs before any of this
+    // interpreter's own code sees it. The script and session readers already refuse a line
+    // longer than kMaxScriptLine; this is the same cap on the direct entry point, which
+    // every embedder and the REPL loop both use.
+    if (line.size() > kMaxScriptLine) {
+        return std::unexpected(DomainError{"repl", "command line too long"});
     }
     std::string cmd = trim(line);
     if (cmd.empty()) {
@@ -9489,8 +11119,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  export history <file>  save_history <file>\n"
             "  name = [1, 2; 3, 4]     matrix assignment\n"
             "  name = 3.14              scalar assignment\n"
-            "  name = x + 2             scalar expression (+, -, *, /; () precedence)\n"
+            "  name = x + 2             scalar expression (+, -, *, /, ^; () precedence)\n"
+            "                           ^ is right-associative and binds tighter than * /\n"
+            "                           2^3^2 is 512; -2^2 is -4; 2^-1 is 0.5\n"
+            "  A   x   1 + 2   sqrt(2)  a bare name or expression prints its value\n"
             "  name = sin(x) pow(x,2)   scalar calls (sin, cos, sqrt, pow, min, max, ...)\n"
+            "  sin cos tan asin acos atan sinh cosh tanh asinh acosh atanh\n"
+            "  sqrt cbrt abs exp exp2 expm1 log log2 log10 log1p floor ceil round trunc\n"
+            "  pow(x,y) min(x,y) max(x,y) atan2(y,x) hypot(x,y) fmod(x,y)   libm scalar calls\n"
             "  name = matmul(A, B)      matrix multiply assignment\n"
             "  name = solve(A, B)       linear solve assignment\n"
             "  name = lsq(A, B)         least-squares solve assignment\n"
@@ -9528,6 +11164,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  cuda_nccl_comm_size()  NCCL communicator size (stub: 1)\n"
             "  cuda_nccl_device_count()  NCCL-visible GPU count (stub: 0)\n"
             "  name = transpose(A)      transpose assignment\n"
+            "  name = mat_rows(A) / mat_cols(A) / mat_numel(A)  shape of A as a scalar\n"
+            "  name = mat_at(A,i,j)     one element of A as a scalar (0-based)\n"
+            "  name = mat_row(A,i) / mat_col(A,j)  one row as 1xN / one column as Nx1 (0-based)\n"
+            "  name = mat_reshape(A,rows,cols)  same elements, new shape (row order)\n"
+            "  name = mat_submatrix(A,r0,c0,rows,cols)  the rows x cols block at (r0,c0)\n"
             "  name = chol(A)           Cholesky factor assignment\n"
             "  name = expm(A) sqrtm(A) logm(A)  matrix exponential / square root / logarithm\n"
             "  name = tril(A[, k]) triu(A[, k])  lower/upper triangular extraction\n"
@@ -9710,6 +11351,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_articulation_points(A) articulation points of undirected graph as Nx1 column\n"
             "  name = graph_bridges(A) bridge edges of undirected graph as Mx3 [from,to,weight]\n"
             "  name = graph_maximum_matching(A) maximum cardinality matching as Mx2 [u,v] edge list\n"
+            "  name = graph_max_weight_matching(A[,maxcard]) maximum WEIGHT matching (Edmonds blossom) as Mx2 [u,v]\n"
+            "  name = graph_max_weight_matching_value(A) total weight of the maximum-weight matching\n"
+            "  name = graph_planar_embedding(A) combinatorial embedding, row v = cyclic neighbour order (-1 padded)\n"
+            "  name = graph_kuratowski_subgraph(A) K5/K3,3 subdivision edges as Mx3 [u,v,w]; empty when planar\n"
             "  name = graph_biconnected_components(A) biconnected components as Kx(3*M) edge triples\n"
             "  name = graph_bipartite_match(A,left_size) maximum bipartite matching size\n"
             "  name = graph_transitive_closure(A) boolean reachability matrix of directed graph\n"
@@ -9718,7 +11363,8 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = graph_is_bipartite(A) 1 if undirected graph is bipartite else 0\n"
             "  name = graph_is_connected(A) 1 if undirected graph is connected else 0\n"
             "  name = graph_is_tree(A) 1 if undirected graph is a tree else 0\n"
-            "  name = graph_is_planar(A) 1 if undirected graph passes K5/K3,3 planar heuristic else 0\n"
+            "  name = graph_is_planar(A) 1 if the undirected graph is planar else 0 (exact test)\n"
+            "  name = graph_is_planar_heuristic(A) 1 if it passes the older K5/K3,3 planar heuristic else 0\n"
             "  name = graph_is_dag(A) 1 if directed graph is a DAG else 0\n"
             "  name = graph_topological_sort(A) topological order of DAG as Nx1 column\n"
             "  name = graph_greedy_colour(A) greedy vertex colours of undirected graph as Nx1 column\n"
@@ -9777,6 +11423,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = geo_convex_hull_3d(P) 3D convex hull Mx3 face index matrix from Nx3 points\n"
             "  name = geo_voronoi(P) Voronoi vertex coordinates Mx2 from Nx2 points\n"
             "  name = geo_poly_union(A,B) convex polygon union Mx2 from Nx2 vertex matrices\n"
+            "  name = geo_boolean_union(A,B) / geo_boolean_intersect(A,B) / geo_boolean_diff(A,B) / geo_boolean_xor(A,B)  general (non-convex) polygon boolean; Mx3 rows (x, y, contour_index), shells CCW and holes CW\n"
             "  name = geo_poly_intersect(A,B) convex polygon intersection Mx2 from Nx2 vertices\n"
             "  name = geo_poly_diff(A,B) convex polygon difference A\\B Mx2 from Nx2 vertices\n"
             "  name = geo_minkowski_sum(A,B) Minkowski sum of convex polygons Mx2 from Nx2 vertices\n"
@@ -10097,6 +11744,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  crypto_random_bytes(n) random bytes from std::random_device (hex out; MVP, not HSM)\n"
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
+            "  sym_latex(\"expr\")             the expression as LaTeX\n"
+            "  sym_from_latex(\"tex\")        read a LaTeX expression back\n"
+            "  sym_export(\"expr\",\"notation\") latex, mathml, content-mathml, unicode,\n"
+            "                                ascii, sympy, mathematica, c, c++, python\n"
             "  name = sym_expand(\"expr\") expand quoted symbolic expression\n"
             "  name = sym_collect(\"expr\",\"var\") collect like terms in variable\n"
             "  name = sym_substitute(\"expr\",\"var\",\"replacement\") substitute variable in expression\n"
@@ -10608,7 +12259,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  ml_accuracy(p,t), ml_rmse(p,t), ml_mse(p,t), ml_r2(p,t), ml_f1(p,t), ml_precision(p,t), ml_recall(p,t), ml_mae(p,t), ml_huber(p,t), ml_hinge(p,t), ml_binary_crossentropy(p,t), ml_categorical_crossentropy(p,t), ml_mat_transpose(A), ml_mat_mul(A,B), ml_linear_fit(X,y), ml_linear_predict(X,model), ml_ridge_fit(X,y,alpha), ml_ridge_predict(X,model), ml_logistic_fit(X,y), ml_logistic_predict(X,model), ml_lasso_fit(X,y,alpha), ml_lasso_predict(X,model), ml_elastic_net_fit(X,y,alpha,l1_ratio), ml_elastic_net_predict(X,model), ml_knn_fit(X,y,k), ml_knn_predict(X,model), ml_naive_bayes_fit(X,y), ml_naive_bayes_predict(X,model), ml_lda_fit(X,y[,n_components]), ml_lda_predict(X,model), ml_lda_transform(X,model), ml_vec_norm(v), ml_vec_dot(a,b), ml_pca_fit(X,n_components), ml_pca_transform(X,model), ml_pca_fit_transform(X,n_components), ml_kmeans_fit(X,k), ml_kmeans_predict(X,model), ml_kmeans_inertia(X,model), ml_decision_tree_fit(X,y[,max_depth]), ml_decision_tree_predict(X,model), ml_random_forest_fit(X,y[,n_trees[,max_depth]]), ml_random_forest_predict(X,model), ml_adaboost_fit(X,y[,n_estimators[,max_depth]]), ml_adaboost_predict(X,model), ml_gradient_boosting_fit(X,y[,n_estimators[,learning_rate[,max_depth]]]), ml_gradient_boosting_predict(X,model), ml_qda_fit(X,y), ml_qda_predict(X,model), ml_svm_fit(X,y[,C[,gamma]]), ml_svm_predict(X,model), ml_gmm_fit(X[,n_components]), ml_gmm_predict(X,model), ml_gmm_predict_proba(X,model), ml_dbscan_fit(X,eps,min_samples), ml_spectral_clustering(X,k[,sigma[,n_neighbors]]), ml_isolation_forest_fit(X[,n_trees[,sample_size[,seed]]]), ml_isolation_forest_score(X,model), ml_agglomerative_fit(X[,n_clusters[,linkage]]), ml_tsne_fit(X[,perplexity[,n_iter[,seed]]]), ml_confusion_matrix(p,t[,threshold]), ml_roc_curve(p,t), ml_precision_recall_curve(p,t), ml_average_precision(p,t), ml_minmax_scaler_fit(X), ml_minmax_scaler_transform(X,model), ml_roc_auc(p,t), ml_standard_scaler_fit(X), ml_standard_scaler_transform(X,model), ml_train_test_split(X,y[,test_size,seed])\n"
             "  bigint_factorial(n), bigint_fib(n), bigint_gcd(\"a\",\"b\"), bigint_lcm(a,b), bigint_is_even(n), bigint_is_odd(n), bigint_pow(base,exp), bigint_isqrt(n), bigint_is_prime(n)\n"
             "  graph_pagerank(A), graph_dijkstra(A,source), graph_bellman_ford(A,source), graph_dijkstra_dist(A,s,t), graph_bellman_ford_dist(A,s,t), graph_bfs(A,source), graph_dfs(A,source), graph_astar(A,source,target,h), graph_max_flow(A,source,sink), graph_min_cut(A,source,sink), graph_diameter(A), graph_radius(A), graph_betweenness(A), graph_closeness(A), graph_degree_centrality(A), graph_louvain(A), graph_eigenvector_centrality(A), graph_katz_centrality(A), graph_algebraic_connectivity(A), graph_adjacency_spectrum(A), graph_laplacian(A), graph_articulation_points(A), graph_bridges(A), graph_maximum_matching(A), graph_biconnected_components(A), graph_bipartite_match(A,left_size), graph_transitive_closure(A), graph_is_bipartite(A), graph_is_connected(A), graph_is_tree(A), graph_is_planar(A), graph_is_dag(A), graph_topological_sort(A), graph_greedy_colour(A), graph_k_core_decomposition(A), graph_k_core_subgraph(A,k), graph_chromatic_number(A), graph_euler_circuit(A), graph_eulerian_path(A), graph_is_isomorphic(A,B), graph_hamiltonian_path(A), graph_tsp_heuristic(D), graph_floyd_warshall(A), graph_mst_kruskal(A), graph_mst_prim(A), graph_min_arborescence(A,root), graph_scc(A), graph_connected_components(A)\n"
-            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
+            "  geo_dist2d(x1,y1,x2,y2), geo_dist_sq2d(x1,y1,x2,y2), geo_vec2d_length(x,y), geo_cross2d(x1,y1,x2,y2), geo_dist3d(x1,y1,z1,x2,y2,z2), geo_dist_point_seg2d(px,py,x1,y1,x2,y2), geo_dist_point_line2d(px,py,a,b,c), geo_volume_tetrahedron(x1,y1,z1,x2,y2,z2,x3,y3,z3,x4,y4,z4), geo_triangle_area(x1,y1,x2,y2,x3,y3), geo_overlap_circles(x1,y1,r1,x2,y2,r2), geo_point_in_aabb(px,py,minx,miny,maxx,maxy), geo_overlap_aabb(aminx,aminy,aminz,amaxx,amaxy,amaxz,bminx,bminy,bminz,bmaxx,bmaxy,bmaxz), geo_convex_hull_area(P), geo_convex_hull(P), geo_upper_hull(P), geo_lower_hull(P), geo_polygon_area(P), geo_polygon_perimeter(P), geo_signed_area(P), geo_moment_of_inertia(P), geo_point_in_polygon(px,py,P), geo_delaunay_2d(P), geo_voronoi(P), geo_poly_union(A,B), geo_poly_intersect(A,B), geo_poly_diff(A,B), geo_boolean_union(A,B), geo_boolean_intersect(A,B), geo_boolean_diff(A,B), geo_boolean_xor(A,B), geo_minkowski_sum(A,B), geo_clip_polygon(A,B), geo_min_bounding_rect(P), geo_kdtree_nearest(P,x,y), geo_kdtree_3d_nearest(P,x,y,z), topo_pairwise_distances(P), geo_bezier_eval_x(P,t), geo_bezier_eval_y(P,t), geo_bezier_eval(P,t), geo_bezier_deriv(P,t), geo_bezier_subdivide(P,t), geo_catmull_rom(P,t), geo_bspline_eval(P,knots,degree,t), geo_hermite_curve(p0x,p0y,m0x,m0y,p1x,p1y,m1x,m1y,t), geo_centroid_x(P), geo_centroid_y(P), bwt_primary_index(M), geo_intersect_ray_aabb(ox,oy,oz,dx,dy,dz,minx,miny,minz,maxx,maxy,maxz), geo_intersect_ray_sphere(ox,oy,oz,dx,dy,dz,cx,cy,cz,r), geo_intersect_ray_tri(ox,oy,oz,dx,dy,dz,ax,ay,az,bx,by,bz,cx,cy,cz), geo_intersect_seg_seg(x1,y1,x2,y2,x3,y3,x4,y4), geo_dist_point_plane(px,py,pz,nx,ny,nz,d), geo_dist_point_seg3d(px,py,pz,x1,y1,z1,x2,y2,z2), geo_convex_hull_3d(P), geo_triangulate_polygon(P), geo_kdtree_knn(P,x,y,k), geo_kdtree_range(P,x,y,r), geo_kdtree_3d_knn(P,x,y,z,k), geo_kdtree_3d_range(P,x,y,z,r), graph_eccentricity(A), graph_is_strongly_connected(A), graph_modularity(A,C), graph_normalised_laplacian(A)\n"
             "  combo_nchoosek(n,k), combo_stirling1(n,k), combo_stirling2(n,k), combo_permutations(n,k), combo_combinations_with_rep(n,k), combo_multinomial(n,ks), combo_rank_permutation(v), combo_next_perm(v), combo_prev_perm(v), combo_rank_combination(v,n), combo_next_comb(v,n), combo_prev_comb(v,n), combo_unrank_permutation(n,rank), combo_unrank_combination(n,k,rank), combo_derangements(n), combo_all_permutations(n), combo_all_subsets(n), combo_all_compositions(n), combo_all_partitions(n), combo_gray_code(n), combo_dyck_paths(n), combo_necklaces(n,k), combo_bracelets(n,k), combo_lyndon_words(n,k), combo_de_bruijn_sequence(k,n), combo_motzkin_paths(n), combo_set_partitions(n), combo_restricted_partitions(n,k), combo_eulerian(n,k), combo_factorial(n), combo_catalan(n), combo_bell(n), combo_involutions(n), combo_motzkin(n), combo_subfactorial(n), combo_double_factorial(n), numthy_gcd(a,b), numthy_lcm(a,b), numthy_mod_pow(base,exp,mod), numthy_partition(n), numthy_num_divisors(n), numthy_factor_count(n), numthy_sum_divisors(n), numthy_divisors_vec(n), numthy_continued_fraction(x,n), numthy_convergents(cf), numthy_factor_exp(n), numthy_farey(n), numthy_carmichael_lambda(n), numthy_multiplicative_order(a,n), numthy_lucas_sequence(k,P,Q), numthy_stern_brocot(n), numthy_quadratic_residues(p), numthy_pell_solve(D), numthy_factor_vec(n), numthy_isprime(n), numthy_is_carmichael(n), numthy_euler_phi(n), numthy_mobius(n), numthy_nextprime(n), numthy_prevprime(n), numthy_liouville(n), numthy_prime_pi(n), numthy_prime_nth(n), numthy_legendre_symbol(a,p), numthy_jacobi_symbol(a,n), numthy_kronecker_symbol(a,n), numthy_tonelli_shanks(n,p), numthy_mod_inv(a,m), numthy_is_primitive_root(g,p), numthy_primitive_root(p), numthy_discrete_log(g,h,p), numthy_von_mangoldt(n), numthy_jordan_totient(k,n), combo_bell_num(n), combo_binomial(n,k), numthy_factor(n), numthy_divisors(n)\n"
             "  erfi(x), erfcx(x), dawson(x), dawsonx(x), special_erfinv(x), special_erfcinv(x), special_rgamma(x), special_pochhammer(a,n), special_falling_factorial(a,n), special_log_gamma(x), special_digamma(x), special_trigamma(x), special_polygamma(n,x), special_gamma_inc(a,x), special_gamma_inc_reg(a,x), special_gamma_inc_reg_upper(a,x), special_beta_inc(x,a,b), special_beta_inc_reg(x,a,b), beta(a,b), special_voigt(x,sigma,gamma), special_pseudo_voigt(x,sigma,gamma,eta), special_pseudo_voigt_auto(x,sigma,gamma), special_airy_ai(x), special_airy_bi(x), special_airy_aip(x), special_airy_bip(x), airy_aip(x), airy_bip(x), bernoulli_number(n), euler_number(n), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), bessel_y(nu,x), bessel_i(nu,x), bessel_k(nu,x), chebyshev_t(n,x), chebyshev_u(n,x), chebyshev_tn(n,k,x), chebyshev_un(n,k,x), hermite_h(n,x), hermite_hf(n,x), laguerre_l(n,x), laguerre_ln(n,k,x), legendre_q(n,x), legendre_pn(n,m,x), hermite_he(n,x), laguerre_la(n,a,x), chebyshev_v(n,x), chebyshev_w(n,x), sph_harm(l,m,theta,phi), sph_bessel_j(n,x), sph_bessel_y(n,x), spherical_in(n,x), assoc_legendre_p(l,m,x), gegenbauer_c(n,lambda,x), lambert_w(branch,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), kummer_m(a,b,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  control_step_final(num,den), control_impulse_final(num,den), control_dcgain(num,den), control_is_stable(num,den), control_lyap(A,Q), control_dlyap(A,Q), control_ctrb(A,B), control_obsv(A,C), control_ctrb_gram(A,B), control_obsv_gram(A,C), control_lqr(A,B,Q,R), control_lqe(A,C,Q,R), control_riccati(A,B,Q,R), control_dare(A,B,Q,R), control_bode_mag_db(num,den,w), control_bode_phase(num,den,w), control_bode(num,den,w), control_phase_margin(num,den), control_gain_margin(num,den), control_margins(num,den), control_poles(num,den), control_zeros(num,den), control_step_info(num,den), control_step_response(num,den[,t_end[,n_pts]]), control_impulse_response(num,den[,t_end[,n_pts]]), control_nyquist(num,den), control_place(A,B,poles), control_pidtune_kp(num,den), control_pidtune_ki(num,den), control_pidtune_kd(num,den), control_kalman_predict(x,P,A,Q), control_kalman_predict_cov(x,P,A,Q), control_kalman_update(x,P,z,H,R), control_kalman_update_cov(x,P,z,H,R), control_tf2ss(num,den), control_c2d(A,B,C,D,Ts), control_c2d_b(A,B,C,D,Ts), control_c2d_tustin(A,B,C,D,Ts), control_c2d_euler(A,B,C,D,Ts), control_series(num1,den1,num2,den2), control_parallel(num1,den1,num2,den2), control_feedback(numG,denG,numH,denH[,sign]), control_ss2tf(SS), control_d2c(A,B,C,D,Ts), control_c2d_tf(num,den,Ts), control_c2d_tf_tustin(num,den,Ts), control_d2c_tf(num,den,Ts)\n"
@@ -10621,7 +12272,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  tensorops_norm(T), tensorops_inner(A,B), tensorops_matmul(A,B), tensorops_einsum(A,B)\n"
             "  diffgeo_gaussian_sphere(), diffgeo_mean_sphere(), diffgeo_principal_curvature_sphere(), diffgeo_gaussian_curvature_sphere(u,v), diffgeo_mean_curvature_sphere(u,v), diffgeo_ricci_scalar_sphere(u,v), diffgeo_einstein_scalar_sphere(u,v), diffgeo_surface_normal_sphere(u,v), diffgeo_christoffel_sphere(k,i,j,u,v), diffgeo_helix_torsion(t[,a[,b]]), diffgeo_sphere_gauss_bonnet([n]), diffgeo_sphere_gauss_bonnet_residual([n]), diffgeo_geodesic_euclidean(x0,y0,vx,vy,s_end), topo_euler_tetrahedron(), topo_euler_sphere_surface(), topo_vietoris_rips_betti0(D,r,max_dim), topo_betti_curve(D,thresholds,max_dim), topo_bottleneck_distance(dgm1,dgm2,dim), topo_wasserstein_distance(dgm1,dgm2,dim), topo_persistence_diagram(S,births), topo_alpha_complex(P,alpha[,max_dim]), topo_select_landmarks(P,n[,seed]), topo_witness_complex(P,landmarks,eps[,max_dim]), topo_persistence_landscape(dgm,n_layers,n_samples[,t_min,t_max])\n"
             "  fft([1,2,3,4])           vector FFT magnitude\n"
-            "  erf(x), gamma(x), bessel_j0(x), bessel_j1(x), bessel_y0(x), bessel_y1(x), bessel_j(nu,x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x), bessel_zero_jnu(nu,n)\n"
+            "  erf(x), erfc(x), gamma(x), fresnel_c(x), fresnel_s(x), bessel_j0(x), bessel_j1(x), bessel_y0(x), bessel_y1(x), bessel_j(nu,x), bessel_y(nu,x), bessel_i(nu,x), spherical_jn(n,x), spherical_yn(n,x), spherical_in(n,x), spherical_kn(n,x), bessel_h(nu,x), bessel_hy(nu,x), bessel_l(nu,x), bessel_lu(nu,x), hermite_hn(n,x), bessel_zero_jnu(nu,n)\n"
             "  kelvin_ber(0,x), kelvin_bei(nu,x), kelvin_ker(nu,x), kelvin_kei(nu,x), struve_h(n,x), struve_l(nu,x), struve_k(nu,x), struve_hn(nu,x), struve_yn(nu,x), anger_j(nu,x), weber_e(nu,x), bessel_zero_jnu(nu,n), bessel_zero_ynu(nu,n), lambert_w(branch,z)\n"
             "  kummer_m(a,b,z), kummer_u(a,b,z), hypergeo_0f1(b,z), hypergeo_1f1(a,z), hypergeo_2f1(a,b,c,z), whittaker_m(kappa,mu,z), whittaker_w(kappa,mu,z), tricomi_u(a,b,z), meijer_g(a,b,z), fox_h(a,b,z), hypergeo_0f1n(n,a,z), hypergeo_1f1n(n,a,z)\n"
             "  jacobi_p(n,a,b,x), ellip_k(k), ellip_e(k), ellip_d(k), ellip_pi(n,k), ellip_f(phi,k), ellip_e_inc(phi,k), theta1_prime(z,q), jacobi_theta(n,z,tau), jacobi_sn(u,k), jacobi_cn(u,k), jacobi_dn(u,k), jacobi_am(u,k), jacobi_sc(u,k), jacobi_sd(u,k), jacobi_nc(u,k), jacobi_dc(u,k), jacobi_nd(u,k), jacobi_cd(u,k), jacobi_cs(u,k), jacobi_ns(u,k), jacobi_ds(u,k)\n"
@@ -10632,7 +12283,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha), painleve3(x,y0,yp0,alpha,beta), painleve4(x,y0,yp0,alpha,beta), painleve5(x,y0,yp0,alpha,beta,gamma,delta), painleve6(x,y0,yp0,alpha,beta,gamma,delta)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\")\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\"), sym_latex(\"expr\"), sym_export(\"expr\",\"notation\"), sym_from_latex(\"tex\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_rk2(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_rk23(\"y\", 0, 1, 1, 1e-4, 1e-7), ode_cashkarp(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_trapezoidal(\"-y\", 0, 1, 1, 200), ode_exponential_euler(\"0\", -5, 0, 1, 1, 200), ode_rosenbrock23(\"-10*y\", 0, 1, 1, 200), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
@@ -10758,13 +12409,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!out) {
             return std::unexpected(DomainError{"saveplot", "cannot write: " + path});
         }
-        out << format_plot_preview(state_.plot);
-        return "saved plot preview to " + path + "\n";
+        // The whole series, exactly, rather than the ten-by-sixteen rounded table the
+        // screen shows: an imshow of a grid of 1e-5 values saved as a file of zeros.
+        out << format_plot_data(state_.plot);
+        return "saved plot data to " + path + "\n";
     }
     if (lcmd == "vars") {
         std::ostringstream out;
         for (const auto& [name, value] : state_.scalars) {
-            out << name << " = " << value << "\n";
+            out << name << " = " << format_scalar(value) << "\n";
         }
         for (const auto& [name, matrix] : state_.matrices) {
             out << name << " (" << matrix.rows() << "x" << matrix.cols() << ")\n";
@@ -10910,7 +12563,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!parse_number(arg, seed_value)) {
             return std::unexpected(DomainError{"izaac", "expected numeric seed"});
         }
-        izaac::seed_session(static_cast<uint64_t>(seed_value));
+        auto seed_u = checked_u64_argument("izaac", "seed", seed_value, kMaxU64AsDouble);
+        if (!seed_u) {
+            return std::unexpected(seed_u.error());
+        }
+        izaac::seed_session(*seed_u);
         return "izaac session seeded\n";
     }
     if (lcmd == "axiom evolve") {
@@ -10963,6 +12620,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
     if (cmd.find('=') != std::string::npos) {
         return execute_assignment(cmd);
+    }
+
+    std::string bigint_bare_decimal;
+    if (try_parse_bigint_call(cmd, bigint_bare_decimal)) {
+        auto value = eval_bigint_string(bigint_bare_decimal);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        return format_scalar(*value) + "\n";
     }
 
 
@@ -11028,7 +12694,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_intersect_ray_tri") {
             const auto call_args = split_call_args(cmd);
@@ -11050,7 +12716,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_intersect_ray_sphere") {
             const auto call_args = split_call_args(cmd);
@@ -11072,7 +12738,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "cmaes") {
             const auto call_args = split_call_args(cmd);
@@ -11164,7 +12830,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_max_sharpe_portfolio") {
             const auto call_args = split_call_args(cmd);
@@ -11543,8 +13209,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(
                         DomainError{fn, "expected numeric arguments"});
                 }
-                const int n_max = static_cast<int>(n_max_d);
-                if (n_max < 0 || n_max_d != n_max) {
+                auto n_max_checked = checked_int_argument(fn, "n_max", n_max_d);
+                if (!n_max_checked) {
+                    return std::unexpected(n_max_checked.error());
+                }
+                const int n_max = *n_max_checked;
+                if (n_max < 0) {
                     return std::unexpected(DomainError{
                         fn, "expected non-negative integer n_max"});
                 }
@@ -11571,16 +13241,32 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (fn == "diffgeo_surface_normal_sphere") {
                     value = eval_diffgeo_surface_normal_sphere(a, b);
                 } else if (fn == "quantum_ket_basis") {
-                    const int dim = static_cast<int>(a);
-                    const int index = static_cast<int>(b);
+                    auto dim_checked = checked_int_argument(fn, "dim", a);
+                    if (!dim_checked) {
+                        return std::unexpected(dim_checked.error());
+                    }
+                    const int dim = *dim_checked;
+                    auto index_checked = checked_int_argument(fn, "index", b);
+                    if (!index_checked) {
+                        return std::unexpected(index_checked.error());
+                    }
+                    const int index = *index_checked;
                     if (dim < 1 || a != dim || b != index) {
                         return std::unexpected(DomainError{
                             fn, "expected positive integer dim and integer index"});
                     }
                     value = eval_quantum_ket_basis(dim, index);
                 } else {
-                    const int n = static_cast<int>(a);
-                    const int n_max = static_cast<int>(b);
+                    auto n_checked = checked_int_argument(fn, "n", a);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
+                    auto n_max_checked = checked_int_argument(fn, "n_max", b);
+                    if (!n_max_checked) {
+                        return std::unexpected(n_max_checked.error());
+                    }
+                    const int n_max = *n_max_checked;
                     if (n_max < 0 || a != n || b != n_max) {
                         return std::unexpected(DomainError{
                             fn, "expected non-negative integer n and n_max"});
@@ -11634,7 +13320,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     bins = static_cast<size_t>(bins_d);
                 }
-                return std::to_string(gria::entropy(*data, bins)) + "\n";
+                return format_scalar(gria::entropy(*data, bins)) + "\n";
             }
             if (fn == "gria_matrix_alpha") {
                 if (!call_args || call_args->size() != 2) {
@@ -11649,7 +13335,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!fx_m) {
                     return std::unexpected(fx_m.error());
                 }
-                return std::to_string(gria::matrix_alpha(*x_m, *fx_m)) + "\n";
+                return format_scalar(gria::matrix_alpha(*x_m, *fx_m)) + "\n";
             }
             if (fn == "gria_is_critical") {
                 if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
@@ -11691,9 +13377,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
                 if (fn == "gria_gf2n_mul") {
-                    return std::to_string(gria::gf2n::mul(a, b, poly)) + "\n";
+                    return format_scalar(gria::gf2n::mul(a, b, poly)) + "\n";
                 }
-                return std::to_string(gria::gf2n::pow(a, b, poly)) + "\n";
+                return format_scalar(gria::gf2n::pow(a, b, poly)) + "\n";
             }
             if (fn == "gria_gf2n_inv") {
                 if (!call_args || call_args->size() != 2) {
@@ -11706,7 +13392,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     !parse_uint64(trim_copy(call_args->at(1)), poly)) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
-                return std::to_string(gria::gf2n::inv(a, poly)) + "\n";
+                return format_scalar(gria::gf2n::inv(a, poly)) + "\n";
             }
             if (fn == "gria_lfsr_step") {
                 if (!call_args || call_args->size() != 2) {
@@ -11719,7 +13405,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     !parse_uint64(trim_copy(call_args->at(1)), poly)) {
                     return std::unexpected(DomainError{fn, "expected unsigned integer arguments"});
                 }
-                return std::to_string(gria::lfsr::step(state, poly)) + "\n";
+                return format_scalar(gria::lfsr::step(state, poly)) + "\n";
             }
             if (fn == "gria_alpha_lfsr") {
                 if (!call_args || call_args->size() != 2) {
@@ -11735,7 +13421,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     std::floor(steps_d) != steps_d) {
                     return std::unexpected(DomainError{fn, "expected positive integer steps"});
                 }
-                return std::to_string(
+                return format_scalar(
                            gria::lfsr::alpha_lfsr(poly, static_cast<size_t>(steps_d))) +
                        "\n";
             }
@@ -11753,8 +13439,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     std::floor(n_d) != n_d) {
                     return std::unexpected(DomainError{fn, "expected positive integer n"});
                 }
-                return std::string(
-                           gria::lfsr::is_maximal(poly, static_cast<int>(n_d)) ? "true\n" : "false\n");
+                auto n_checked = checked_int_argument(fn, "n", n_d);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                return std::string(gria::lfsr::is_maximal(poly, *n_checked) ? "true\n"
+                                                                            : "false\n");
             }
             if (fn == "cypha_nig_fit") {
                 if (!call_args || call_args->size() != 1) {
@@ -11785,9 +13475,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
                 if (fn == "cypha_nig_pdf") {
-                    return std::to_string(cypha::nig_pdf(x, params)) + "\n";
+                    return format_scalar(cypha::nig_pdf(x, params)) + "\n";
                 }
-                return std::to_string(cypha::nig_cdf(x, params)) + "\n";
+                return format_scalar(cypha::nig_cdf(x, params)) + "\n";
             }
             if (fn == "cypha_nig_mean" || fn == "cypha_nig_variance") {
                 if (!call_args || call_args->size() != 4) {
@@ -11806,9 +13496,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 const cypha::NIGParams params{.mu = mu, .alpha = alpha, .beta = beta, .delta = delta};
                 if (fn == "cypha_nig_mean") {
-                    return std::to_string(cypha::nig_mean(params)) + "\n";
+                    return format_scalar(cypha::nig_mean(params)) + "\n";
                 }
-                return std::to_string(cypha::nig_variance(params)) + "\n";
+                return format_scalar(cypha::nig_variance(params)) + "\n";
             }
             if (fn == "cypha_nig_sample") {
                 if (!call_args || call_args->size() != 5) {
@@ -11827,7 +13517,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     !parse_number(trim_copy(call_args->at(4)), n_d)) {
                     return std::unexpected(DomainError{fn, "expected numeric arguments"});
                 }
-                const int n_i = static_cast<int>(n_d);
+                auto n_i_checked = checked_int_argument(fn, "n", n_d);
+                if (!n_i_checked) {
+                    return std::unexpected(n_i_checked.error());
+                }
+                const int n_i = *n_i_checked;
                 if (n_i < 0 || n_d != n_i) {
                     return std::unexpected(DomainError{fn, "expected non-negative integer n"});
                 }
@@ -11888,7 +13582,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!h_m) {
                     return std::unexpected(h_m.error());
                 }
-                return std::to_string(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
+                return format_scalar(cellai::energy(*w_m, *v_m, *h_m)) + "\n";
             }
             if (fn == "cellai_boltzmann_weights") {
                 if (!call_args || (call_args->size() != 1 && call_args->size() != 2)) {
@@ -11938,7 +13632,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::mc::estimate_pi(static_cast<size_t>(samples_d),
                                                   *izaac::g_session_rng)) +
                        "\n";
@@ -11960,7 +13654,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::diffpriv::laplace_mechanism(
                                true_value, epsilon, sensitivity, *izaac::g_session_rng)) +
                        "\n";
@@ -11985,7 +13679,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!rng_check) {
                     return std::unexpected(rng_check.error());
                 }
-                return std::to_string(
+                return format_scalar(
                            izaac::diffpriv::gaussian_mechanism(
                                true_value, epsilon, delta, sensitivity, *izaac::g_session_rng)) +
                        "\n";
@@ -12051,11 +13745,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_wave_2d", "expected pde_wave_2d(u0, v0, c, dx, dy, dt, steps)"});
             }
-            const int steps_i = static_cast<int>(steps_d);
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_wave_2d", "expected non-negative integer steps"});
+            WorkBudget budget(fn, 45.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(u0_m->rows() * u0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
+            if (!steps_i_checked) {
+                return std::unexpected(steps_i_checked.error());
             }
+            const int steps_i = *steps_i_checked;
             auto value = eval_pde_wave_2d(*u0_m, *v0_m, c, dx, dy, dt,
                                           static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -12092,7 +13790,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Segment2D s1{{x1, y1}, {x2, y2}};
             const geo::Segment2D s2{{x3, y3}, {x4, y4}};
-            return std::to_string(geo::intersect_seg_seg(s1, s2) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::intersect_seg_seg(s1, s2) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "cplx_cross_ratio") {
             double z1re = 0.0;
@@ -12115,7 +13813,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const cplx::C z2{z2re, z2im};
             const cplx::C z3{z3re, z3im};
             const cplx::C z4{z4re, z4im};
-            return std::to_string(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
+            return format_scalar(cplx::cross_ratio(z1, z2, z3, z4)) + "\n";
         }
         if (fn == "finance_sabr_call") {
             double S = 0.0;
@@ -12136,7 +13834,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_sabr_call",
                     "expected finance_sabr_call(S,K,T,r,alpha,beta,rho,nu)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::sabr_call(S, K, T, r, alpha, beta, rho, nu)) +
                    "\n";
         }
@@ -12159,7 +13857,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_sabr_put",
                     "expected finance_sabr_put(S,K,T,r,alpha,beta,rho,nu)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::sabr_put(S, K, T, r, alpha, beta, rho, nu)) +
                    "\n";
         }
@@ -12182,23 +13880,35 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_trinomial_option",
                     "expected finance_trinomial_option(S,K,T,r,sigma,n_steps,is_call,is_american)"});
             }
-            const int n_steps = static_cast<int>(n_steps_d);
-            if (n_steps < 0 || n_steps_d != n_steps) {
+            auto n_steps_checked = checked_superlinear_argument(fn, "n_steps", n_steps_d, 2, 28.0);
+            if (!n_steps_checked) {
+                return std::unexpected(n_steps_checked.error());
+            }
+            const int n_steps = *n_steps_checked;
+            if (n_steps < 0) {
                 return std::unexpected(DomainError{
                     "finance_trinomial_option", "expected non-negative integer n_steps"});
             }
-            const int is_call = static_cast<int>(is_call_d);
+            auto is_call_checked = checked_int_argument(fn, "is_call", is_call_d);
+            if (!is_call_checked) {
+                return std::unexpected(is_call_checked.error());
+            }
+            const int is_call = *is_call_checked;
             if (is_call_d != is_call) {
                 return std::unexpected(DomainError{
                     "finance_trinomial_option", "expected integer is_call (0=put, 1=call)"});
             }
-            const int is_american = static_cast<int>(is_american_d);
+            auto is_american_checked = checked_int_argument(fn, "is_american", is_american_d);
+            if (!is_american_checked) {
+                return std::unexpected(is_american_checked.error());
+            }
+            const int is_american = *is_american_checked;
             if (is_american_d != is_american) {
                 return std::unexpected(DomainError{
                     "finance_trinomial_option",
                     "expected integer is_american (0=European, 1=American)"});
             }
-            return std::to_string(finance::trinomial_option(S, K, T, r, sigma, n_steps,
+            return format_scalar(finance::trinomial_option(S, K, T, r, sigma, n_steps,
                                                             is_call != 0, is_american != 0)) +
                    "\n";
         }
@@ -12220,26 +13930,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            const int n_paths = static_cast<int>(n_paths_d);
-            if (n_paths < 0 || n_paths_d != n_paths) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
+            if (!n_paths_checked) {
+                return std::unexpected(n_paths_checked.error());
             }
-            const int n_steps = static_cast<int>(n_steps_d);
-            if (n_steps < 0 || n_steps_d != n_steps) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            const int n_paths = *n_paths_checked;
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
+            if (!n_steps_checked) {
+                return std::unexpected(n_steps_checked.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            const int n_steps = *n_steps_checked;
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_asian_call") {
-                return std::to_string(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
+                return format_scalar(finance::mc_asian_call(S, K, T, r, sigma, n_paths, n_steps,
                                                               seed)) +
                        "\n";
             }
-            return std::to_string(
+            return format_scalar(
                        finance::mc_asian_put(S, K, T, r, sigma, n_paths, n_steps, seed)) +
                    "\n";
         }
@@ -12261,26 +13974,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            const int n_paths = static_cast<int>(n_paths_d);
-            if (n_paths < 0 || n_paths_d != n_paths) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
+            if (!n_paths_checked) {
+                return std::unexpected(n_paths_checked.error());
             }
-            const int n_steps = static_cast<int>(n_steps_d);
-            if (n_steps < 0 || n_steps_d != n_steps) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            const int n_paths = *n_paths_checked;
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
+            if (!n_steps_checked) {
+                return std::unexpected(n_steps_checked.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            const int n_steps = *n_steps_checked;
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_lookback_fixed_call") {
-                return std::to_string(finance::mc_lookback_fixed_call(
+                return format_scalar(finance::mc_lookback_fixed_call(
                            S, K, T, r, sigma, n_paths, n_steps, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_lookback_fixed_put(S, K, T, r, sigma, n_paths,
+            return format_scalar(finance::mc_lookback_fixed_put(S, K, T, r, sigma, n_paths,
                                                                   n_steps, seed)) +
                    "\n";
         }
@@ -12312,7 +14028,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p{px, py, pz};
             const geo::Segment3D s{{x1, y1, z1}, {x2, y2, z2}};
-            return std::to_string(geo::dist_point_segment3(p, s)) + "\n";
+            return format_scalar(geo::dist_point_segment3(p, s)) + "\n";
         }
         if (fn == "finance_heston_call") {
             double S = 0.0;
@@ -12334,7 +14050,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_heston_call",
                     "expected finance_heston_call(S,K,T,r,v0,kappa,theta,sigma_v,rho)"});
             }
-            return std::to_string(finance::heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
+            return format_scalar(finance::heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
                    "\n";
         }
         if (fn == "finance_heston_put") {
@@ -12357,7 +14073,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_heston_put",
                     "expected finance_heston_put(S,K,T,r,v0,kappa,theta,sigma_v,rho)"});
             }
-            return std::to_string(finance::heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
+            return format_scalar(finance::heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho)) +
                    "\n";
         }
         if (fn == "finance_barrier_option") {
@@ -12380,23 +14096,35 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_barrier_option",
                     "expected finance_barrier_option(S,K,B,T,r,sigma,call,knock_in,up)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(DomainError{
                     "finance_barrier_option", "expected integer call (0=put, 1=call)"});
             }
-            const int knock_in = static_cast<int>(knock_in_d);
+            auto knock_in_checked = checked_int_argument(fn, "knock_in", knock_in_d);
+            if (!knock_in_checked) {
+                return std::unexpected(knock_in_checked.error());
+            }
+            const int knock_in = *knock_in_checked;
             if (knock_in_d != knock_in) {
                 return std::unexpected(DomainError{
                     "finance_barrier_option",
                     "expected integer knock_in (0=knock-out, 1=knock-in)"});
             }
-            const int up = static_cast<int>(up_d);
+            auto up_checked = checked_int_argument(fn, "up", up_d);
+            if (!up_checked) {
+                return std::unexpected(up_checked.error());
+            }
+            const int up = *up_checked;
             if (up_d != up) {
                 return std::unexpected(DomainError{
                     "finance_barrier_option", "expected integer up (0=down, 1=up)"});
             }
-            return std::to_string(finance::barrier_option(S, K, B, T, r, sigma, call != 0,
+            return format_scalar(finance::barrier_option(S, K, B, T, r, sigma, call != 0,
                                                            knock_in != 0, up != 0)) +
                    "\n";
         }
@@ -12425,7 +14153,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p{px, py, pz};
             const geo::Plane3D pl{{nx, ny, nz}, d};
-            return std::to_string(geo::dist_point_plane(p, pl)) + "\n";
+            return format_scalar(geo::dist_point_plane(p, pl)) + "\n";
         }
         if (fn == "heun_g") {
             double a = 0.0;
@@ -12442,7 +14170,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"heun_g", "expected heun_g(a,q,alpha,beta,gamma,delta,z)"});
             }
-            return std::to_string(heun_g(a, q, alpha, beta, gamma, delta, z)) + "\n";
+            return format_scalar(heun_g(a, q, alpha, beta, gamma, delta, z)) + "\n";
         }
         if (fn == "painleve5" || fn == "painleve6") {
             double x = 0.0;
@@ -12462,9 +14190,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     fn, "expected " + fn + "(x,y0,yp0,alpha,beta,gamma,delta)"});
             }
             if (fn == "painleve5") {
-                return std::to_string(painleve5(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
+                return format_scalar(painleve5(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
             }
-            return std::to_string(painleve6(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
+            return format_scalar(painleve6(x, y0, yp0, alpha, beta, gamma, delta)) + "\n";
         }
         if (fn == "finance_digital_option") {
             double S = 0.0;
@@ -12483,12 +14211,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_digital_option",
                     "expected finance_digital_option(S,K,T,r,sigma,call,payout)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(DomainError{
                     "finance_digital_option", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::digital_option(S, K, T, r, sigma, call != 0, payout)) +
                    "\n";
         }
@@ -12509,17 +14241,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_american_option",
                     "expected finance_american_option(S,K,T,r,sigma,call,steps)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(DomainError{
                     "finance_american_option", "expected integer call (0=put, 1=call)"});
             }
-            const int steps = static_cast<int>(steps_d);
-            if (steps < 0 || steps_d != steps) {
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 28.0);
+            if (!steps_checked) {
+                return std::unexpected(steps_checked.error());
+            }
+            const int steps = *steps_checked;
+            if (steps < 0) {
                 return std::unexpected(DomainError{
                     "finance_american_option", "expected non-negative integer steps"});
             }
-            return std::to_string(
+            return format_scalar(
                        finance::american_option(S, K, T, r, sigma, call != 0, steps)) +
                    "\n";
         }
@@ -12539,21 +14279,24 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,K,T,r,sigma,n_paths,seed)"});
             }
-            const int n_paths = static_cast<int>(n_paths_d);
-            if (n_paths < 0 || n_paths_d != n_paths) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
+            if (!n_paths_checked) {
+                return std::unexpected(n_paths_checked.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            const int n_paths = *n_paths_checked;
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_european_call") {
-                return std::to_string(
+                return format_scalar(
                            finance::mc_european_call(S, K, T, r, sigma, n_paths, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
+            return format_scalar(finance::mc_european_put(S, K, T, r, sigma, n_paths, seed)) +
                    "\n";
         }
         if (fn == "finance_mc_lookback_floating_call" ||
@@ -12574,26 +14317,29 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(S,T,r,sigma,n_paths,n_steps,seed)"});
             }
-            const int n_paths = static_cast<int>(n_paths_d);
-            if (n_paths < 0 || n_paths_d != n_paths) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_paths"});
+            // A Monte Carlo costs n_paths*n_steps; neither factor is large on its own.
+            WorkBudget budget(fn, 190.0, kMaxReplSimulationWorkNanos);
+            auto n_paths_checked = budget.take("n_paths", n_paths_d);
+            if (!n_paths_checked) {
+                return std::unexpected(n_paths_checked.error());
             }
-            const int n_steps = static_cast<int>(n_steps_d);
-            if (n_steps < 0 || n_steps_d != n_steps) {
-                return std::unexpected(
-                    DomainError{fn, "expected non-negative integer n_steps"});
+            const int n_paths = *n_paths_checked;
+            auto n_steps_checked = budget.take("n_steps", n_steps_d);
+            if (!n_steps_checked) {
+                return std::unexpected(n_steps_checked.error());
             }
-            const auto seed = static_cast<unsigned>(seed_d);
-            if (seed_d < 0.0 || std::floor(seed_d) != seed_d) {
-                return std::unexpected(DomainError{fn, "expected non-negative integer seed"});
+            const int n_steps = *n_steps_checked;
+            auto seed_arg = checked_seed_argument(fn, "seed", seed_d);
+            if (!seed_arg) {
+                return std::unexpected(seed_arg.error());
             }
+            const unsigned seed = *seed_arg;
             if (fn == "finance_mc_lookback_floating_call") {
-                return std::to_string(finance::mc_lookback_floating_call(
+                return format_scalar(finance::mc_lookback_floating_call(
                            S, T, r, sigma, n_paths, n_steps, seed)) +
                        "\n";
             }
-            return std::to_string(finance::mc_lookback_floating_put(S, T, r, sigma, n_paths,
+            return format_scalar(finance::mc_lookback_floating_put(S, T, r, sigma, n_paths,
                                                                      n_steps, seed)) +
                    "\n";
         }
@@ -12627,8 +14373,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "signal_czt_zoom",
                     "expected signal_czt_zoom(x, f_start, f_stop, m, fs)"});
             }
-            const int m = static_cast<int>(m_d);
-            if (m < 1 || m_d != m) {
+            auto m_checked = checked_int_argument(fn, "m", m_d);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            const int m = *m_checked;
+            if (m < 1) {
                 return std::unexpected(
                     DomainError{"signal_czt_zoom", "expected positive integer m"});
             }
@@ -12654,8 +14404,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "signal_cheby1",
                     "expected signal_cheby1(order, rp_db, cutoff, fs[, type])"});
             }
-            const int order = static_cast<int>(order_d);
-            if (order < 1 || order_d != order) {
+            auto order_checked = checked_int_argument(fn, "order", order_d);
+            if (!order_checked) {
+                return std::unexpected(order_checked.error());
+            }
+            const int order = *order_checked;
+            if (order < 1) {
                 return std::unexpected(
                     DomainError{"signal_cheby1", "expected integer order >= 1"});
             }
@@ -12685,8 +14439,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "signal_cheby2",
                     "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
             }
-            const int order = static_cast<int>(order_d);
-            if (order < 1 || order_d != order) {
+            auto order_checked = checked_int_argument(fn, "order", order_d);
+            if (!order_checked) {
+                return std::unexpected(order_checked.error());
+            }
+            const int order = *order_checked;
+            if (order < 1) {
                 return std::unexpected(
                     DomainError{"signal_cheby2", "expected integer order >= 1"});
             }
@@ -12715,7 +14473,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_call", "expected finance_bs_call(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_call(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_call(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_merton_distance_to_default") {
             double V = 0.0;
@@ -12735,7 +14493,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_bs_put") {
             double S = 0.0;
@@ -12749,7 +14507,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_put", "expected finance_bs_put(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_put(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_put(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bs_gamma") {
             double S = 0.0;
@@ -12763,7 +14521,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_gamma", "expected finance_bs_gamma(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_gamma(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_gamma(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bs_vega") {
             double S = 0.0;
@@ -12777,7 +14535,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bs_vega", "expected finance_bs_vega(S,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bs_vega(S, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bs_vega(S, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bachelier_call") {
             double F = 0.0;
@@ -12792,7 +14550,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_bachelier_call",
                     "expected finance_bachelier_call(F,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bachelier_call(F, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bachelier_call(F, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_bachelier_put") {
             double F = 0.0;
@@ -12806,7 +14564,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_bachelier_put", "expected finance_bachelier_put(F,K,T,r,sigma)"});
             }
-            return std::to_string(finance::bachelier_put(F, K, T, r, sigma)) + "\n";
+            return format_scalar(finance::bachelier_put(F, K, T, r, sigma)) + "\n";
         }
         if (fn == "finance_vasicek_bond_price") {
             double rate = 0.0;
@@ -12822,7 +14580,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_vasicek_bond_price",
                     "expected finance_vasicek_bond_price(r,a,b,sigma,tau)"});
             }
-            return std::to_string(finance::vasicek_bond_price(rate, a, b, sigma, tau)) + "\n";
+            return format_scalar(finance::vasicek_bond_price(rate, a, b, sigma, tau)) + "\n";
         }
         if (fn == "finance_cir_bond_price") {
             double rate = 0.0;
@@ -12838,7 +14596,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_cir_bond_price",
                     "expected finance_cir_bond_price(r,a,b,sigma,tau)"});
             }
-            return std::to_string(finance::cir_bond_price(rate, a, b, sigma, tau)) + "\n";
+            return format_scalar(finance::cir_bond_price(rate, a, b, sigma, tau)) + "\n";
         }
         if (fn == "geo_dist_point_line2d") {
             double px = 0.0;
@@ -12855,7 +14613,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::Line2D l{a, b, c};
-            return std::to_string(geo::dist_point_line(p, l)) + "\n";
+            return format_scalar(geo::dist_point_line(p, l)) + "\n";
         }
         if (fn == "diffgeo_christoffel_sphere") {
             double k_d = 0.0;
@@ -12876,7 +14634,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "pde_heat_1d" || fn == "pde_heat_1d_cn" || fn == "pde_advection_1d" ||
             fn == "pde_advection_1d_lax_wendroff" || fn == "pde_poisson_2d" ||
@@ -12904,11 +14662,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{
                         "pde_heat_1d", "expected pde_heat_1d(x0, alpha, dx, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_1d", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 16.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_heat_1d(*arg0_m, alpha, dx, dt,
                                               static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -12932,11 +14694,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_heat_1d_cn",
                         "expected pde_heat_1d_cn(x0, alpha, dx, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_1d_cn", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 41.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_heat_1d_cn(*arg0_m, alpha, dx, dt,
                                                    static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -12960,11 +14726,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_advection_1d",
                         "expected pde_advection_1d(u0, v, dx, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_advection_1d", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 14.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_advection_1d(*arg0_m, v, dx, dt,
                                                    static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -12988,11 +14758,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_advection_1d_lax_wendroff",
                         "expected pde_advection_1d_lax_wendroff(u0, v, dx, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_advection_1d_lax_wendroff", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 21.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_advection_1d_lax_wendroff(*arg0_m, v, dx, dt,
                                                                 static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -13016,7 +14790,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_poisson_2d",
                         "expected pde_poisson_2d(f, dx, dy, max_iterations, tolerance)"});
                 }
-                const int max_iter_i = static_cast<int>(max_iter_d);
+                auto max_iter_i_checked = checked_int_argument(fn, "max_iter", max_iter_d);
+                if (!max_iter_i_checked) {
+                    return std::unexpected(max_iter_i_checked.error());
+                }
+                const int max_iter_i = *max_iter_i_checked;
                 if (max_iter_i < 0 || max_iter_d != max_iter_i) {
                     return std::unexpected(DomainError{
                         "pde_poisson_2d", "expected non-negative integer max_iterations"});
@@ -13043,11 +14821,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_burgers_1d", "expected pde_burgers_1d(u0, nu, dx, dt, steps)"});
             }
-            const int steps_i = static_cast<int>(steps_d);
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_burgers_1d", "expected non-negative integer steps"});
+            WorkBudget budget(fn, 25.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(arg0_m->rows() * arg0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
+            if (!steps_i_checked) {
+                return std::unexpected(steps_i_checked.error());
             }
+            const int steps_i = *steps_i_checked;
             auto value = eval_pde_burgers_1d(*arg0_m, nu, dx, dt,
                                              static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -13153,12 +14935,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "heun_b") {
-                return std::to_string(heun_b(q, alpha, beta, gamma, z)) + "\n";
+                return format_scalar(heun_b(q, alpha, beta, gamma, z)) + "\n";
             }
             if (fn == "heun_d") {
-                return std::to_string(heun_d(q, alpha, beta, gamma, z)) + "\n";
+                return format_scalar(heun_d(q, alpha, beta, gamma, z)) + "\n";
             }
-            return std::to_string(heun_t(q, alpha, beta, gamma, z)) + "\n";
+            return format_scalar(heun_t(q, alpha, beta, gamma, z)) + "\n";
         }
         if (fn == "painleve3" || fn == "painleve4") {
             double x = 0.0;
@@ -13174,9 +14956,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{fn, "expected " + fn + "(x,y0,yp0,alpha,beta)"});
             }
             if (fn == "painleve3") {
-                return std::to_string(painleve3(x, y0, yp0, alpha, beta)) + "\n";
+                return format_scalar(painleve3(x, y0, yp0, alpha, beta)) + "\n";
             }
-            return std::to_string(painleve4(x, y0, yp0, alpha, beta)) + "\n";
+            return format_scalar(painleve4(x, y0, yp0, alpha, beta)) + "\n";
         }
     }
 
@@ -13209,8 +14991,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "signal_czt", "expected signal_czt(x, m, w_re, w_im, a_re, a_im)"});
             }
-            const int m = static_cast<int>(m_d);
-            if (m < 1 || m_d != m) {
+            auto m_checked = checked_int_argument(fn, "m", m_d);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            const int m = *m_checked;
+            if (m < 1) {
                 return std::unexpected(
                     DomainError{"signal_czt", "expected positive integer m"});
             }
@@ -13309,7 +15095,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "cfd_advection1d", "expected cfd_advection1d(nx, vx, t_end, dt)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
+            auto nx_i_checked = checked_int_argument(fn, "nx", nx_d);
+            if (!nx_i_checked) {
+                return std::unexpected(nx_i_checked.error());
+            }
+            const int nx_i = *nx_i_checked;
             if (nx_i < 0 || nx_d != nx_i) {
                 return std::unexpected(
                     DomainError{"cfd_advection1d", "expected non-negative integer nx"});
@@ -13340,14 +15130,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cfd_advection2d",
                     "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-                return std::unexpected(
-                    DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+            ExtentBudget budget("cfd_advection2d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_cfd_advection2d(static_cast<std::size_t>(nx_i),
-                                              static_cast<std::size_t>(ny_i), vx, vy, t_end, dt);
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto value = eval_cfd_advection2d(*nx, *ny, vx, vy, t_end, dt);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -13377,17 +15169,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cfd_advection3d",
                     "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("cfd_advection3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_cfd_advection3d(static_cast<std::size_t>(nx_i),
-                                              static_cast<std::size_t>(ny_i),
-                                              static_cast<std::size_t>(nz_i), vx, vy, vz, t_end,
-                                              dt);
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            auto value = eval_cfd_advection3d(*nx, *ny, *nz, vx, vy, vz, t_end, dt);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -13406,16 +15201,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("fem_poisson3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i),
-                                            static_cast<std::size_t>(nz_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1) * (*nz + 1));
+            if (!order) {
+                return std::unexpected(order.error());
+            }
+            auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -13440,7 +15246,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point3D p0{x1, y1, z1};
             const geo::Point3D p1{x2, y2, z2};
-            return std::to_string(geo::dist(p0, p1)) + "\n";
+            return format_scalar(geo::dist(p0, p1)) + "\n";
         }
         if (fn == "geo_triangle_area") {
             double x1 = 0.0;
@@ -13460,7 +15266,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
             const geo::Point2D p2{x3, y3};
-            return std::to_string(geo::area(p0, p1, p2)) + "\n";
+            return format_scalar(geo::area(p0, p1, p2)) + "\n";
         }
         if (fn == "cplx_mobius_re") {
             double a = 0.0;
@@ -13481,7 +15287,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "geo_dist_point_seg2d") {
             double px = 0.0;
@@ -13500,7 +15306,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::Segment2D s{{x1, y1}, {x2, y2}};
-            return std::to_string(geo::dist_point_segment(p, s)) + "\n";
+            return format_scalar(geo::dist_point_segment(p, s)) + "\n";
         }
         if (fn == "geo_overlap_circles") {
             double x1 = 0.0;
@@ -13519,7 +15325,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Circle2D a{{x1, y1}, r1};
             const geo::Circle2D b{{x2, y2}, r2};
-            return std::to_string(geo::overlap_circle_circle(a, b) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::overlap_circle_circle(a, b) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "geo_point_in_aabb") {
             double px = 0.0;
@@ -13539,7 +15345,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p{px, py};
             const geo::AABB2D box{{minx, miny}, {maxx, maxy}};
-            return std::to_string(geo::point_in_aabb(p, box) ? 1.0 : 0.0) + "\n";
+            return format_scalar(geo::point_in_aabb(p, box) ? 1.0 : 0.0) + "\n";
         }
         if (fn == "finance_binomial_call") {
             double S = 0.0;
@@ -13556,12 +15362,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_binomial_call",
                     "expected finance_binomial_call(S,K,T,r,sigma,steps)"});
             }
-            const int steps = static_cast<int>(steps_d);
-            if (steps < 0 || steps_d != steps) {
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 11.0);
+            if (!steps_checked) {
+                return std::unexpected(steps_checked.error());
+            }
+            const int steps = *steps_checked;
+            if (steps < 0) {
                 return std::unexpected(
                     DomainError{"finance_binomial_call", "expected non-negative integer steps"});
             }
-            return std::to_string(finance::binomial_call(S, K, T, r, sigma, steps)) + "\n";
+            return format_scalar(finance::binomial_call(S, K, T, r, sigma, steps)) + "\n";
         }
         if (fn == "finance_binomial_put") {
             double S = 0.0;
@@ -13578,12 +15388,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_binomial_put",
                     "expected finance_binomial_put(S,K,T,r,sigma,steps)"});
             }
-            const int steps = static_cast<int>(steps_d);
-            if (steps < 0 || steps_d != steps) {
+            auto steps_checked = checked_superlinear_argument(fn, "steps", steps_d, 2, 11.0);
+            if (!steps_checked) {
+                return std::unexpected(steps_checked.error());
+            }
+            const int steps = *steps_checked;
+            if (steps < 0) {
                 return std::unexpected(
                     DomainError{"finance_binomial_put", "expected non-negative integer steps"});
             }
-            return std::to_string(finance::binomial_put(S, K, T, r, sigma, steps)) + "\n";
+            return format_scalar(finance::binomial_put(S, K, T, r, sigma, steps)) + "\n";
         }
         if (fn == "finance_geo_asian_call") {
             double S = 0.0;
@@ -13600,12 +15414,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_geo_asian_call",
                     "expected finance_geo_asian_call(S,K,T,r,sigma,n_fixings)"});
             }
-            const int n_fixings = static_cast<int>(n_fixings_d);
-            if (n_fixings < 0 || n_fixings_d != n_fixings) {
+            auto n_fixings_checked = checked_int_argument(fn, "n_fixings", n_fixings_d);
+            if (!n_fixings_checked) {
+                return std::unexpected(n_fixings_checked.error());
+            }
+            const int n_fixings = *n_fixings_checked;
+            if (n_fixings < 0) {
                 return std::unexpected(DomainError{
                     "finance_geo_asian_call", "expected non-negative integer n_fixings"});
             }
-            return std::to_string(finance::geo_asian_call(S, K, T, r, sigma, n_fixings)) + "\n";
+            return format_scalar(finance::geo_asian_call(S, K, T, r, sigma, n_fixings)) + "\n";
         }
         if (fn == "finance_geo_asian_put") {
             double S = 0.0;
@@ -13622,12 +15440,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_geo_asian_put",
                     "expected finance_geo_asian_put(S,K,T,r,sigma,n_fixings)"});
             }
-            const int n_fixings = static_cast<int>(n_fixings_d);
-            if (n_fixings < 0 || n_fixings_d != n_fixings) {
+            auto n_fixings_checked = checked_int_argument(fn, "n_fixings", n_fixings_d);
+            if (!n_fixings_checked) {
+                return std::unexpected(n_fixings_checked.error());
+            }
+            const int n_fixings = *n_fixings_checked;
+            if (n_fixings < 0) {
                 return std::unexpected(DomainError{
                     "finance_geo_asian_put", "expected non-negative integer n_fixings"});
             }
-            return std::to_string(finance::geo_asian_put(S, K, T, r, sigma, n_fixings)) + "\n";
+            return format_scalar(finance::geo_asian_put(S, K, T, r, sigma, n_fixings)) + "\n";
         }
         if (fn == "finance_bs_delta") {
             double S = 0.0;
@@ -13643,12 +15465,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_bs_delta", "expected finance_bs_delta(S,K,T,r,sigma,call)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(
                     DomainError{"finance_bs_delta", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_delta(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_delta(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_black76") {
             double F = 0.0;
@@ -13664,12 +15490,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_black76", "expected finance_black76(F,K,T,r,sigma,call)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(
                     DomainError{"finance_black76", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::black76(F, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::black76(F, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_bs_implied_vol") {
             double price = 0.0;
@@ -13690,7 +15520,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!iv) {
                 return std::unexpected(iv.error());
             }
-            return std::to_string(*iv) + "\n";
+            return format_scalar(*iv) + "\n";
         }
         if (fn == "finance_bs_theta") {
             double S = 0.0;
@@ -13706,12 +15536,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_bs_theta", "expected finance_bs_theta(S,K,T,r,sigma,call)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(
                     DomainError{"finance_bs_theta", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_theta(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_theta(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "finance_bs_rho") {
             double S = 0.0;
@@ -13727,12 +15561,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_bs_rho", "expected finance_bs_rho(S,K,T,r,sigma,call)"});
             }
-            const int call = static_cast<int>(call_d);
+            auto call_checked = checked_int_argument(fn, "call", call_d);
+            if (!call_checked) {
+                return std::unexpected(call_checked.error());
+            }
+            const int call = *call_checked;
             if (call_d != call) {
                 return std::unexpected(
                     DomainError{"finance_bs_rho", "expected integer call (0=put, 1=call)"});
             }
-            return std::to_string(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
+            return format_scalar(finance::bs_rho(S, K, T, r, sigma, call != 0)) + "\n";
         }
         if (fn == "pde_heat_2d" || fn == "pde_heat_2d_cn_adi" || fn == "pde_wave_1d" ||
             fn == "pde_reaction_diffusion_1d") {
@@ -13761,11 +15599,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{
                         "pde_heat_2d", "expected pde_heat_2d(u0, alpha, dx, dy, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(
-                        DomainError{"pde_heat_2d", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 38.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_heat_2d(*arg0_m, alpha, dx, dy, dt,
                                               static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -13791,11 +15633,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_heat_2d_cn_adi",
                         "expected pde_heat_2d_cn_adi(u0, alpha, dx, dy, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_heat_2d_cn_adi", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 101.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_heat_2d_cn_adi(*arg0_m, alpha, dx, dy, dt,
                                                      static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -13821,11 +15667,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "pde_reaction_diffusion_1d",
                         "expected pde_reaction_diffusion_1d(u0, D, r, dx, dt, steps)"});
                 }
-                const int steps_i = static_cast<int>(steps_d);
-                if (steps_i < 0 || steps_d != steps_i) {
-                    return std::unexpected(DomainError{
-                        "pde_reaction_diffusion_1d", "expected non-negative integer steps"});
+                WorkBudget budget(fn, 20.0);
+                // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+                // the solver keeps one grid per step and the REPL reads only the last.
+                budget.charge(arg0_m->rows() * arg0_m->cols());
+                auto steps_i_checked = budget.take("steps", steps_d);
+                if (!steps_i_checked) {
+                    return std::unexpected(steps_i_checked.error());
                 }
+                const int steps_i = *steps_i_checked;
                 auto value = eval_pde_reaction_diffusion_1d(*arg0_m, D, r, dx, dt,
                                                             static_cast<std::size_t>(steps_i));
                 if (!value) {
@@ -13851,11 +15701,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "pde_wave_1d", "expected pde_wave_1d(u0, v0, c, dx, dt, steps)"});
             }
-            const int steps_i = static_cast<int>(steps_d);
-            if (steps_i < 0 || steps_d != steps_i) {
-                return std::unexpected(
-                    DomainError{"pde_wave_1d", "expected non-negative integer steps"});
+            WorkBudget budget(fn, 18.0);
+            // Charged before `steps` is read so the bound on it shrinks as the grid grows:
+            // the solver keeps one grid per step and the REPL reads only the last.
+            budget.charge(arg0_m->rows() * arg0_m->cols());
+            auto steps_i_checked = budget.take("steps", steps_d);
+            if (!steps_i_checked) {
+                return std::unexpected(steps_i_checked.error());
             }
+            const int steps_i = *steps_i_checked;
             auto value = eval_pde_wave_1d(*arg0_m, *v0_m, c, dx, dt,
                                           static_cast<std::size_t>(steps_i));
             if (!value) {
@@ -13882,7 +15736,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"heun_c", "expected heun_c(q,alpha,beta,gamma,delta,z)"});
             }
-            return std::to_string(heun_c(q, alpha, beta, gamma, delta, z)) + "\n";
+            return format_scalar(heun_c(q, alpha, beta, gamma, delta, z)) + "\n";
         }
     }
 
@@ -13922,7 +15776,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                                 "info_permutation_entropy",
                                 "expected info_permutation_entropy(x[, order[, delay]])"});
                         }
-                        order = static_cast<int>(order_d);
+                        auto order_checked = checked_int_argument(fn, "order", order_d);
+                        if (!order_checked) {
+                            return std::unexpected(order_checked.error());
+                        }
+                        order = *order_checked;
                         if (order < 1 || order_d != order) {
                             return std::unexpected(DomainError{
                                 "info_permutation_entropy",
@@ -13936,7 +15794,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                                 "info_permutation_entropy",
                                 "expected info_permutation_entropy(x[, order[, delay]])"});
                         }
-                        delay = static_cast<int>(delay_d);
+                        auto delay_checked = checked_int_argument(fn, "delay", delay_d);
+                        if (!delay_checked) {
+                            return std::unexpected(delay_checked.error());
+                        }
+                        delay = *delay_checked;
                         if (delay < 1 || delay_d != delay) {
                             return std::unexpected(DomainError{
                                 "info_permutation_entropy",
@@ -13947,7 +15809,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (call_args->size() < 2 || call_args->size() > 4) {
                     return std::unexpected(DomainError{
@@ -13971,7 +15833,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             "info_transfer_entropy",
                             "expected info_transfer_entropy(x, y[, bins[, lag]])"});
                     }
-                    bins = static_cast<int>(bins_d);
+                    auto bins_checked = checked_int_argument(fn, "bins", bins_d);
+                    if (!bins_checked) {
+                        return std::unexpected(bins_checked.error());
+                    }
+                    bins = *bins_checked;
                     if (bins < 1 || bins_d != bins) {
                         return std::unexpected(DomainError{
                             "info_transfer_entropy", "expected positive integer bins"});
@@ -13984,7 +15850,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             "info_transfer_entropy",
                             "expected info_transfer_entropy(x, y[, bins[, lag]])"});
                     }
-                    lag = static_cast<int>(lag_d);
+                    auto lag_checked = checked_int_argument(fn, "lag", lag_d);
+                    if (!lag_checked) {
+                        return std::unexpected(lag_checked.error());
+                    }
+                    lag = *lag_checked;
                     if (lag < 1 || lag_d != lag) {
                         return std::unexpected(DomainError{
                             "info_transfer_entropy", "expected positive integer lag"});
@@ -13994,7 +15864,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
     }
@@ -14026,7 +15896,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
-            return std::to_string(geo::dist(p0, p1)) + "\n";
+            return format_scalar(geo::dist(p0, p1)) + "\n";
         }
         if (fn == "geo_dist_sq2d") {
             double x1 = 0.0;
@@ -14040,7 +15910,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Point2D p0{x1, y1};
             const geo::Point2D p1{x2, y2};
-            return std::to_string(geo::dist_sq(p0, p1)) + "\n";
+            return format_scalar(geo::dist_sq(p0, p1)) + "\n";
         }
         if (fn == "geo_cross2d") {
             double x1 = 0.0;
@@ -14054,7 +15924,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const geo::Vec2D a{x1, y1};
             const geo::Vec2D b{x2, y2};
-            return std::to_string(geo::cross2d(a, b)) + "\n";
+            return format_scalar(geo::cross2d(a, b)) + "\n";
         }
         if (fn == "finance_forward_rate") {
             double r1 = 0.0;
@@ -14066,7 +15936,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_forward_rate", "expected finance_forward_rate(r1,t1,r2,t2)"});
             }
-            return std::to_string(finance::forward_rate(r1, t1, r2, t2)) + "\n";
+            return format_scalar(finance::forward_rate(r1, t1, r2, t2)) + "\n";
         }
         if (fn == "cplx_hyperbolic_distance") {
             double z1re = 0.0;
@@ -14081,7 +15951,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cplx_hyperbolic_distance",
                     "expected cplx_hyperbolic_distance(z1re,z1im,z2re,z2im)"});
             }
-            return std::to_string(
+            return format_scalar(
                        cplx::hyperbolic_distance(cplx::C{z1re, z1im}, cplx::C{z2re, z2im})) +
                    "\n";
         }
@@ -14096,12 +15966,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected finance_pv(rate,n,pmt,fv)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pv(rate, n, pmt, fv)) + "\n";
+            return format_scalar(finance::pv(rate, n, pmt, fv)) + "\n";
         }
         if (fn == "sph_harm") {
             double l_d = 0.0;
@@ -14115,9 +15989,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"sph_harm", "expected sph_harm(l,m,theta,phi)"});
             }
-            const int l = static_cast<int>(l_d);
-            const int m = static_cast<int>(m_d);
-            if (l_d != l || m_d != m) {
+            auto l_checked = checked_int_argument(fn, "l", l_d);
+            if (!l_checked) {
+                return std::unexpected(l_checked.error());
+            }
+            const int l = *l_checked;
+            auto m_checked = checked_int_argument(fn, "m", m_d);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            const int m = *m_checked;
+            if (l_d != l) {
                 return std::unexpected(
                     DomainError{"sph_harm", "expected integer l and m"});
             }
@@ -14141,12 +16023,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected finance_bond_price(c,y,n,fv)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_price(c, y, n, fv)) + "\n";
+            return format_scalar(finance::bond_price(c, y, n, fv)) + "\n";
         }
         if (fn == "finance_compound") {
             double principal = 0.0;
@@ -14161,17 +16047,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_compound",
                     "expected finance_compound(principal,rate,n_periods,compounds_per_period)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int cpp = static_cast<int>(cpp_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto cpp_checked = checked_int_argument(fn, "cpp", cpp_d);
+            if (!cpp_checked) {
+                return std::unexpected(cpp_checked.error());
+            }
+            const int cpp = *cpp_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_compound", "expected non-negative integer periods n_periods"});
             }
-            if (cpp < 1 || cpp_d != cpp) {
+            if (cpp < 1) {
                 return std::unexpected(DomainError{
                     "finance_compound", "expected positive integer compounds_per_period"});
             }
-            return std::to_string(finance::compound(principal, rate, n, cpp)) + "\n";
+            return format_scalar(finance::compound(principal, rate, n, cpp)) + "\n";
         }
         if (fn == "finance_fv_annuity") {
             double rate = 0.0;
@@ -14184,12 +16078,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected finance_fv_annuity(rate,n,pmt,pv0)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::fv_annuity(rate, n, pmt, pv0)) + "\n";
+            return format_scalar(finance::fv_annuity(rate, n, pmt, pv0)) + "\n";
         }
         if (fn == "finance_pmt_annuity") {
             double rate = 0.0;
@@ -14202,12 +16100,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected finance_pmt_annuity(rate,n,pv0,fv)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pmt_annuity(rate, n, pv0, fv)) + "\n";
+            return format_scalar(finance::pmt_annuity(rate, n, pv0, fv)) + "\n";
         }
         if (fn == "hypergeo_2f1" || fn == "jacobi_p") {
             double a = 0.0;
@@ -14219,9 +16121,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "hypergeo_2f1") {
-                return std::to_string(hypergeo_2f1(a, b, c, d)) + "\n";
+                return format_scalar(hypergeo_2f1(a, b, c, d)) + "\n";
             }
-            return std::to_string(jacobi_p(static_cast<int>(a), b, c, d)) + "\n";
+            auto a_order = checked_int_argument(fn, "a", a);
+            if (!a_order) {
+                return std::unexpected(a_order.error());
+            }
+            return format_scalar(jacobi_p(*a_order, b, c, d)) + "\n";
         }
         if (fn == "signal_bandpass") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14276,8 +16182,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "signal_coherence", "expected signal_coherence(x, y, fs, nperseg)"});
             }
-            const int nperseg = static_cast<int>(nperseg_d);
-            if (nperseg < 1 || nperseg_d != nperseg) {
+            auto nperseg_checked = checked_int_argument(fn, "nperseg", nperseg_d);
+            if (!nperseg_checked) {
+                return std::unexpected(nperseg_checked.error());
+            }
+            const int nperseg = *nperseg_checked;
+            if (nperseg < 1) {
                 return std::unexpected(
                     DomainError{"signal_coherence", "expected positive integer nperseg"});
             }
@@ -14337,8 +16247,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "signal_cheby1",
                     "expected signal_cheby1(order, rp_db, cutoff, fs[, type])"});
             }
-            const int order = static_cast<int>(order_d);
-            if (order < 1 || order_d != order) {
+            auto order_checked = checked_int_argument(fn, "order", order_d);
+            if (!order_checked) {
+                return std::unexpected(order_checked.error());
+            }
+            const int order = *order_checked;
+            if (order < 1) {
                 return std::unexpected(
                     DomainError{"signal_cheby1", "expected integer order >= 1"});
             }
@@ -14364,8 +16278,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "signal_cheby2",
                     "expected signal_cheby2(order, rs_db, cutoff, fs[, type])"});
             }
-            const int order = static_cast<int>(order_d);
-            if (order < 1 || order_d != order) {
+            auto order_checked = checked_int_argument(fn, "order", order_d);
+            if (!order_checked) {
+                return std::unexpected(order_checked.error());
+            }
+            const int order = *order_checked;
+            if (order < 1) {
                 return std::unexpected(
                     DomainError{"signal_cheby2", "expected integer order >= 1"});
             }
@@ -14397,9 +16315,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"graph_astar", "expected graph_astar(A, source, target, h)"});
             }
-            const int source = static_cast<int>(source_d);
-            const int target = static_cast<int>(target_d);
-            if (source_d != source || target_d != target) {
+            auto source_checked = checked_int_argument(fn, "source", source_d);
+            if (!source_checked) {
+                return std::unexpected(source_checked.error());
+            }
+            const int source = *source_checked;
+            auto target_checked = checked_int_argument(fn, "target", target_d);
+            if (!target_checked) {
+                return std::unexpected(target_checked.error());
+            }
+            const int target = *target_checked;
+            if (source_d != source) {
                 return std::unexpected(
                     DomainError{"graph_astar", "expected integer source and target"});
             }
@@ -14427,9 +16353,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_s1(n,m,c,x)"});
             }
-            return std::to_string(
-                       spheroidal_s1(static_cast<int>(n), static_cast<int>(m), c, x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto m_checked = checked_int_argument(fn, "m", m);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
+            if (!c_sized) {
+                return std::unexpected(c_sized.error());
+            }
+            return format_scalar(
+                       spheroidal_s1(*n_checked, *m_checked, c, x)) +
+                              "\n";
         }
         if (fn == "spheroidal_s2") {
             double n = 0.0;
@@ -14442,9 +16380,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_s2(n,m,c,x)"});
             }
-            return std::to_string(
-                       spheroidal_s2(static_cast<int>(n), static_cast<int>(m), c, x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto m_checked = checked_int_argument(fn, "m", m);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
+            if (!c_sized) {
+                return std::unexpected(c_sized.error());
+            }
+            return format_scalar(
+                       spheroidal_s2(*n_checked, *m_checked, c, x)) +
+                              "\n";
         }
         if (fn == "painleve2") {
             double x = 0.0;
@@ -14457,7 +16407,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"painleve2", "expected painleve2(x,y0,yp0,alpha)"});
             }
-            return std::to_string(painleve2(x, y0, yp0, alpha)) + "\n";
+            return format_scalar(painleve2(x, y0, yp0, alpha)) + "\n";
         }
         if (fn == "special_pseudo_voigt") {
             double x = 0.0;
@@ -14471,7 +16421,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "special_pseudo_voigt", "expected special_pseudo_voigt(x,sigma,gamma,eta)"});
             }
-            return std::to_string(pseudo_voigt(x, sigma, gamma, eta)) + "\n";
+            return format_scalar(pseudo_voigt(x, sigma, gamma, eta)) + "\n";
         }
     }
 
@@ -14518,8 +16468,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(n_taps, cutoff[, window])"});
             }
-            const int n_taps = static_cast<int>(n_taps_d);
-            if (n_taps < 1 || n_taps_d != n_taps) {
+            auto n_taps_checked = checked_int_argument(fn, "n_taps", n_taps_d);
+            if (!n_taps_checked) {
+                return std::unexpected(n_taps_checked.error());
+            }
+            const int n_taps = *n_taps_checked;
+            if (n_taps < 1) {
                 return std::unexpected(DomainError{fn, "expected integer n_taps >= 1"});
             }
             auto parsed = parse_fir_window(trim(match[4].str()), fn.c_str());
@@ -14620,15 +16574,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!G) {
                 return std::unexpected(G.error());
             }
-            const int source = static_cast<int>(source_d);
-            const int target = static_cast<int>(target_d);
+            auto source_checked = checked_int_argument(fn, "source", source_d);
+            if (!source_checked) {
+                return std::unexpected(source_checked.error());
+            }
+            const int source = *source_checked;
+            auto target_checked = checked_int_argument(fn, "target", target_d);
+            if (!target_checked) {
+                return std::unexpected(target_checked.error());
+            }
+            const int target = *target_checked;
             if (source < 0 || target < 0 || source >= G->n_vertices() || target >= G->n_vertices()) {
                 return std::unexpected(
                     DomainError{"graph_dijkstra_dist", "source/target out of range"});
             }
             const auto [dist, parent] = graph::dijkstra(*G, source);
             (void)parent;
-            return std::to_string(dist[static_cast<size_t>(target)]) + "\n";
+            return format_scalar(dist[static_cast<size_t>(target)]) + "\n";
         }
         if (fn == "graph_bellman_ford_dist") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14650,12 +16612,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "graph_bellman_ford_dist",
                     "expected graph_bellman_ford_dist(A, source, target)"});
             }
-            auto G = graph_from_adjacency(*adj_m, "graph_bellman_ford_dist");
+            auto G = graph_from_adjacency(*adj_m, "graph_bellman_ford_dist",
+                                          /*allow_non_positive=*/true);
             if (!G) {
                 return std::unexpected(G.error());
             }
-            const int source = static_cast<int>(source_d);
-            const int target = static_cast<int>(target_d);
+            auto source_checked = checked_int_argument(fn, "source", source_d);
+            if (!source_checked) {
+                return std::unexpected(source_checked.error());
+            }
+            const int source = *source_checked;
+            auto target_checked = checked_int_argument(fn, "target", target_d);
+            if (!target_checked) {
+                return std::unexpected(target_checked.error());
+            }
+            const int target = *target_checked;
             if (source < 0 || target < 0 || source >= G->n_vertices() || target >= G->n_vertices()) {
                 return std::unexpected(
                     DomainError{"graph_bellman_ford_dist", "source/target out of range"});
@@ -14666,7 +16637,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             const auto& [dist, parent] = *result;
             (void)parent;
-            return std::to_string(dist[static_cast<size_t>(target)]) + "\n";
+            return format_scalar(dist[static_cast<size_t>(target)]) + "\n";
         }
         if (fn == "graph_max_flow") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14687,13 +16658,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"graph_max_flow", "expected graph_max_flow(A, source, sink)"});
             }
-            const int source = static_cast<int>(source_d);
-            const int sink = static_cast<int>(sink_d);
+            auto source_checked = checked_int_argument(fn, "source", source_d);
+            if (!source_checked) {
+                return std::unexpected(source_checked.error());
+            }
+            const int source = *source_checked;
+            auto sink_checked = checked_int_argument(fn, "sink", sink_d);
+            if (!sink_checked) {
+                return std::unexpected(sink_checked.error());
+            }
+            const int sink = *sink_checked;
             auto value = eval_graph_max_flow(*adj_m, source, sink);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "graph_min_cut") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14714,13 +16693,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"graph_min_cut", "expected graph_min_cut(A, source, sink)"});
             }
-            const int source = static_cast<int>(source_d);
-            const int sink = static_cast<int>(sink_d);
+            auto source_checked = checked_int_argument(fn, "source", source_d);
+            if (!source_checked) {
+                return std::unexpected(source_checked.error());
+            }
+            const int source = *source_checked;
+            auto sink_checked = checked_int_argument(fn, "sink", sink_d);
+            if (!sink_checked) {
+                return std::unexpected(sink_checked.error());
+            }
+            const int sink = *sink_checked;
             auto value = eval_graph_min_cut(*adj_m, source, sink);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "boxfilter" || fn == "medfilt2" || fn == "imgaussfilt") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -14742,16 +16729,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!gray) {
                 return std::unexpected(gray.error());
             }
+            // The no-assignment form does NOT go through the matrix-call registry, so
+            // the budget in the handlers does not cover it. `medfilt2(A, 999)` on a
+            // 512x512 -- with no `B =` in front of it -- was still four hours of work.
             Matrix<double> filtered_m;
+            WorkBudget budget(fn, fn == "medfilt2" ? 60.0 : 45.0,
+                              kMaxReplSimulationWorkNanos);
+            budget.charge(gray_m->rows() * gray_m->cols());
+            if (fn == "imgaussfilt") {
+                // The kernel half-width is 3*sigma, so what sigma names is the kernel.
+                if (!std::isfinite(param_d) || param_d < 0.0) {
+                    return std::unexpected(
+                        DomainError{fn, "expected a finite non-negative sigma"});
+                }
+                auto kernel = budget.take("the kernel sigma implies", 6.0 * param_d + 1.0);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            } else {
+                auto kernel = fn == "medfilt2" ? budget.take_square("ksize", param_d)
+                                               : budget.take("ksize", param_d);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            }
             if (fn == "boxfilter") {
-                const int ksize = static_cast<int>(param_d);
+                auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
+                if (!ksize_checked) {
+                    return std::unexpected(ksize_checked.error());
+                }
+                const int ksize = *ksize_checked;
                 if (ksize < 1 || param_d != ksize || (ksize % 2) == 0) {
                     return std::unexpected(
                         DomainError{"boxfilter", "expected positive odd integer ksize"});
                 }
                 filtered_m = gray_image_to_matrix(image::boxfilter(*gray, ksize));
             } else if (fn == "medfilt2") {
-                const int ksize = static_cast<int>(param_d);
+                auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
+                if (!ksize_checked) {
+                    return std::unexpected(ksize_checked.error());
+                }
+                const int ksize = *ksize_checked;
                 if (ksize < 1 || param_d != ksize || (ksize % 2) == 0) {
                     return std::unexpected(
                         DomainError{"medfilt2", "expected positive odd integer ksize"});
@@ -14846,8 +16864,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "signal_welch_psd", "expected signal_welch_psd(x, fs, nperseg)"});
             }
-            const int nperseg = static_cast<int>(nperseg_d);
-            if (nperseg < 1 || nperseg_d != nperseg) {
+            auto nperseg_checked = checked_int_argument(fn, "nperseg", nperseg_d);
+            if (!nperseg_checked) {
+                return std::unexpected(nperseg_checked.error());
+            }
+            const int nperseg = *nperseg_checked;
+            if (nperseg < 1) {
                 return std::unexpected(
                     DomainError{"signal_welch_psd", "expected positive integer nperseg"});
             }
@@ -14949,13 +16971,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_binom_pdf", "expected prob_binom_pdf(k, n, p)"});
             }
-            const int k = static_cast<int>(k_d);
-            const int n = static_cast<int>(n_d);
-            if (k_d != k || n_d != n) {
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (k_d != k) {
                 return std::unexpected(
                     DomainError{"prob_binom_pdf", "expected integer k and n"});
             }
-            return std::to_string(binom_pdf(k, n, p)) + "\n";
+            return format_scalar(binom_pdf(k, n, p)) + "\n";
         }
         if (fn == "fem_poisson3d") {
             double nx_d = 0.0;
@@ -14967,16 +16997,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("fem_poisson3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i),
-                                            static_cast<std::size_t>(nz_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1) * (*nz + 1));
+            if (!order) {
+                return std::unexpected(order.error());
+            }
+            auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -14995,13 +17036,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_binom_cdf", "expected prob_binom_cdf(k, n, p)"});
             }
-            const int k = static_cast<int>(k_d);
-            const int n = static_cast<int>(n_d);
-            if (k_d != k || n_d != n) {
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (k_d != k) {
                 return std::unexpected(
                     DomainError{"prob_binom_cdf", "expected integer k and n"});
             }
-            return std::to_string(binom_cdf(k, n, p)) + "\n";
+            return format_scalar(binom_cdf(k, n, p)) + "\n";
         }
         if (fn == "prob_uniform_cdf") {
             double x = 0.0;
@@ -15013,7 +17062,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_uniform_cdf", "expected prob_uniform_cdf(x, a, b)"});
             }
-            return std::to_string(uniform_cdf(x, a, b)) + "\n";
+            return format_scalar(uniform_cdf(x, a, b)) + "\n";
         }
         if (fn == "prob_gamma_pdf") {
             double x = 0.0;
@@ -15025,7 +17074,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_pdf", "expected prob_gamma_pdf(x, shape, scale)"});
             }
-            return std::to_string(gamma_pdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_pdf(x, shape, scale)) + "\n";
         }
         if (fn == "gamma_cdf") {
             double x = 0.0;
@@ -15037,7 +17086,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"gamma_cdf", "expected gamma_cdf(x, shape, scale)"});
             }
-            return std::to_string(gamma_cdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_cdf(x, shape, scale)) + "\n";
         }
         if (fn == "beta_pdf") {
             double x = 0.0;
@@ -15049,7 +17098,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"beta_pdf", "expected beta_pdf(x, alpha, beta)"});
             }
-            return std::to_string(beta_pdf(x, alpha, beta_param)) + "\n";
+            return format_scalar(beta_pdf(x, alpha, beta_param)) + "\n";
         }
         if (fn == "beta_cdf") {
             double x = 0.0;
@@ -15061,7 +17110,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"beta_cdf", "expected beta_cdf(x, alpha, beta)"});
             }
-            return std::to_string(beta_cdf(x, alpha, beta_param)) + "\n";
+            return format_scalar(beta_cdf(x, alpha, beta_param)) + "\n";
         }
         if (fn == "f_pdf") {
             double x = 0.0;
@@ -15072,7 +17121,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), d2)) {
                 return std::unexpected(DomainError{"f_pdf", "expected f_pdf(x, d1, d2)"});
             }
-            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+            return format_scalar(f_pdf(x, d1, d2)) + "\n";
         }
         if (fn == "f_cdf") {
             double x = 0.0;
@@ -15083,7 +17132,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), d2)) {
                 return std::unexpected(DomainError{"f_cdf", "expected f_cdf(x, d1, d2)"});
             }
-            return std::to_string(f_cdf(x, d1, d2)) + "\n";
+            return format_scalar(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "kummer_m" || fn == "kummer_u" || fn == "whittaker_m" || fn == "whittaker_w" ||
             fn == "tricomi_u" || fn == "meijer_g" || fn == "fox_h" || fn == "hypergeo_0f1n" ||
@@ -15097,45 +17146,85 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric arguments"});
             }
             if (fn == "kummer_m") {
-                return std::to_string(kummer_m(a, b, c)) + "\n";
+                return format_scalar(kummer_m(a, b, c)) + "\n";
             }
             if (fn == "kummer_u") {
-                return std::to_string(kummer_u(a, b, c)) + "\n";
+                return format_scalar(kummer_u(a, b, c)) + "\n";
             }
             if (fn == "whittaker_m") {
-                return std::to_string(whittaker_m(a, b, c)) + "\n";
+                return format_scalar(whittaker_m(a, b, c)) + "\n";
             }
             if (fn == "whittaker_w") {
-                return std::to_string(whittaker_w(a, b, c)) + "\n";
+                return format_scalar(whittaker_w(a, b, c)) + "\n";
             }
             if (fn == "tricomi_u") {
-                return std::to_string(tricomi_u(a, b, c)) + "\n";
+                return format_scalar(tricomi_u(a, b, c)) + "\n";
             }
             if (fn == "meijer_g") {
-                return std::to_string(meijer_g(a, b, c)) + "\n";
+                return format_scalar(meijer_g(a, b, c)) + "\n";
             }
             if (fn == "fox_h") {
-                return std::to_string(fox_h(a, b, c)) + "\n";
+                return format_scalar(fox_h(a, b, c)) + "\n";
             }
             if (fn == "hypergeo_0f1n") {
-                return std::to_string(hypergeo_0f1n(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                return format_scalar(hypergeo_0f1n(*a_order, b, c)) + "\n";
             }
             if (fn == "hypergeo_1f1n") {
-                return std::to_string(hypergeo_1f1n(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                return format_scalar(hypergeo_1f1n(*a_order, b, c)) + "\n";
             }
             if (fn == "mathieu_ce") {
-                return std::to_string(mathieu_ce(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
+                }
+                return format_scalar(mathieu_ce(*a_order, b, c)) + "\n";
             }
             if (fn == "mathieu_se") {
-                return std::to_string(mathieu_se(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
+                }
+                return format_scalar(mathieu_se(*a_order, b, c)) + "\n";
             }
             if (fn == "mathieu_mc") {
-                return std::to_string(mathieu_mc(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
+                }
+                return format_scalar(mathieu_mc(*a_order, b, c)) + "\n";
             }
             if (fn == "mathieu_ms") {
-                return std::to_string(mathieu_ms(static_cast<int>(a), b, c)) + "\n";
+                auto a_order = checked_int_argument(fn, "a", a);
+                if (!a_order) {
+                    return std::unexpected(a_order.error());
+                }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
+                }
+                return format_scalar(mathieu_ms(*a_order, b, c)) + "\n";
             }
-            return std::to_string(painleve1(a, b, c)) + "\n";
+            return format_scalar(painleve1(a, b, c)) + "\n";
         }
         if (fn == "spheroidal_lambda") {
             double n = 0.0;
@@ -15146,9 +17235,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected spheroidal_lambda(n,m,c)"});
             }
-            return std::to_string(
-                       spheroidal_lambda(static_cast<int>(n), static_cast<int>(m), c)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto m_checked = checked_int_argument(fn, "m", m);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
+            if (!c_sized) {
+                return std::unexpected(c_sized.error());
+            }
+            return format_scalar(
+                       spheroidal_lambda(*n_checked, *m_checked, c)) +
+                              "\n";
         }
         if (fn == "assoc_legendre_p") {
             double l = 0.0;
@@ -15159,9 +17260,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected assoc_legendre_p(l,m,x)"});
             }
-            return std::to_string(
-                       assoc_legendre_p(static_cast<int>(l), static_cast<int>(m), x)) +
-                   "\n";
+            auto l_checked = checked_int_argument(fn, "l", l);
+            if (!l_checked) {
+                return std::unexpected(l_checked.error());
+            }
+            auto m_checked = checked_int_argument(fn, "m", m);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            return format_scalar(
+                       assoc_legendre_p(*l_checked, *m_checked, x)) +
+                              "\n";
         }
         if (fn == "legendre_pn") {
             double n = 0.0;
@@ -15171,9 +17280,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected legendre_pn(n,m,x)"});
             }
-            return std::to_string(
-                       legendre_pn(static_cast<int>(n), static_cast<int>(m), x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto m_checked = checked_int_argument(fn, "m", m);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            return format_scalar(
+                       legendre_pn(*n_checked, *m_checked, x)) +
+                              "\n";
         }
         if (fn == "lerch_phi") {
             double z = 0.0;
@@ -15183,7 +17300,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), a)) {
                 return std::unexpected(DomainError{fn, "expected lerch_phi(z,s,a)"});
             }
-            return std::to_string(lerch_phi(z, s, a)) + "\n";
+            return format_scalar(lerch_phi(z, s, a)) + "\n";
         }
         if (fn == "laguerre_ln") {
             double n = 0.0;
@@ -15193,9 +17310,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_ln(n,k,x)"});
             }
-            return std::to_string(
-                       laguerre_ln(static_cast<int>(n), static_cast<int>(k), x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto k_checked = checked_int_argument(fn, "k", k);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            return format_scalar(
+                       laguerre_ln(*n_checked, *k_checked, x)) +
+                              "\n";
         }
         if (fn == "chebyshev_tn") {
             double n = 0.0;
@@ -15205,9 +17330,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_tn(n,k,x)"});
             }
-            return std::to_string(
-                       chebyshev_tn(static_cast<int>(n), static_cast<int>(k), x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto k_checked = checked_int_argument(fn, "k", k);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            return format_scalar(
+                       chebyshev_tn(*n_checked, *k_checked, x)) +
+                              "\n";
         }
         if (fn == "chebyshev_un") {
             double n = 0.0;
@@ -15217,9 +17350,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_un(n,k,x)"});
             }
-            return std::to_string(
-                       chebyshev_un(static_cast<int>(n), static_cast<int>(k), x)) +
-                   "\n";
+            auto n_checked = checked_int_argument(fn, "n", n);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto k_checked = checked_int_argument(fn, "k", k);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            return format_scalar(
+                       chebyshev_un(*n_checked, *k_checked, x)) +
+                              "\n";
         }
         if (fn == "gegenbauer_c") {
             double n = 0.0;
@@ -15230,7 +17371,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected gegenbauer_c(n,lambda,x)"});
             }
-            return std::to_string(gegenbauer_c(static_cast<int>(n), lambda, x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(gegenbauer_c(*n_order, lambda, x)) + "\n";
         }
         if (fn == "laguerre_la") {
             double n = 0.0;
@@ -15241,7 +17386,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 !parse_number(trim(match[4].str()), x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_la(n,a,x)"});
             }
-            return std::to_string(laguerre_la(static_cast<int>(n), alpha, x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(laguerre_la(*n_order, alpha, x)) + "\n";
         }
         if (fn == "finance_bond_price") {
             double c = 0.0;
@@ -15252,12 +17401,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected finance_bond_price(c,y,n)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_bond_price", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_price(c, y, n)) + "\n";
+            return format_scalar(finance::bond_price(c, y, n)) + "\n";
         }
         if (fn == "cplx_poisson_kernel") {
             double theta = 0.0;
@@ -15269,7 +17422,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "cplx_poisson_kernel", "expected cplx_poisson_kernel(theta,phi,r)"});
             }
-            return std::to_string(cplx::poisson_kernel(theta, phi, r)) + "\n";
+            return format_scalar(cplx::poisson_kernel(theta, phi, r)) + "\n";
         }
         if (fn == "cplx_green_function_disk" || fn == "green_function_disk") {
             double zre = 0.0;
@@ -15292,7 +17445,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "cplx_cauchy_principal_value") {
             auto value = eval_cplx_cauchy_principal_value_call(
@@ -15313,9 +17466,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_mod_pow", "expected numthy_mod_pow(base,exp,mod)"});
             }
-            return std::to_string(numthy::mod_pow(static_cast<uint64_t>(base_d),
-                                                    static_cast<uint64_t>(exp_d),
-                                                    static_cast<uint64_t>(mod_d))) +
+            auto base_u64 = checked_u64_argument(fn, "base", base_d, kMaxU64AsDouble);
+            if (!base_u64) {
+                return std::unexpected(base_u64.error());
+            }
+            auto exp_u64 = checked_u64_argument(fn, "exp", exp_d, kMaxU64AsDouble);
+            if (!exp_u64) {
+                return std::unexpected(exp_u64.error());
+            }
+            auto mod_u64 = checked_u64_argument(fn, "mod", mod_d, kMaxU64AsDouble);
+            if (!mod_u64) {
+                return std::unexpected(mod_u64.error());
+            }
+            return format_scalar(numthy::mod_pow(*base_u64,
+                                                    *exp_u64,
+                                                    *mod_u64)) +
                    "\n";
         }
         if (fn == "numthy_discrete_log") {
@@ -15332,7 +17497,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!x) {
                 return std::unexpected(x.error());
             }
-            return std::to_string(*x) + "\n";
+            return format_scalar(*x) + "\n";
         }
         if (fn == "finance_bond_duration") {
             double c = 0.0;
@@ -15343,12 +17508,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_duration", "expected finance_bond_duration(c,y,n)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_bond_duration", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_duration(c, y, n)) + "\n";
+            return format_scalar(finance::bond_duration(c, y, n)) + "\n";
         }
         if (fn == "prob_norm_cdf") {
             double x = 0.0;
@@ -15359,7 +17528,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_cdf", "expected prob_norm_cdf(x,mu,sigma)"});
             }
-            return std::to_string(norm_cdf(x, mu, sigma)) + "\n";
+            return format_scalar(norm_cdf(x, mu, sigma)) + "\n";
         }
         if (fn == "jacobi_theta") {
             double n_d = 0.0;
@@ -15370,11 +17539,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"jacobi_theta", "expected jacobi_theta(n,z,tau)"});
             }
-            const int n = static_cast<int>(n_d);
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
             if (n_d != n) {
                 return std::unexpected(DomainError{"jacobi_theta", "expected integer n"});
             }
-            return std::to_string(jacobi_theta(n, z, tau)) + "\n";
+            return format_scalar(jacobi_theta(n, z, tau)) + "\n";
         }
         if (fn == "prob_norm_pdf") {
             double x = 0.0;
@@ -15385,7 +17558,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_pdf", "expected prob_norm_pdf(x,mu,sigma)"});
             }
-            return std::to_string(norm_pdf(x, mu, sigma)) + "\n";
+            return format_scalar(norm_pdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_norm_ppf") {
             double p = 0.0;
@@ -15396,7 +17569,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_norm_ppf", "expected prob_norm_ppf(p,mu,sigma)"});
             }
-            return std::to_string(norm_ppf(p, mu, sigma)) + "\n";
+            return format_scalar(norm_ppf(p, mu, sigma)) + "\n";
         }
         if (fn == "special_beta_inc_reg") {
             double x = 0.0;
@@ -15407,7 +17580,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_beta_inc_reg", "expected special_beta_inc_reg(x,a,b)"});
             }
-            return std::to_string(beta_inc_reg(x, a, b)) + "\n";
+            return format_scalar(beta_inc_reg(x, a, b)) + "\n";
         }
         if (fn == "special_beta_inc") {
             double x = 0.0;
@@ -15418,7 +17591,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_beta_inc", "expected special_beta_inc(x,a,b)"});
             }
-            return std::to_string(beta_inc(x, a, b)) + "\n";
+            return format_scalar(beta_inc(x, a, b)) + "\n";
         }
         if (fn == "special_voigt") {
             double x = 0.0;
@@ -15430,7 +17603,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_voigt", "expected special_voigt(x,sigma,gamma)"});
             }
-            return std::to_string(voigt(x, sigma, gamma)) + "\n";
+            return format_scalar(voigt(x, sigma, gamma)) + "\n";
         }
         if (fn == "special_pseudo_voigt_auto") {
             double x = 0.0;
@@ -15442,7 +17615,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "special_pseudo_voigt_auto", "expected special_pseudo_voigt_auto(x,sigma,gamma)"});
             }
-            return std::to_string(pseudo_voigt_auto(x, sigma, gamma)) + "\n";
+            return format_scalar(pseudo_voigt_auto(x, sigma, gamma)) + "\n";
         }
         if (fn == "weierstrass_p") {
             double z = 0.0;
@@ -15453,7 +17626,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_p", "expected weierstrass_p(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_p(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_p(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_pprime") {
             double z = 0.0;
@@ -15464,7 +17637,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_pprime", "expected weierstrass_pprime(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_pprime(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_pprime(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_zeta") {
             double z = 0.0;
@@ -15475,7 +17648,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_zeta", "expected weierstrass_zeta(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_zeta(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_zeta(z, g2, g3)) + "\n";
         }
         if (fn == "weierstrass_sigma") {
             double z = 0.0;
@@ -15486,7 +17659,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"weierstrass_sigma", "expected weierstrass_sigma(z,g2,g3)"});
             }
-            return std::to_string(weierstrass_sigma(z, g2, g3)) + "\n";
+            return format_scalar(weierstrass_sigma(z, g2, g3)) + "\n";
         }
         if (fn == "prob_uniform_pdf") {
             double x = 0.0;
@@ -15497,7 +17670,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_uniform_pdf", "expected prob_uniform_pdf(x,a,b)"});
             }
-            return std::to_string(uniform_pdf(x, a, b)) + "\n";
+            return format_scalar(uniform_pdf(x, a, b)) + "\n";
         }
         if (fn == "prob_gamma_ppf") {
             double p = 0.0;
@@ -15509,7 +17682,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_ppf", "expected prob_gamma_ppf(p,shape,scale)"});
             }
-            return std::to_string(gamma_ppf(p, shape, scale)) + "\n";
+            return format_scalar(gamma_ppf(p, shape, scale)) + "\n";
         }
         if (fn == "prob_beta_ppf") {
             double p = 0.0;
@@ -15521,7 +17694,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_beta_ppf", "expected prob_beta_ppf(p,alpha,beta)"});
             }
-            return std::to_string(beta_ppf(p, alpha, beta)) + "\n";
+            return format_scalar(beta_ppf(p, alpha, beta)) + "\n";
         }
         if (fn == "prob_f_pdf") {
             double x = 0.0;
@@ -15532,7 +17705,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_pdf", "expected prob_f_pdf(x,d1,d2)"});
             }
-            return std::to_string(f_pdf(x, d1, d2)) + "\n";
+            return format_scalar(f_pdf(x, d1, d2)) + "\n";
         }
         if (fn == "prob_f_ppf") {
             double p = 0.0;
@@ -15543,7 +17716,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_ppf", "expected prob_f_ppf(p,d1,d2)"});
             }
-            return std::to_string(f_ppf(p, d1, d2)) + "\n";
+            return format_scalar(f_ppf(p, d1, d2)) + "\n";
         }
         if (fn == "prob_lognormal_pdf") {
             double x = 0.0;
@@ -15554,7 +17727,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_pdf", "expected prob_lognormal_pdf(x,mu,sigma)"});
             }
-            return std::to_string(lognormal_pdf(x, mu, sigma)) + "\n";
+            return format_scalar(lognormal_pdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_lognormal_cdf") {
             double x = 0.0;
@@ -15565,7 +17738,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_cdf", "expected prob_lognormal_cdf(x,mu,sigma)"});
             }
-            return std::to_string(lognormal_cdf(x, mu, sigma)) + "\n";
+            return format_scalar(lognormal_cdf(x, mu, sigma)) + "\n";
         }
         if (fn == "prob_lognormal_ppf") {
             double p = 0.0;
@@ -15576,7 +17749,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_lognormal_ppf", "expected prob_lognormal_ppf(p,mu,sigma)"});
             }
-            return std::to_string(lognormal_ppf(p, mu, sigma)) + "\n";
+            return format_scalar(lognormal_ppf(p, mu, sigma)) + "\n";
         }
         if (fn == "prob_weibull_pdf") {
             double x = 0.0;
@@ -15587,7 +17760,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_pdf", "expected prob_weibull_pdf(x,lambda,k)"});
             }
-            return std::to_string(weibull_pdf(x, lambda, k)) + "\n";
+            return format_scalar(weibull_pdf(x, lambda, k)) + "\n";
         }
         if (fn == "prob_weibull_cdf") {
             double x = 0.0;
@@ -15598,7 +17771,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_cdf", "expected prob_weibull_cdf(x,lambda,k)"});
             }
-            return std::to_string(weibull_cdf(x, lambda, k)) + "\n";
+            return format_scalar(weibull_cdf(x, lambda, k)) + "\n";
         }
         if (fn == "prob_weibull_ppf") {
             double p = 0.0;
@@ -15609,7 +17782,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_weibull_ppf", "expected prob_weibull_ppf(p,lambda,k)"});
             }
-            return std::to_string(weibull_ppf(p, lambda, k)) + "\n";
+            return format_scalar(weibull_ppf(p, lambda, k)) + "\n";
         }
         if (fn == "prob_laplace_pdf") {
             double x = 0.0;
@@ -15620,7 +17793,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_pdf", "expected prob_laplace_pdf(x,mu,b)"});
             }
-            return std::to_string(laplace_pdf(x, mu, b)) + "\n";
+            return format_scalar(laplace_pdf(x, mu, b)) + "\n";
         }
         if (fn == "prob_laplace_cdf") {
             double x = 0.0;
@@ -15631,7 +17804,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_cdf", "expected prob_laplace_cdf(x,mu,b)"});
             }
-            return std::to_string(laplace_cdf(x, mu, b)) + "\n";
+            return format_scalar(laplace_cdf(x, mu, b)) + "\n";
         }
         if (fn == "prob_laplace_ppf") {
             double p = 0.0;
@@ -15642,7 +17815,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_laplace_ppf", "expected prob_laplace_ppf(p,mu,b)"});
             }
-            return std::to_string(laplace_ppf(p, mu, b)) + "\n";
+            return format_scalar(laplace_ppf(p, mu, b)) + "\n";
         }
         if (fn == "prob_logistic_pdf") {
             double x = 0.0;
@@ -15653,7 +17826,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_pdf", "expected prob_logistic_pdf(x,mu,s)"});
             }
-            return std::to_string(logistic_pdf(x, mu, s)) + "\n";
+            return format_scalar(logistic_pdf(x, mu, s)) + "\n";
         }
         if (fn == "prob_logistic_cdf") {
             double x = 0.0;
@@ -15664,7 +17837,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_cdf", "expected prob_logistic_cdf(x,mu,s)"});
             }
-            return std::to_string(logistic_cdf(x, mu, s)) + "\n";
+            return format_scalar(logistic_cdf(x, mu, s)) + "\n";
         }
         if (fn == "prob_logistic_ppf") {
             double p = 0.0;
@@ -15675,7 +17848,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_logistic_ppf", "expected prob_logistic_ppf(p,mu,s)"});
             }
-            return std::to_string(logistic_ppf(p, mu, s)) + "\n";
+            return format_scalar(logistic_ppf(p, mu, s)) + "\n";
         }
         if (fn == "prob_gumbel_pdf") {
             double x = 0.0;
@@ -15686,7 +17859,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_pdf", "expected prob_gumbel_pdf(x,mu,beta)"});
             }
-            return std::to_string(gumbel_pdf(x, mu, beta)) + "\n";
+            return format_scalar(gumbel_pdf(x, mu, beta)) + "\n";
         }
         if (fn == "prob_gumbel_cdf") {
             double x = 0.0;
@@ -15697,7 +17870,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_cdf", "expected prob_gumbel_cdf(x,mu,beta)"});
             }
-            return std::to_string(gumbel_cdf(x, mu, beta)) + "\n";
+            return format_scalar(gumbel_cdf(x, mu, beta)) + "\n";
         }
         if (fn == "prob_gumbel_ppf") {
             double p = 0.0;
@@ -15708,7 +17881,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gumbel_ppf", "expected prob_gumbel_ppf(p,mu,beta)"});
             }
-            return std::to_string(gumbel_ppf(p, mu, beta)) + "\n";
+            return format_scalar(gumbel_ppf(p, mu, beta)) + "\n";
         }
         if (fn == "prob_cauchy_pdf") {
             double x = 0.0;
@@ -15719,7 +17892,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_pdf", "expected prob_cauchy_pdf(x,x0,gamma)"});
             }
-            return std::to_string(cauchy_pdf(x, x0, gamma)) + "\n";
+            return format_scalar(cauchy_pdf(x, x0, gamma)) + "\n";
         }
         if (fn == "prob_cauchy_cdf") {
             double x = 0.0;
@@ -15730,7 +17903,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_cdf", "expected prob_cauchy_cdf(x,x0,gamma)"});
             }
-            return std::to_string(cauchy_cdf(x, x0, gamma)) + "\n";
+            return format_scalar(cauchy_cdf(x, x0, gamma)) + "\n";
         }
         if (fn == "prob_cauchy_ppf") {
             double p = 0.0;
@@ -15741,7 +17914,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_cauchy_ppf", "expected prob_cauchy_ppf(p,x0,gamma)"});
             }
-            return std::to_string(cauchy_ppf(p, x0, gamma)) + "\n";
+            return format_scalar(cauchy_ppf(p, x0, gamma)) + "\n";
         }
         if (fn == "prob_pareto_pdf") {
             double x = 0.0;
@@ -15752,7 +17925,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_pdf", "expected prob_pareto_pdf(x,x_m,alpha)"});
             }
-            return std::to_string(pareto_pdf(x, x_m, alpha)) + "\n";
+            return format_scalar(pareto_pdf(x, x_m, alpha)) + "\n";
         }
         if (fn == "prob_pareto_cdf") {
             double x = 0.0;
@@ -15763,7 +17936,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_cdf", "expected prob_pareto_cdf(x,x_m,alpha)"});
             }
-            return std::to_string(pareto_cdf(x, x_m, alpha)) + "\n";
+            return format_scalar(pareto_cdf(x, x_m, alpha)) + "\n";
         }
         if (fn == "prob_pareto_ppf") {
             double p = 0.0;
@@ -15774,7 +17947,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pareto_ppf", "expected prob_pareto_ppf(p,x_m,alpha)"});
             }
-            return std::to_string(pareto_ppf(p, x_m, alpha)) + "\n";
+            return format_scalar(pareto_ppf(p, x_m, alpha)) + "\n";
         }
         if (fn == "prob_gamma_cdf") {
             double x = 0.0;
@@ -15785,7 +17958,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_gamma_cdf", "expected prob_gamma_cdf(x,shape,scale)"});
             }
-            return std::to_string(gamma_cdf(x, shape, scale)) + "\n";
+            return format_scalar(gamma_cdf(x, shape, scale)) + "\n";
         }
         if (fn == "prob_beta_cdf") {
             double x = 0.0;
@@ -15796,7 +17969,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_beta_cdf", "expected prob_beta_cdf(x,alpha,beta)"});
             }
-            return std::to_string(beta_cdf(x, alpha, beta)) + "\n";
+            return format_scalar(beta_cdf(x, alpha, beta)) + "\n";
         }
         if (fn == "prob_f_cdf") {
             double x = 0.0;
@@ -15807,7 +17980,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_f_cdf", "expected prob_f_cdf(x,d1,d2)"});
             }
-            return std::to_string(f_cdf(x, d1, d2)) + "\n";
+            return format_scalar(f_cdf(x, d1, d2)) + "\n";
         }
         if (fn == "finance_bond_modified_duration") {
             double c = 0.0;
@@ -15819,13 +17992,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_bond_modified_duration",
                     "expected finance_bond_modified_duration(c,y,n)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(DomainError{
                     "finance_bond_modified_duration",
                     "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_modified_duration(c, y, n)) + "\n";
+            return format_scalar(finance::bond_modified_duration(c, y, n)) + "\n";
         }
         if (fn == "finance_bond_convexity") {
             double c = 0.0;
@@ -15836,12 +18013,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_bond_convexity", "expected finance_bond_convexity(c,y,n)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_bond_convexity", "expected non-negative integer periods n"});
             }
-            return std::to_string(finance::bond_convexity(c, y, n)) + "\n";
+            return format_scalar(finance::bond_convexity(c, y, n)) + "\n";
         }
         if (fn == "finance_bond_ytm") {
             double price = 0.0;
@@ -15856,7 +18037,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!ytm) {
                 return std::unexpected(ytm.error());
             }
-            return std::to_string(*ytm) + "\n";
+            return format_scalar(*ytm) + "\n";
         }
         if (fn == "cplx_poisson_kernel") {
             double theta = 0.0;
@@ -15868,7 +18049,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "cplx_poisson_kernel", "expected cplx_poisson_kernel(theta,phi,r)"});
             }
-            return std::to_string(cplx::poisson_kernel(theta, phi, r)) + "\n";
+            return format_scalar(cplx::poisson_kernel(theta, phi, r)) + "\n";
         }
         if (fn == "finance_compound") {
             double principal = 0.0;
@@ -15880,12 +18061,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_compound", "expected finance_compound(principal,rate,n_periods)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_compound", "expected non-negative integer periods n_periods"});
             }
-            return std::to_string(finance::compound(principal, rate, n)) + "\n";
+            return format_scalar(finance::compound(principal, rate, n)) + "\n";
         }
         if (fn == "finance_continuous_compound") {
             double principal = 0.0;
@@ -15898,7 +18083,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "finance_continuous_compound",
                     "expected finance_continuous_compound(principal,rate,t)"});
             }
-            return std::to_string(finance::continuous_compound(principal, rate, t)) + "\n";
+            return format_scalar(finance::continuous_compound(principal, rate, t)) + "\n";
         }
         if (fn == "finance_capm") {
             double risk_free = 0.0;
@@ -15910,7 +18095,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "finance_capm", "expected finance_capm(risk_free,beta,market_return)"});
             }
-            return std::to_string(finance::capm(risk_free, beta, market_return)) + "\n";
+            return format_scalar(finance::capm(risk_free, beta, market_return)) + "\n";
         }
         if (fn == "poly_bernstein") {
             double n_d = 0.0;
@@ -15922,17 +18107,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"poly_bernstein", "expected poly_bernstein(n,i,x)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"poly_bernstein", "expected non-negative integer n"});
             }
-            const int i = static_cast<int>(i_d);
-            if (i < 0 || i_d != i) {
+            auto i_checked = checked_int_argument(fn, "i", i_d);
+            if (!i_checked) {
+                return std::unexpected(i_checked.error());
+            }
+            const int i = *i_checked;
+            if (i < 0) {
                 return std::unexpected(
                     DomainError{"poly_bernstein", "expected non-negative integer i"});
             }
-            return std::to_string(poly::bernstein(n, i, x)) + "\n";
+            return format_scalar(poly::bernstein(n, i, x)) + "\n";
         }
         if (fn == "finance_pv") {
             double rate = 0.0;
@@ -15943,12 +18136,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected finance_pv(rate,n,pmt)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_pv", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pv(rate, n, pmt)) + "\n";
+            return format_scalar(finance::pv(rate, n, pmt)) + "\n";
         }
         if (fn == "finance_fv_annuity") {
             double rate = 0.0;
@@ -15959,12 +18156,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected finance_fv_annuity(rate,n,pmt)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_fv_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::fv_annuity(rate, n, pmt)) + "\n";
+            return format_scalar(finance::fv_annuity(rate, n, pmt)) + "\n";
         }
         if (fn == "finance_pmt_annuity") {
             double rate = 0.0;
@@ -15975,12 +18176,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected finance_pmt_annuity(rate,n,pv0)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0) {
                 return std::unexpected(
                     DomainError{"finance_pmt_annuity", "expected non-negative integer n"});
             }
-            return std::to_string(finance::pmt_annuity(rate, n, pv0)) + "\n";
+            return format_scalar(finance::pmt_annuity(rate, n, pv0)) + "\n";
         }
         if (fn == "quantum_entanglement_entropy") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16002,9 +18207,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_entanglement_entropy",
                     "expected quantum_entanglement_entropy(psi, dim_a, dim_b)"});
             }
-            const int dim_a = static_cast<int>(dim_a_d);
-            const int dim_b = static_cast<int>(dim_b_d);
-            if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+            auto dim_a_checked = checked_int_argument(fn, "dim_a", dim_a_d);
+            if (!dim_a_checked) {
+                return std::unexpected(dim_a_checked.error());
+            }
+            const int dim_a = *dim_a_checked;
+            auto dim_b_checked = checked_int_argument(fn, "dim_b", dim_b_d);
+            if (!dim_b_checked) {
+                return std::unexpected(dim_b_checked.error());
+            }
+            const int dim_b = *dim_b_checked;
+            if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                 return std::unexpected(DomainError{
                     "quantum_entanglement_entropy", "expected positive integer dim_a and dim_b"});
             }
@@ -16012,7 +18225,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_wigner") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16036,7 +18249,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_husimi") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16061,7 +18274,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_schmidt_rank") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16083,9 +18296,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_schmidt_rank",
                     "expected quantum_schmidt_rank(psi, dim_a, dim_b)"});
             }
-            const int dim_a = static_cast<int>(dim_a_d);
-            const int dim_b = static_cast<int>(dim_b_d);
-            if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+            auto dim_a_checked = checked_int_argument(fn, "dim_a", dim_a_d);
+            if (!dim_a_checked) {
+                return std::unexpected(dim_a_checked.error());
+            }
+            const int dim_a = *dim_a_checked;
+            auto dim_b_checked = checked_int_argument(fn, "dim_b", dim_b_d);
+            if (!dim_b_checked) {
+                return std::unexpected(dim_b_checked.error());
+            }
+            const int dim_b = *dim_b_checked;
+            if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                 return std::unexpected(DomainError{
                     "quantum_schmidt_rank", "expected positive integer dim_a and dim_b"});
             }
@@ -16093,7 +18314,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_schmidt_number") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16115,9 +18336,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_schmidt_number",
                     "expected quantum_schmidt_number(psi, dim_a, dim_b)"});
             }
-            const int dim_a = static_cast<int>(dim_a_d);
-            const int dim_b = static_cast<int>(dim_b_d);
-            if (dim_a < 1 || dim_b < 1 || dim_a_d != dim_a || dim_b_d != dim_b) {
+            auto dim_a_checked = checked_int_argument(fn, "dim_a", dim_a_d);
+            if (!dim_a_checked) {
+                return std::unexpected(dim_a_checked.error());
+            }
+            const int dim_a = *dim_a_checked;
+            auto dim_b_checked = checked_int_argument(fn, "dim_b", dim_b_d);
+            if (!dim_b_checked) {
+                return std::unexpected(dim_b_checked.error());
+            }
+            const int dim_b = *dim_b_checked;
+            if (dim_a < 1 || dim_b < 1 || dim_b_d != dim_b) {
                 return std::unexpected(DomainError{
                     "quantum_schmidt_number", "expected positive integer dim_a and dim_b"});
             }
@@ -16125,7 +18354,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "quantum_uncertainty") {
             const auto call_args = split_call_args(cmd);
@@ -16156,7 +18385,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "info_sample_entropy") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16176,8 +18405,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "info_sample_entropy", "expected info_sample_entropy(x, m, r)"});
             }
-            const int m = static_cast<int>(m_d);
-            if (m < 1 || m_d != m) {
+            auto m_checked = checked_int_argument(fn, "m", m_d);
+            if (!m_checked) {
+                return std::unexpected(m_checked.error());
+            }
+            const int m = *m_checked;
+            if (m < 1) {
                 return std::unexpected(DomainError{
                     "info_sample_entropy", "expected positive integer m"});
             }
@@ -16185,7 +18418,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "finance_treynor") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16211,7 +18444,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_ztest") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16236,7 +18469,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_ks_norm") {
             auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16261,7 +18494,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "stats_bootstrap_mean") {
             const auto call_args = split_call_args(cmd);
@@ -16290,7 +18523,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "stats_bootstrap_mean",
                         "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                 }
-                n_boot = static_cast<int>(n_boot_d);
+                auto n_boot_checked = checked_int_argument(fn, "n_boot", n_boot_d);
+                if (!n_boot_checked) {
+                    return std::unexpected(n_boot_checked.error());
+                }
+                n_boot = *n_boot_checked;
                 if (n_boot < 1 || n_boot_d != n_boot) {
                     return std::unexpected(DomainError{
                         "stats_bootstrap_mean", "expected positive integer n_boot"});
@@ -16303,17 +18540,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "stats_bootstrap_mean",
                         "expected stats_bootstrap_mean(x[, n_boot[, seed]])"});
                 }
-                if (seed_d < 0.0 || seed_d != std::floor(seed_d)) {
-                    return std::unexpected(DomainError{
-                        "stats_bootstrap_mean", "expected non-negative integer seed"});
+                auto seed_arg = checked_seed_argument("stats_bootstrap_mean", "seed", seed_d);
+                if (!seed_arg) {
+                    return std::unexpected(seed_arg.error());
                 }
-                seed = static_cast<unsigned>(seed_d);
+                seed = *seed_arg;
             }
             auto value = eval_stats_bootstrap_mean(*x_m, n_boot, seed);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
     }
 
@@ -16359,8 +18596,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!C) {
                     return std::unexpected(C.error());
                 }
+                // A matrix call written without a target prints under `_` and stores there, which is
+                // what the registry fallback does for every other matrix-returning callee and what
+                // the documentation says. These few callees were given hand-written branches before
+                // that fallback existed, and the branches shadow it: they printed under an invented
+                // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                // could be both.
+                state_.scalars.erase("_");
+                state_.matrices["_"] = *C;
                 std::ostringstream out;
-                out << "C =\n";
+                out << "_ =\n";
                 print_matrix(out, *C);
                 return out.str();
             }
@@ -16389,10 +18635,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "quantum_partial_trace",
                         "expected quantum_partial_trace(rho, d1, d2, subsystem)"});
                 }
-                const int d1 = static_cast<int>(d1_d);
-                const int d2 = static_cast<int>(d2_d);
-                const int subsystem = static_cast<int>(sub_d);
-                if (d1 < 1 || d2 < 1 || d1_d != d1 || d2_d != d2 ||
+                auto d1_checked = checked_int_argument(fn, "d1", d1_d);
+                if (!d1_checked) {
+                    return std::unexpected(d1_checked.error());
+                }
+                const int d1 = *d1_checked;
+                auto d2_checked = checked_int_argument(fn, "d2", d2_d);
+                if (!d2_checked) {
+                    return std::unexpected(d2_checked.error());
+                }
+                const int d2 = *d2_checked;
+                auto subsystem_checked = checked_int_argument(fn, "subsystem", sub_d);
+                if (!subsystem_checked) {
+                    return std::unexpected(subsystem_checked.error());
+                }
+                const int subsystem = *subsystem_checked;
+                if (d1 < 1 || d2 < 1 || d1_d != d1 ||
                     (subsystem != 0 && subsystem != 1) || sub_d != subsystem) {
                     return std::unexpected(DomainError{
                         "quantum_partial_trace",
@@ -16417,8 +18675,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "quantum_grover_search",
                         "expected quantum_grover_search(n_qubits, marked_indices[, n_iterations])"});
                 }
-                const int n_qubits = static_cast<int>(n_qubits_d);
-                if (n_qubits < 1 || n_qubits_d != n_qubits) {
+                auto n_qubits_checked = checked_int_argument(fn, "n_qubits", n_qubits_d);
+                if (!n_qubits_checked) {
+                    return std::unexpected(n_qubits_checked.error());
+                }
+                const int n_qubits = *n_qubits_checked;
+                if (n_qubits < 1) {
                     return std::unexpected(DomainError{
                         "quantum_grover_search", "expected positive integer n_qubits"});
                 }
@@ -16446,7 +18708,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             "quantum_grover_search",
                             "expected quantum_grover_search(n_qubits, marked_indices[, n_iterations])"});
                     }
-                    n_iterations = static_cast<int>(iter_d);
+                    auto n_iterations_checked = checked_int_argument(fn, "n_iterations", iter_d);
+                    if (!n_iterations_checked) {
+                        return std::unexpected(n_iterations_checked.error());
+                    }
+                    n_iterations = *n_iterations_checked;
                     if (n_iterations < 0 || iter_d != n_iterations) {
                         return std::unexpected(DomainError{
                             "quantum_grover_search",
@@ -16478,15 +18744,27 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         "combo_unrank_combination",
                         "expected combo_unrank_combination(n,k,rank)"});
                 }
-                const int n = static_cast<int>(n_d);
-                const int k = static_cast<int>(k_d);
-                if (n < 0 || k < 0 || n_d != n || k_d != k || rank_d < 0.0 ||
+                auto n_checked = checked_int_argument(fn, "n", n_d);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
+                auto k_checked = checked_int_argument(fn, "k", k_d);
+                if (!k_checked) {
+                    return std::unexpected(k_checked.error());
+                }
+                const int k = *k_checked;
+                if (n < 0 || k < 0 || rank_d < 0.0 ||
                     std::floor(rank_d) != rank_d) {
                     return std::unexpected(DomainError{
                         "combo_unrank_combination",
                         "expected non-negative integer n, k and rank"});
                 }
-                auto value = eval_combo_unrank_combination(n, k, static_cast<uint64_t>(rank_d));
+                auto rank_u64 = checked_u64_argument(fn, "rank", rank_d, kMaxU64AsDouble);
+                if (!rank_u64) {
+                    return std::unexpected(rank_u64.error());
+                }
+                auto value = eval_combo_unrank_combination(n, k, *rank_u64);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
@@ -16524,10 +18802,18 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         fn,
                         "expected " + fn + "(H, psi0, t0, t1, n_steps)"});
                 }
-                const int n_steps = static_cast<int>(n_steps_d);
-                if (n_steps < 0 || n_steps_d != n_steps) {
-                    return std::unexpected(DomainError{fn, "expected non-negative integer n_steps"});
+                // The propagator is applied n_steps times to an H-sized state, so the
+                // cost is their product.
+                // quantum_schrodinger_final(eye(8), ones(8,1), 0, 1, 1e7) ran for 15.7 s,
+                // and quantum_schrodinger spent 24 s computing a trajectory before
+                // rejecting it as too large to print.
+                WorkBudget budget(fn, 25.0);
+                budget.charge(H_m->rows() * H_m->cols());
+                auto n_steps_checked = budget.take("n_steps", n_steps_d);
+                if (!n_steps_checked) {
+                    return std::unexpected(n_steps_checked.error());
                 }
+                const int n_steps = *n_steps_checked;
                 if (fn == "quantum_schrodinger_final") {
                     auto result = eval_quantum_schrodinger_final(*H_m, *psi0_m, t0, t1, n_steps);
                     if (!result) {
@@ -16580,12 +18866,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
         if (fn == "info_joint_entropy" || fn == "info_conditional_entropy" ||
             fn == "info_sample_entropy" || fn == "finance_treynor" ||
             fn == "geo_point_in_polygon" ||
-            fn == "geo_kdtree_nearest" ||
+            fn == "geo_kdtree_nearest" || fn == "mat_at" ||
             fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
             fn == "topo_vietoris_rips_betti0" || fn == "topo_betti_curve" ||
             fn == "control_bode_mag_db" || fn == "control_bode_phase" ||
@@ -16624,7 +18910,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     } else if (fn == "control_bode_phase") {
                         value = eval_control_bode_phase(*arg_a_m, *arg_b_m, arg2);
                     } else if (fn == "topo_wasserstein_distance") {
-                        const int dim = static_cast<int>(arg2);
+                        auto dim_checked = checked_int_argument(fn, "dim", arg2);
+                        if (!dim_checked) {
+                            return std::unexpected(dim_checked.error());
+                        }
+                        const int dim = *dim_checked;
                         if (dim < 0 || arg2 != dim) {
                             return std::unexpected(DomainError{
                                 "topo_wasserstein_distance",
@@ -16632,7 +18922,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                         }
                         value = eval_topo_wasserstein_distance(*arg_a_m, *arg_b_m, dim);
                     } else {
-                        const int dim = static_cast<int>(arg2);
+                        auto dim_checked = checked_int_argument(fn, "dim", arg2);
+                        if (!dim_checked) {
+                            return std::unexpected(dim_checked.error());
+                        }
+                        const int dim = *dim_checked;
                         if (dim < 0 || arg2 != dim) {
                             return std::unexpected(DomainError{
                                 "topo_bottleneck_distance",
@@ -16643,7 +18937,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "geo_point_in_polygon") {
                     double px = 0.0;
@@ -16669,7 +18963,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
+                }
+                if (fn == "mat_at") {
+                    auto index_arg = [this](const std::string& text) -> Result<double> {
+                        double literal = 0.0;
+                        if (parse_number(text, literal)) {
+                            return literal;
+                        }
+                        auto expr = eval_scalar_expr(state_, text);
+                        if (!expr) {
+                            return std::unexpected(
+                                DomainError{"mat_at", "expected mat_at(A, i, j)"});
+                        }
+                        return *expr;
+                    };
+                    auto i_arg = index_arg(trim_copy(call_args->at(1)));
+                    if (!i_arg) {
+                        return std::unexpected(i_arg.error());
+                    }
+                    auto j_arg = index_arg(trim_copy(call_args->at(2)));
+                    if (!j_arg) {
+                        return std::unexpected(j_arg.error());
+                    }
+                    const double i = *i_arg;
+                    const double j = *j_arg;
+                    auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
+                        auto matrix = parse_matrix(text);
+                        if (!matrix) {
+                            matrix = resolve_matrix(text);
+                        }
+                        return matrix;
+                    };
+                    auto A_m = resolve_arg(call_args->at(0));
+                    if (!A_m) {
+                        return std::unexpected(A_m.error());
+                    }
+                    auto value = eval_mat_at(*A_m, i, j);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "geo_kdtree_nearest") {
                     double qx = 0.0;
@@ -16695,7 +19029,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
                     auto matrix = parse_matrix(text);
@@ -16717,8 +19051,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                             "info_sample_entropy",
                             "expected info_sample_entropy(x, m, r)"});
                     }
-                    const int m = static_cast<int>(m_d);
-                    if (m < 1 || m_d != m) {
+                    auto m_checked = checked_int_argument(fn, "m", m_d);
+                    if (!m_checked) {
+                        return std::unexpected(m_checked.error());
+                    }
+                    const int m = *m_checked;
+                    if (m < 1) {
                         return std::unexpected(DomainError{
                             "info_sample_entropy", "expected positive integer m"});
                     }
@@ -16726,7 +19064,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_treynor") {
                     double risk_free = 0.0;
@@ -16749,7 +19087,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "cplx_power_series_eval" || fn == "cplx_winding_number" ||
                     fn == "topo_vietoris_rips_betti0") {
@@ -16775,7 +19113,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     } else if (fn == "cplx_winding_number") {
                         value = eval_cplx_winding_number(*matrix_m, arg1, arg2);
                     } else {
-                        const int max_dim = static_cast<int>(arg2);
+                        auto max_dim_checked = checked_int_argument(fn, "max_dim", arg2);
+                        if (!max_dim_checked) {
+                            return std::unexpected(max_dim_checked.error());
+                        }
+                        const int max_dim = *max_dim_checked;
                         if (max_dim < 0 || arg2 != max_dim) {
                             return std::unexpected(DomainError{
                                 "topo_vietoris_rips_betti0",
@@ -16786,7 +19128,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 double rows_d = 0.0;
                 double cols_d = 0.0;
@@ -16795,9 +19137,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return std::unexpected(DomainError{
                         fn, "expected " + fn + "(joint, rows, cols)"});
                 }
-                const int rows = static_cast<int>(rows_d);
-                const int cols = static_cast<int>(cols_d);
-                if (rows < 1 || cols < 1 || rows_d != rows || cols_d != cols) {
+                auto rows_checked = checked_int_argument(fn, "rows", rows_d);
+                if (!rows_checked) {
+                    return std::unexpected(rows_checked.error());
+                }
+                const int rows = *rows_checked;
+                auto cols_checked = checked_int_argument(fn, "cols", cols_d);
+                if (!cols_checked) {
+                    return std::unexpected(cols_checked.error());
+                }
+                const int cols = *cols_checked;
+                if (rows < 1 || cols < 1 || cols_d != cols) {
                     return std::unexpected(DomainError{fn, "expected positive integer rows and cols"});
                 }
                 Result<double> value;
@@ -16809,7 +19159,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
@@ -16855,7 +19205,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (call_args && call_args->size() == 2) {
                 auto resolve_arg = [this](const std::string& text) -> Result<Matrix<double>> {
@@ -16898,7 +19248,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "combo_rank_combination") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 0 || t != n) {
                         return std::unexpected(DomainError{
                             "combo_rank_combination", "expected non-negative integer n"});
@@ -16907,10 +19261,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "combo_next_comb") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 0 || t != n) {
                         return std::unexpected(DomainError{
                             "combo_next_comb", "expected non-negative integer n"});
@@ -16925,7 +19283,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "combo_prev_comb") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 0 || t != n) {
                         return std::unexpected(DomainError{
                             "combo_prev_comb", "expected non-negative integer n"});
@@ -16940,7 +19302,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "signal_moving_average") {
-                    const int window = static_cast<int>(t);
+                    auto window_checked = checked_int_argument(fn, "window", t);
+                    if (!window_checked) {
+                        return std::unexpected(window_checked.error());
+                    }
+                    const int window = *window_checked;
                     if (window < 1 || t != window) {
                         return std::unexpected(DomainError{
                             "signal_moving_average", "expected positive integer window"});
@@ -16980,7 +19346,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return format_labeled_matrix(label, *value);
                 }
                 if (fn == "graph_bfs") {
-                    const int source = static_cast<int>(t);
+                    auto source_checked = checked_int_argument(fn, "source", t);
+                    if (!source_checked) {
+                        return std::unexpected(source_checked.error());
+                    }
+                    const int source = *source_checked;
                     if (source < 0 || t != source) {
                         return std::unexpected(DomainError{
                             "graph_bfs", "expected non-negative integer source"});
@@ -16995,7 +19365,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "graph_dfs") {
-                    const int source = static_cast<int>(t);
+                    auto source_checked = checked_int_argument(fn, "source", t);
+                    if (!source_checked) {
+                        return std::unexpected(source_checked.error());
+                    }
+                    const int source = *source_checked;
                     if (source < 0 || t != source) {
                         return std::unexpected(DomainError{
                             "graph_dfs", "expected non-negative integer source"});
@@ -17010,7 +19384,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "graph_k_core_subgraph") {
-                    const int k = static_cast<int>(t);
+                    auto k_checked = checked_int_argument(fn, "k", t);
+                    if (!k_checked) {
+                        return std::unexpected(k_checked.error());
+                    }
+                    const int k = *k_checked;
                     if (t != k) {
                         return std::unexpected(DomainError{
                             "graph_k_core_subgraph", "expected integer k"});
@@ -17025,7 +19403,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "graph_bipartite_match") {
-                    const int left_size = static_cast<int>(t);
+                    auto left_size_checked = checked_int_argument(fn, "left_size", t);
+                    if (!left_size_checked) {
+                        return std::unexpected(left_size_checked.error());
+                    }
+                    const int left_size = *left_size_checked;
                     if (left_size < 0 || t != left_size) {
                         return std::unexpected(DomainError{
                             "graph_bipartite_match", "expected non-negative integer left_size"});
@@ -17034,52 +19416,56 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_percentile") {
                     auto value = eval_stats_percentile(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_historical_var") {
                     auto value = eval_finance_historical_var(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_historical_cvar") {
                     auto value = eval_finance_historical_cvar(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_ttest") {
                     auto value = eval_stats_ttest(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_trimmed_mean") {
                     auto value = eval_stats_trimmed_mean(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_vif" || fn == "stats_variance_inflation_factor") {
                     auto value = eval_stats_vif(*ctrl, t, fn.c_str());
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_acf") {
-                    const int max_lag = static_cast<int>(t);
+                    auto max_lag_checked = checked_int_argument(fn, "max_lag", t);
+                    if (!max_lag_checked) {
+                        return std::unexpected(max_lag_checked.error());
+                    }
+                    const int max_lag = *max_lag_checked;
                     if (max_lag < 0 || t != max_lag) {
                         return std::unexpected(DomainError{
                             "stats_acf", "expected non-negative integer max_lag"});
@@ -17094,7 +19480,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "fft_irfft") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 1 || t != n) {
                         return std::unexpected(DomainError{
                             "fft_irfft", "expected positive integer n"});
@@ -17139,7 +19529,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "poly_pow") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 0 || t != n) {
                         return std::unexpected(
                             DomainError{"poly_pow", "expected non-negative integer n"});
@@ -17154,7 +19548,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     return out.str();
                 }
                 if (fn == "poly_cheb_expand") {
-                    const int n = static_cast<int>(t);
+                    auto n_checked = checked_int_argument(fn, "n", t);
+                    if (!n_checked) {
+                        return std::unexpected(n_checked.error());
+                    }
+                    const int n = *n_checked;
                     if (n < 0 || t != n) {
                         return std::unexpected(
                             DomainError{"poly_cheb_expand", "expected non-negative integer n"});
@@ -17173,14 +19571,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "poly_cheb_eval") {
                     auto value = eval_poly_cheb_eval(*ctrl, t);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 Result<double> value;
                 if (fn == "geo_bezier_eval_x") {
@@ -17191,7 +19589,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
         }
     }
@@ -17215,6 +19613,241 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 auto arg_b_m = resolve_arg(call_args->at(1));
                 if (!arg_b_m) {
                     return std::unexpected(arg_b_m.error());
+                }
+                // Printing (no-assignment) forms of the two-matrix ML predictors,
+                // transforms and the anticommutator. is_matrix_dual_matrix_call_callee
+                // already claimed these, so without a branch here the call fell out of
+                // this chain and was retried as a single matrix named "X, model",
+                // reporting "unknown matrix" for a call that works when assigned.
+                if (fn == "ml_linear_fit") {
+                    auto value = eval_ml_linear_fit(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "model =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_linear_predict") {
+                    auto value = eval_ml_linear_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_ridge_predict") {
+                    auto value = eval_ml_ridge_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_logistic_fit") {
+                    auto value = eval_ml_logistic_fit(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "model =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_logistic_predict") {
+                    auto value = eval_ml_logistic_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lasso_predict") {
+                    auto value = eval_ml_lasso_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_elastic_net_predict") {
+                    auto value = eval_ml_elastic_net_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_knn_predict") {
+                    auto value = eval_ml_knn_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_naive_bayes_predict") {
+                    auto value = eval_ml_naive_bayes_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lda_predict") {
+                    auto value = eval_ml_lda_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_lda_transform") {
+                    auto value = eval_ml_lda_transform(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Z =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_qda_predict") {
+                    auto value = eval_ml_qda_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_svm_predict") {
+                    auto value = eval_ml_svm_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_decision_tree_predict") {
+                    auto value = eval_ml_decision_tree_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_random_forest_predict") {
+                    auto value = eval_ml_random_forest_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_adaboost_predict") {
+                    auto value = eval_ml_adaboost_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gradient_boosting_predict") {
+                    auto value = eval_ml_gradient_boosting_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "pred =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_kmeans_predict") {
+                    auto value = eval_ml_kmeans_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "labels =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_pca_transform") {
+                    auto value = eval_ml_pca_transform(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "Z =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gmm_predict") {
+                    auto value = eval_ml_gmm_predict(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "labels =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_gmm_predict_proba") {
+                    auto value = eval_ml_gmm_predict_proba(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "proba =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "ml_isolation_forest_score") {
+                    auto value = eval_ml_isolation_forest_score(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "score =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "quantum_anticommutator") {
+                    auto value = eval_quantum_anticommutator(*arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "anticomm =\n";
+                    print_matrix(out, *value);
+                    return out.str();
                 }
                 if (fn == "control_lyap") {
                     auto value = eval_control_lyap(*arg_a_m, *arg_b_m);
@@ -17441,8 +20074,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *value;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -17481,8 +20123,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *value;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -17513,6 +20164,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     }
                     std::ostringstream out;
                     out << "composed =\n";
+                    print_matrix(out, *value);
+                    return out.str();
+                }
+                if (fn == "geo_boolean_union" || fn == "geo_boolean_intersect" ||
+                    fn == "geo_boolean_diff" || fn == "geo_boolean_xor") {
+                    auto value = eval_geo_poly_boolean_general(fn.c_str(), *arg_a_m, *arg_b_m);
+                    if (!value) {
+                        return std::unexpected(value.error());
+                    }
+                    std::ostringstream out;
+                    out << "contours =\n";
                     print_matrix(out, *value);
                     return out.str();
                 }
@@ -17718,21 +20380,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_correlation") {
                     auto value = eval_stats_weighted_correlation(*arg_a_m, *arg_b_m, *arg_c_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "izaac_vrf_verify") {
                     auto value = eval_izaac_vrf_verify(*arg_a_m, *arg_b_m, *arg_c_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
             }
         }
@@ -17759,266 +20421,266 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_kp") {
                     auto value = eval_control_pidtune_kp(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_ki") {
                     auto value = eval_control_pidtune_ki(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_pidtune_kd") {
                     auto value = eval_control_pidtune_kd(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_impulse_final") {
                     auto value = eval_control_impulse_final(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_dcgain") {
                     auto value = eval_control_dcgain(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_phase_margin") {
                     auto value = eval_control_phase_margin(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_gain_margin") {
                     auto value = eval_control_gain_margin(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_stable") {
                     auto value = eval_control_is_stable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_controllable") {
                     auto value = eval_control_is_controllable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "control_is_observable") {
                     auto value = eval_control_is_observable(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "numthy_crt") {
                     auto value = eval_numthy_crt(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_kl_divergence") {
                     auto value = eval_info_kl_divergence(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "tensorops_inner") {
                     auto value = eval_tensorops_inner(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_portfolio_return") {
                     auto value = eval_finance_portfolio_return(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_information_ratio") {
                     auto value = eval_finance_information_ratio(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "finance_portfolio_variance") {
                     auto value = eval_finance_portfolio_variance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_cross_entropy") {
                     auto value = eval_info_cross_entropy(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_js_divergence") {
                     auto value = eval_info_js_divergence(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_tv_distance") {
                     auto value = eval_info_tv_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "info_hellinger_dist") {
                     auto value = eval_info_hellinger_dist(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_fidelity") {
                     auto value = eval_quantum_fidelity(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_correlation") {
                     auto value = eval_stats_correlation(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "poly_resultant") {
                     auto value = eval_poly_resultant(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "graph_is_isomorphic") {
                     auto value = eval_graph_is_isomorphic(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "graph_modularity") {
                     auto value = eval_graph_modularity(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "gria_hamming_distance") {
                     auto value = eval_gria_hamming_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_spearman") {
                     auto value = eval_stats_spearman(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_kendall") {
                     auto value = eval_stats_kendall(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_mean") {
                     auto value = eval_stats_weighted_mean(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_weighted_variance") {
                     auto value = eval_stats_weighted_variance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_two_sample_ttest") {
                     auto value = eval_stats_two_sample_ttest(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "stats_chi2_gof") {
                     auto value = eval_stats_chi2_gof(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_expectation_dm") {
                     auto value = eval_quantum_expectation_dm(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_expectation") {
                     auto value = eval_quantum_expectation(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_inner") {
                     auto value = eval_quantum_inner(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "quantum_trace_distance") {
                     auto value = eval_quantum_trace_distance(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 if (fn == "ml_categorical_crossentropy") {
                     auto value = eval_ml_categorical_crossentropy(*arg_a_m, *arg_b_m);
                     if (!value) {
                         return std::unexpected(value.error());
                     }
-                    return std::to_string(*value) + "\n";
+                    return format_scalar(*value) + "\n";
                 }
                 auto y_pred = matrix_to_ml_vec(*arg_a_m, fn.c_str());
                 if (!y_pred) {
@@ -18032,7 +20694,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!metric) {
                     return std::unexpected(metric.error());
                 }
-                return std::to_string(*metric) + "\n";
+                return format_scalar(*metric) + "\n";
             }
         }
     }
@@ -18050,8 +20712,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     fn, "expected " + fn + "(n_taps, cutoff[, window])"});
             }
-            const int n_taps = static_cast<int>(n_taps_d);
-            if (n_taps < 1 || n_taps_d != n_taps) {
+            auto n_taps_checked = checked_int_argument(fn, "n_taps", n_taps_d);
+            if (!n_taps_checked) {
+                return std::unexpected(n_taps_checked.error());
+            }
+            const int n_taps = *n_taps_checked;
+            if (n_taps < 1) {
                 return std::unexpected(DomainError{fn, "expected integer n_taps >= 1"});
             }
             Result<Matrix<double>> taps;
@@ -18157,7 +20823,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_jn", "expected spherical_jn(n,x)"});
             }
-            return std::to_string(spherical_jn(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(spherical_jn(*n_order, x)) + "\n";
         }
 
         if (fn == "spherical_yn") {
@@ -18166,7 +20836,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_yn", "expected spherical_yn(n,x)"});
             }
-            return std::to_string(spherical_yn(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(spherical_yn(*n_order, x)) + "\n";
         }
 
         if (fn == "bessel_h") {
@@ -18175,7 +20849,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_h", "expected bessel_h(nu,x)"});
             }
-            return std::to_string(bessel_h(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_h(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_j") {
@@ -18184,7 +20862,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_j", "expected bessel_j(nu,x)"});
             }
-            return std::to_string(bessel_j(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_j(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_j1") {
@@ -18192,7 +20874,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_j1", "expected bessel_j1(x)"});
             }
-            return std::to_string(bessel_j1(x)) + "\n";
+            return format_scalar(bessel_j1(x)) + "\n";
         }
 
         if (fn == "bessel_y0") {
@@ -18200,7 +20882,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_y0", "expected bessel_y0(x)"});
             }
-            return std::to_string(bessel_y0(x)) + "\n";
+            return format_scalar(bessel_y0(x)) + "\n";
         }
 
         if (fn == "bessel_y1") {
@@ -18208,7 +20890,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x)) {
                 return std::unexpected(DomainError{"bessel_y1", "expected bessel_y1(x)"});
             }
-            return std::to_string(bessel_y1(x)) + "\n";
+            return format_scalar(bessel_y1(x)) + "\n";
         }
 
         if (fn == "bessel_hy") {
@@ -18217,7 +20899,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_hy", "expected bessel_hy(nu,x)"});
             }
-            return std::to_string(bessel_hy(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_hy(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_l") {
@@ -18226,7 +20912,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_l", "expected bessel_l(nu,x)"});
             }
-            return std::to_string(bessel_l(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_l(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_lu") {
@@ -18235,7 +20925,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"bessel_lu", "expected bessel_lu(nu,x)"});
             }
-            return std::to_string(bessel_lu(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_lu(*nu_order, x)) + "\n";
         }
 
         if (fn == "hermite_hn") {
@@ -18244,7 +20938,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"hermite_hn", "expected hermite_hn(n,x)"});
             }
-            return std::to_string(hermite_hn(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(hermite_hn(*n_order, x)) + "\n";
         }
 
         if (fn == "bessel_y" || fn == "special_bessel_y") {
@@ -18253,7 +20951,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_y(nu,x)"});
             }
-            return std::to_string(bessel_y(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_y(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_i" || fn == "special_bessel_i") {
@@ -18262,7 +20964,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_i(nu,x)"});
             }
-            return std::to_string(bessel_i(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_i(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_k" || fn == "special_bessel_k") {
@@ -18271,7 +20977,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected bessel_k(nu,x)"});
             }
-            return std::to_string(bessel_k(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(bessel_k(*nu_order, x)) + "\n";
         }
 
         if (fn == "chebyshev_t") {
@@ -18280,7 +20990,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_t(n,x)"});
             }
-            return std::to_string(chebyshev_t(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(chebyshev_t(*n_order, x)) + "\n";
         }
 
         if (fn == "chebyshev_u") {
@@ -18289,7 +21003,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_u(n,x)"});
             }
-            return std::to_string(chebyshev_u(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(chebyshev_u(*n_order, x)) + "\n";
         }
 
         if (fn == "hermite_h") {
@@ -18298,7 +21016,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_h(n,x)"});
             }
-            return std::to_string(hermite_h(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(hermite_h(*n_order, x)) + "\n";
         }
 
         if (fn == "hermite_hf") {
@@ -18307,7 +21029,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_hf(n,x)"});
             }
-            return std::to_string(hermite_hf(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(hermite_hf(*n_order, x)) + "\n";
         }
 
         if (fn == "zeta_hurwitz") {
@@ -18316,7 +21042,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, s) || !parse_number(arg_b, a)) {
                 return std::unexpected(DomainError{fn, "expected zeta_hurwitz(s,a)"});
             }
-            return std::to_string(zeta_hurwitz(s, a)) + "\n";
+            return format_scalar(zeta_hurwitz(s, a)) + "\n";
         }
 
         if (fn == "laguerre_l") {
@@ -18325,7 +21051,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected laguerre_l(n,x)"});
             }
-            return std::to_string(laguerre_l(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(laguerre_l(*n_order, x)) + "\n";
         }
 
         if (fn == "legendre_q") {
@@ -18334,7 +21064,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected legendre_q(n,x)"});
             }
-            return std::to_string(legendre_q(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(legendre_q(*n_order, x)) + "\n";
         }
 
         if (fn == "hermite_he") {
@@ -18343,7 +21077,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected hermite_he(n,x)"});
             }
-            return std::to_string(hermite_he(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(hermite_he(*n_order, x)) + "\n";
         }
 
         if (fn == "chebyshev_v") {
@@ -18352,7 +21090,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_v(n,x)"});
             }
-            return std::to_string(chebyshev_v(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(chebyshev_v(*n_order, x)) + "\n";
         }
 
         if (fn == "chebyshev_w") {
@@ -18361,7 +21103,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected chebyshev_w(n,x)"});
             }
-            return std::to_string(chebyshev_w(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(chebyshev_w(*n_order, x)) + "\n";
         }
 
         if (fn == "mathieu_a") {
@@ -18370,7 +21116,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{fn, "expected mathieu_a(n,q)"});
             }
-            return std::to_string(mathieu_a(static_cast<int>(n), q)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            auto q_sized = checked_mathieu_dimension(fn, n, q);
+            if (!q_sized) {
+                return std::unexpected(q_sized.error());
+            }
+            return format_scalar(mathieu_a(*n_order, q)) + "\n";
         }
 
         if (fn == "mathieu_b") {
@@ -18379,7 +21133,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{fn, "expected mathieu_b(n,q)"});
             }
-            return std::to_string(mathieu_b(static_cast<int>(n), q)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            auto q_sized = checked_mathieu_dimension(fn, n, q);
+            if (!q_sized) {
+                return std::unexpected(q_sized.error());
+            }
+            return format_scalar(mathieu_b(*n_order, q)) + "\n";
         }
 
         if (fn == "pcf_u") {
@@ -18388,7 +21150,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_u(a,x)"});
             }
-            return std::to_string(pcf_u(a, x)) + "\n";
+            return format_scalar(pcf_u(a, x)) + "\n";
         }
 
         if (fn == "pcf_v") {
@@ -18397,7 +21159,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_v(a,x)"});
             }
-            return std::to_string(pcf_v(a, x)) + "\n";
+            return format_scalar(pcf_v(a, x)) + "\n";
         }
 
         if (fn == "pcf_w") {
@@ -18406,7 +21168,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected pcf_w(a,x)"});
             }
-            return std::to_string(pcf_w(a, x)) + "\n";
+            return format_scalar(pcf_w(a, x)) + "\n";
         }
 
         if (fn == "sph_bessel_j") {
@@ -18415,7 +21177,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected sph_bessel_j(n,x)"});
             }
-            return std::to_string(sph_bessel_j(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(sph_bessel_j(*n_order, x)) + "\n";
         }
 
         if (fn == "sph_bessel_y") {
@@ -18424,7 +21190,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{fn, "expected sph_bessel_y(n,x)"});
             }
-            return std::to_string(sph_bessel_y(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(sph_bessel_y(*n_order, x)) + "\n";
         }
 
         if (fn == "lambert_w" || fn == "special_lambert_w") {
@@ -18433,7 +21203,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, branch) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected lambert_w(branch,z)"});
             }
-            return std::to_string(lambert_w(static_cast<int>(branch), z)) + "\n";
+            auto branch_order = checked_int_argument(fn, "branch", branch);
+            if (!branch_order) {
+                return std::unexpected(branch_order.error());
+            }
+            return format_scalar(lambert_w(*branch_order, z)) + "\n";
         }
 
         if (fn == "hypergeo_0f1") {
@@ -18442,7 +21216,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, b) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected hypergeo_0f1(b,z)"});
             }
-            return std::to_string(hypergeo_0f1(b, z)) + "\n";
+            return format_scalar(hypergeo_0f1(b, z)) + "\n";
         }
 
         if (fn == "hypergeo_1f1") {
@@ -18451,7 +21225,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{fn, "expected hypergeo_1f1(a,z)"});
             }
-            return std::to_string(hypergeo_1f1(a, z)) + "\n";
+            return format_scalar(hypergeo_1f1(a, z)) + "\n";
         }
 
         if (fn == "fem_poisson1d") {
@@ -18460,12 +21234,19 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson1d", "expected fem_poisson1d(n)"});
             }
-            const int n_i = static_cast<int>(n_d);
-            if (n_i < 0 || n_d != n_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson1d", "expected non-negative integer n"});
+            ExtentBudget budget("fem_poisson1d");
+            auto n = budget.take("n", n_d);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            auto value = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", *n + 1);
+            if (!order) {
+                return std::unexpected(order.error());
+            }
+            auto value = eval_fem_poisson1d(*n);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -18482,14 +21263,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+            ExtentBudget budget("fem_poisson2d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson2d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1));
+            if (!order) {
+                return std::unexpected(order.error());
+            }
+            auto value = eval_fem_poisson2d(*nx, *ny);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -18506,7 +21296,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_polygamma", "expected special_polygamma(n,x)"});
             }
-            return std::to_string(polygamma(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(polygamma(*n_order, x)) + "\n";
         }
 
         if (fn == "special_gamma_inc_reg") {
@@ -18516,7 +21310,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_gamma_inc_reg",
                                                      "expected special_gamma_inc_reg(a,x)"});
             }
-            return std::to_string(gamma_inc_reg(a, x)) + "\n";
+            return format_scalar(gamma_inc_reg(a, x)) + "\n";
         }
 
         if (fn == "special_gamma_inc_reg_upper") {
@@ -18527,7 +21321,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"special_gamma_inc_reg_upper",
                                   "expected special_gamma_inc_reg_upper(a,x)"});
             }
-            return std::to_string(gamma_inc_reg_upper(a, x)) + "\n";
+            return format_scalar(gamma_inc_reg_upper(a, x)) + "\n";
         }
 
         if (fn == "special_pochhammer") {
@@ -18537,7 +21331,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"special_pochhammer", "expected special_pochhammer(a,n)"});
             }
-            return std::to_string(pochhammer(a, static_cast<int>(n))) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(pochhammer(a, *n_order)) + "\n";
         }
 
         if (fn == "special_falling_factorial") {
@@ -18547,7 +21345,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_falling_factorial",
                                                      "expected special_falling_factorial(a,n)"});
             }
-            return std::to_string(falling_factorial(a, static_cast<int>(n))) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(falling_factorial(a, *n_order)) + "\n";
         }
 
         if (fn == "special_gamma_inc") {
@@ -18557,7 +21359,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"special_gamma_inc",
                                                      "expected special_gamma_inc(a,x)"});
             }
-            return std::to_string(gamma_inc(a, x)) + "\n";
+            return format_scalar(gamma_inc(a, x)) + "\n";
         }
 
         if (fn == "prob_t_pdf") {
@@ -18566,7 +21368,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, x) || !parse_number(arg_b, df)) {
                 return std::unexpected(DomainError{"prob_t_pdf", "expected prob_t_pdf(x,df)"});
             }
-            return std::to_string(t_pdf(x, df)) + "\n";
+            return format_scalar(t_pdf(x, df)) + "\n";
         }
 
         if (fn == "prob_t_ppf") {
@@ -18575,7 +21377,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, p) || !parse_number(arg_b, df)) {
                 return std::unexpected(DomainError{"prob_t_ppf", "expected prob_t_ppf(p,df)"});
             }
-            return std::to_string(t_ppf(p, df)) + "\n";
+            return format_scalar(t_ppf(p, df)) + "\n";
         }
         if (fn == "prob_exp_ppf") {
             double p = 0.0;
@@ -18584,7 +21386,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_ppf", "expected prob_exp_ppf(p,lambda)"});
             }
-            return std::to_string(exp_ppf(p, lambda)) + "\n";
+            return format_scalar(exp_ppf(p, lambda)) + "\n";
         }
         if (fn == "prob_chi2_ppf") {
             double p = 0.0;
@@ -18593,7 +21395,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_ppf", "expected prob_chi2_ppf(p,df)"});
             }
-            return std::to_string(chi2_ppf(p, df)) + "\n";
+            return format_scalar(chi2_ppf(p, df)) + "\n";
         }
         if (fn == "prob_rayleigh_pdf") {
             double x = 0.0;
@@ -18602,7 +21404,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_pdf", "expected prob_rayleigh_pdf(x,sigma)"});
             }
-            return std::to_string(rayleigh_pdf(x, sigma)) + "\n";
+            return format_scalar(rayleigh_pdf(x, sigma)) + "\n";
         }
 
         if (fn == "prob_rayleigh_cdf") {
@@ -18612,7 +21414,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_cdf", "expected prob_rayleigh_cdf(x,sigma)"});
             }
-            return std::to_string(rayleigh_cdf(x, sigma)) + "\n";
+            return format_scalar(rayleigh_cdf(x, sigma)) + "\n";
         }
 
         if (fn == "prob_rayleigh_ppf") {
@@ -18622,7 +21424,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_rayleigh_ppf", "expected prob_rayleigh_ppf(p,sigma)"});
             }
-            return std::to_string(rayleigh_ppf(p, sigma)) + "\n";
+            return format_scalar(rayleigh_ppf(p, sigma)) + "\n";
         }
 
 
@@ -18632,7 +21434,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_ber", "expected kelvin_ber(nu,x)"});
             }
-            return std::to_string(kelvin_ber(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(kelvin_ber(*nu_order, x)) + "\n";
         }
 
         if (fn == "struve_h") {
@@ -18641,7 +21447,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_h", "expected struve_h(nu,x)"});
             }
-            return std::to_string(struve_h(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(struve_h(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_zero_jnu") {
@@ -18650,7 +21460,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, n)) {
                 return std::unexpected(DomainError{"bessel_zero_jnu", "expected bessel_zero_jnu(nu,n)"});
             }
-            return std::to_string(bessel_zero_jnu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(bessel_zero_jnu(*nu_order, *n_order)) + "\n";
         }
 
         if (fn == "spherical_in") {
@@ -18659,7 +21477,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_in", "expected spherical_in(n,x)"});
             }
-            return std::to_string(spherical_in(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(spherical_in(*n_order, x)) + "\n";
         }
 
         if (fn == "spherical_kn") {
@@ -18668,7 +21490,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"spherical_kn", "expected spherical_kn(n,x)"});
             }
-            return std::to_string(spherical_kn(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(spherical_kn(*n_order, x)) + "\n";
         }
 
         if (fn == "struve_l") {
@@ -18677,7 +21503,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_l", "expected struve_l(nu,x)"});
             }
-            return std::to_string(struve_l(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(struve_l(*nu_order, x)) + "\n";
         }
 
         if (fn == "struve_k") {
@@ -18686,7 +21516,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_k", "expected struve_k(nu,x)"});
             }
-            return std::to_string(struve_k(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(struve_k(*nu_order, x)) + "\n";
         }
 
         if (fn == "struve_hn") {
@@ -18695,7 +21529,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_hn", "expected struve_hn(nu,x)"});
             }
-            return std::to_string(struve_hn(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(struve_hn(*nu_order, x)) + "\n";
         }
 
         if (fn == "struve_yn") {
@@ -18704,7 +21542,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"struve_yn", "expected struve_yn(nu,x)"});
             }
-            return std::to_string(struve_yn(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(struve_yn(*nu_order, x)) + "\n";
         }
 
         if (fn == "anger_j") {
@@ -18713,7 +21555,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"anger_j", "expected anger_j(nu,x)"});
             }
-            return std::to_string(anger_j(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(anger_j(*nu_order, x)) + "\n";
         }
 
         if (fn == "weber_e") {
@@ -18722,7 +21568,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"weber_e", "expected weber_e(nu,x)"});
             }
-            return std::to_string(weber_e(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(weber_e(*nu_order, x)) + "\n";
         }
 
         if (fn == "kelvin_bei") {
@@ -18731,7 +21581,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_bei", "expected kelvin_bei(nu,x)"});
             }
-            return std::to_string(kelvin_bei(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(kelvin_bei(*nu_order, x)) + "\n";
         }
 
         if (fn == "kelvin_ker") {
@@ -18740,7 +21594,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_ker", "expected kelvin_ker(nu,x)"});
             }
-            return std::to_string(kelvin_ker(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(kelvin_ker(*nu_order, x)) + "\n";
         }
 
         if (fn == "kelvin_kei") {
@@ -18749,7 +21607,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"kelvin_kei", "expected kelvin_kei(nu,x)"});
             }
-            return std::to_string(kelvin_kei(static_cast<int>(nu), x)) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            return format_scalar(kelvin_kei(*nu_order, x)) + "\n";
         }
 
         if (fn == "bessel_zero_ynu") {
@@ -18758,7 +21620,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, nu) || !parse_number(arg_b, n)) {
                 return std::unexpected(DomainError{"bessel_zero_ynu", "expected bessel_zero_ynu(nu,n)"});
             }
-            return std::to_string(bessel_zero_ynu(static_cast<int>(nu), static_cast<int>(n))) + "\n";
+            auto nu_order = checked_int_argument(fn, "nu", nu);
+            if (!nu_order) {
+                return std::unexpected(nu_order.error());
+            }
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(bessel_zero_ynu(*nu_order, *n_order)) + "\n";
         }
 
         if (fn == "jacobi_sn") {
@@ -18767,7 +21637,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sn", "expected jacobi_sn(u,k)"});
             }
-            return std::to_string(jacobi_sn(u, k)) + "\n";
+            return format_scalar(jacobi_sn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cn") {
@@ -18776,7 +21646,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cn", "expected jacobi_cn(u,k)"});
             }
-            return std::to_string(jacobi_cn(u, k)) + "\n";
+            return format_scalar(jacobi_cn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_dn") {
@@ -18785,7 +21655,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_dn", "expected jacobi_dn(u,k)"});
             }
-            return std::to_string(jacobi_dn(u, k)) + "\n";
+            return format_scalar(jacobi_dn(u, k)) + "\n";
         }
 
         if (fn == "jacobi_am") {
@@ -18794,7 +21664,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_am", "expected jacobi_am(u,k)"});
             }
-            return std::to_string(jacobi_am(u, k)) + "\n";
+            return format_scalar(jacobi_am(u, k)) + "\n";
         }
 
         if (fn == "jacobi_sc") {
@@ -18803,7 +21673,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sc", "expected jacobi_sc(u,k)"});
             }
-            return std::to_string(jacobi_sc(u, k)) + "\n";
+            return format_scalar(jacobi_sc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_sd") {
@@ -18812,7 +21682,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_sd", "expected jacobi_sd(u,k)"});
             }
-            return std::to_string(jacobi_sd(u, k)) + "\n";
+            return format_scalar(jacobi_sd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_nc") {
@@ -18821,7 +21691,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_nc", "expected jacobi_nc(u,k)"});
             }
-            return std::to_string(jacobi_nc(u, k)) + "\n";
+            return format_scalar(jacobi_nc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_dc") {
@@ -18830,7 +21700,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_dc", "expected jacobi_dc(u,k)"});
             }
-            return std::to_string(jacobi_dc(u, k)) + "\n";
+            return format_scalar(jacobi_dc(u, k)) + "\n";
         }
 
         if (fn == "jacobi_nd") {
@@ -18839,7 +21709,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_nd", "expected jacobi_nd(u,k)"});
             }
-            return std::to_string(jacobi_nd(u, k)) + "\n";
+            return format_scalar(jacobi_nd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cd") {
@@ -18848,7 +21718,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cd", "expected jacobi_cd(u,k)"});
             }
-            return std::to_string(jacobi_cd(u, k)) + "\n";
+            return format_scalar(jacobi_cd(u, k)) + "\n";
         }
 
         if (fn == "jacobi_cs") {
@@ -18857,7 +21727,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_cs", "expected jacobi_cs(u,k)"});
             }
-            return std::to_string(jacobi_cs(u, k)) + "\n";
+            return format_scalar(jacobi_cs(u, k)) + "\n";
         }
 
         if (fn == "jacobi_ns") {
@@ -18866,7 +21736,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_ns", "expected jacobi_ns(u,k)"});
             }
-            return std::to_string(jacobi_ns(u, k)) + "\n";
+            return format_scalar(jacobi_ns(u, k)) + "\n";
         }
 
         if (fn == "jacobi_ds") {
@@ -18875,7 +21745,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, u) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"jacobi_ds", "expected jacobi_ds(u,k)"});
             }
-            return std::to_string(jacobi_ds(u, k)) + "\n";
+            return format_scalar(jacobi_ds(u, k)) + "\n";
         }
 
         if (fn == "ellip_pi") {
@@ -18884,7 +21754,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_pi", "expected ellip_pi(n,k)"});
             }
-            return std::to_string(ellip_pi(n, k)) + "\n";
+            return format_scalar(ellip_pi(n, k)) + "\n";
         }
 
         if (fn == "ellip_f") {
@@ -18893,7 +21763,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_f", "expected ellip_f(phi,k)"});
             }
-            return std::to_string(ellip_f(phi, k)) + "\n";
+            return format_scalar(ellip_f(phi, k)) + "\n";
         }
 
         if (fn == "ellip_e_inc") {
@@ -18902,7 +21772,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, phi) || !parse_number(arg_b, k)) {
                 return std::unexpected(DomainError{"ellip_e_inc", "expected ellip_e_inc(phi,k)"});
             }
-            return std::to_string(ellip_e_inc(phi, k)) + "\n";
+            return format_scalar(ellip_e_inc(phi, k)) + "\n";
         }
 
         if (fn == "theta1_prime") {
@@ -18911,7 +21781,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, z) || !parse_number(arg_b, q)) {
                 return std::unexpected(DomainError{"theta1_prime", "expected theta1_prime(z,q)"});
             }
-            return std::to_string(theta1_prime(z, q)) + "\n";
+            return format_scalar(theta1_prime(z, q)) + "\n";
         }
 
         if (fn == "theta1" || fn == "theta2" || fn == "theta3" || fn == "theta4") {
@@ -18921,15 +21791,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected " + fn + "(z,q)"});
             }
             if (fn == "theta1") {
-                return std::to_string(theta1(z, q)) + "\n";
+                return format_scalar(theta1(z, q)) + "\n";
             }
             if (fn == "theta2") {
-                return std::to_string(theta2(z, q)) + "\n";
+                return format_scalar(theta2(z, q)) + "\n";
             }
             if (fn == "theta3") {
-                return std::to_string(theta3(z, q)) + "\n";
+                return format_scalar(theta3(z, q)) + "\n";
             }
-            return std::to_string(theta4(z, q)) + "\n";
+            return format_scalar(theta4(z, q)) + "\n";
         }
 
         if (fn == "polylog") {
@@ -18938,7 +21808,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, z)) {
                 return std::unexpected(DomainError{"polylog", "expected polylog(n,z)"});
             }
-            return std::to_string(polylog(static_cast<int>(n), z)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(polylog(*n_order, z)) + "\n";
         }
 
         if (fn == "debye") {
@@ -18947,7 +21821,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"debye", "expected debye(n,x)"});
             }
-            return std::to_string(debye(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(debye(*n_order, x)) + "\n";
         }
 
         if (fn == "beta") {
@@ -18956,7 +21834,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a) || !parse_number(arg_b, b)) {
                 return std::unexpected(DomainError{"beta", "expected numeric arguments beta(a,b)"});
             }
-            return std::to_string(beta_func(a, b)) + "\n";
+            return format_scalar(beta_func(a, b)) + "\n";
         }
 
         if (fn == "prob_exp_cdf") {
@@ -18966,7 +21844,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_cdf", "expected prob_exp_cdf(x,lambda)"});
             }
-            return std::to_string(exp_cdf(x, lambda)) + "\n";
+            return format_scalar(exp_cdf(x, lambda)) + "\n";
         }
 
         if (fn == "prob_pois_pdf") {
@@ -18976,7 +21854,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pois_pdf", "expected prob_pois_pdf(k,lambda)"});
             }
-            return std::to_string(pois_pdf(k, lambda)) + "\n";
+            return format_scalar(pois_pdf(k, lambda)) + "\n";
         }
 
         if (fn == "prob_pois_cdf") {
@@ -18986,7 +21864,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_pois_cdf", "expected prob_pois_cdf(k,lambda)"});
             }
-            return std::to_string(pois_cdf(k, lambda)) + "\n";
+            return format_scalar(pois_cdf(k, lambda)) + "\n";
         }
 
         if (fn == "prob_exp_pdf") {
@@ -18996,7 +21874,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_exp_pdf", "expected prob_exp_pdf(x,lambda)"});
             }
-            return std::to_string(exp_pdf(x, lambda)) + "\n";
+            return format_scalar(exp_pdf(x, lambda)) + "\n";
         }
 
         if (fn == "prob_chi2_cdf") {
@@ -19006,7 +21884,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_cdf", "expected prob_chi2_cdf(x,df)"});
             }
-            return std::to_string(chi2_cdf(x, df)) + "\n";
+            return format_scalar(chi2_cdf(x, df)) + "\n";
         }
 
         if (fn == "prob_t_cdf") {
@@ -19016,7 +21894,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_t_cdf", "expected prob_t_cdf(x,df)"});
             }
-            return std::to_string(t_cdf(x, df)) + "\n";
+            return format_scalar(t_cdf(x, df)) + "\n";
         }
 
         if (fn == "prob_chi2_pdf") {
@@ -19026,7 +21904,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"prob_chi2_pdf", "expected prob_chi2_pdf(x,df)"});
             }
-            return std::to_string(chi2_pdf(x, df)) + "\n";
+            return format_scalar(chi2_pdf(x, df)) + "\n";
         }
 
         if (fn == "combo_nchoosek") {
@@ -19035,14 +21913,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n_d) || !parse_number(arg_b, k_d)) {
                 return std::unexpected(DomainError{"combo_nchoosek", "expected combo_nchoosek(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_nchoosek", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::binomial(static_cast<uint32_t>(n),
-                                                  static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                       static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_binomial") {
@@ -19051,14 +21936,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n_d) || !parse_number(arg_b, k_d)) {
                 return std::unexpected(DomainError{"combo_binomial", "expected combo_binomial(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_binomial", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::binomial(static_cast<uint32_t>(n),
-                                                  static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::binomial(static_cast<uint32_t>(n),
+                                                       static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_eulerian") {
@@ -19067,14 +21959,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n_d) || !parse_number(arg_b, k_d)) {
                 return std::unexpected(DomainError{"combo_eulerian", "expected combo_eulerian(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_eulerian", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::eulerian_number(static_cast<uint32_t>(n),
-                                                         static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::eulerian_number(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "diffgeo_gaussian_curvature_sphere") {
@@ -19089,7 +21987,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_mean_curvature_sphere") {
@@ -19104,7 +22002,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_ricci_scalar_sphere") {
@@ -19119,7 +22017,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "diffgeo_einstein_scalar_sphere") {
@@ -19134,7 +22032,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "cplx_residue_inv") {
@@ -19148,7 +22046,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "boxfilter" || fn == "medfilt2" || fn == "imgaussfilt") {
@@ -19171,16 +22069,47 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!gray) {
                 return std::unexpected(gray.error());
             }
+            // The no-assignment form does NOT go through the matrix-call registry, so
+            // the budget in the handlers does not cover it. `medfilt2(A, 999)` on a
+            // 512x512 -- with no `B =` in front of it -- was still four hours of work.
             Matrix<double> filtered_m;
+            WorkBudget budget(fn, fn == "medfilt2" ? 60.0 : 45.0,
+                              kMaxReplSimulationWorkNanos);
+            budget.charge(gray_m->rows() * gray_m->cols());
+            if (fn == "imgaussfilt") {
+                // The kernel half-width is 3*sigma, so what sigma names is the kernel.
+                if (!std::isfinite(param_d) || param_d < 0.0) {
+                    return std::unexpected(
+                        DomainError{fn, "expected a finite non-negative sigma"});
+                }
+                auto kernel = budget.take("the kernel sigma implies", 6.0 * param_d + 1.0);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            } else {
+                auto kernel = fn == "medfilt2" ? budget.take_square("ksize", param_d)
+                                               : budget.take("ksize", param_d);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            }
             if (fn == "boxfilter") {
-                const int ksize = static_cast<int>(param_d);
+                auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
+                if (!ksize_checked) {
+                    return std::unexpected(ksize_checked.error());
+                }
+                const int ksize = *ksize_checked;
                 if (ksize < 1 || param_d != ksize || (ksize % 2) == 0) {
                     return std::unexpected(
                         DomainError{"boxfilter", "expected positive odd integer ksize"});
                 }
                 filtered_m = gray_image_to_matrix(image::boxfilter(*gray, ksize));
             } else if (fn == "medfilt2") {
-                const int ksize = static_cast<int>(param_d);
+                auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
+                if (!ksize_checked) {
+                    return std::unexpected(ksize_checked.error());
+                }
+                const int ksize = *ksize_checked;
                 if (ksize < 1 || param_d != ksize || (ksize % 2) == 0) {
                     return std::unexpected(
                         DomainError{"medfilt2", "expected positive odd integer ksize"});
@@ -19203,12 +22132,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "combo_unrank_permutation", "expected combo_unrank_permutation(n,rank)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 0 || n_d != n || rank_d < 0.0 || std::floor(rank_d) != rank_d) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 0 || rank_d < 0.0 || std::floor(rank_d) != rank_d) {
                 return std::unexpected(DomainError{
                     "combo_unrank_permutation", "expected non-negative integer n and rank"});
             }
-            auto value = eval_combo_unrank_permutation(n, static_cast<uint64_t>(rank_d));
+            auto rank_u64 = checked_u64_argument(fn, "rank", rank_d, kMaxU64AsDouble);
+            if (!rank_u64) {
+                return std::unexpected(rank_u64.error());
+            }
+            auto value = eval_combo_unrank_permutation(n, *rank_u64);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -19225,8 +22162,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{
                     "numthy_continued_fraction", "expected numthy_continued_fraction(x,n)"});
             }
-            const int n = static_cast<int>(n_d);
-            if (n < 1 || n_d != n) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            if (n < 1) {
                 return std::unexpected(DomainError{
                     "numthy_continued_fraction", "expected positive integer n"});
             }
@@ -19251,7 +22192,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primes", "expected non-negative integer bounds"});
             }
-            auto value = eval_numthy_primes(static_cast<uint64_t>(lo_d), static_cast<uint64_t>(hi_d));
+            auto lo_u64 = checked_u64_argument(fn, "lo", lo_d, kMaxU64AsDouble);
+            if (!lo_u64) {
+                return std::unexpected(lo_u64.error());
+            }
+            auto hi_u64 = checked_u64_argument(fn, "hi", hi_d, kMaxU64AsDouble);
+            if (!hi_u64) {
+                return std::unexpected(hi_u64.error());
+            }
+            auto value = eval_numthy_primes(*lo_u64, *hi_u64);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -19267,14 +22216,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n_d) || !parse_number(arg_b, k_d)) {
                 return std::unexpected(DomainError{"combo_stirling2", "expected combo_stirling2(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_stirling2", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::stirling2(static_cast<uint32_t>(n),
-                                                   static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::stirling2(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_stirling1") {
@@ -19283,14 +22238,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n_d) || !parse_number(arg_b, k_d)) {
                 return std::unexpected(DomainError{"combo_stirling1", "expected combo_stirling1(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_stirling1", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::stirling1(static_cast<uint32_t>(n),
-                                                   static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::stirling1(static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "combo_permutations") {
@@ -19300,14 +22261,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"combo_permutations", "expected combo_permutations(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || k > n || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k > n || k_d != k) {
                 return std::unexpected(DomainError{"combo_permutations", "expected 0 <= k <= n"});
             }
-            return std::to_string(combo::permutations(static_cast<uint32_t>(n),
-                                                        static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::permutations(static_cast<uint32_t>(n),
+                                                           static_cast<uint32_t>(k)));
         }
 
         if (fn == "numthy_gcd") {
@@ -19316,8 +22284,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_gcd", "expected numthy_gcd(a,b)"});
             }
-            return std::to_string(numthy::gcd(static_cast<uint64_t>(a_d),
-                                              static_cast<uint64_t>(b_d))) +
+            auto a_u64 = checked_u64_argument(fn, "a", a_d, kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            auto b_u64 = checked_u64_argument(fn, "b", b_d, kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            return format_scalar(numthy::gcd(*a_u64,
+                                              *b_u64)) +
                    "\n";
         }
 
@@ -19329,14 +22305,22 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "quantum_grover_optimal_iterations",
                     "expected quantum_grover_optimal_iterations(n_qubits,n_marked)"});
             }
-            const int n_qubits = static_cast<int>(n_qubits_d);
-            const int n_marked = static_cast<int>(n_marked_d);
-            if (n_qubits < 0 || n_qubits_d != n_qubits || n_marked < 0 || n_marked_d != n_marked) {
+            auto n_qubits_checked = checked_int_argument(fn, "n_qubits", n_qubits_d);
+            if (!n_qubits_checked) {
+                return std::unexpected(n_qubits_checked.error());
+            }
+            const int n_qubits = *n_qubits_checked;
+            auto n_marked_checked = checked_int_argument(fn, "n_marked", n_marked_d);
+            if (!n_marked_checked) {
+                return std::unexpected(n_marked_checked.error());
+            }
+            const int n_marked = *n_marked_checked;
+            if (n_qubits < 0 || n_marked < 0 || n_marked_d != n_marked) {
                 return std::unexpected(DomainError{
                     "quantum_grover_optimal_iterations",
                     "expected non-negative integer n_qubits and n_marked"});
             }
-            return std::to_string(quantum::grover_optimal_iterations(n_qubits, n_marked)) + "\n";
+            return format_scalar(quantum::grover_optimal_iterations(n_qubits, n_marked)) + "\n";
         }
 
         if (fn == "numthy_lcm") {
@@ -19345,8 +22329,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, a_d) || !parse_number(arg_b, b_d)) {
                 return std::unexpected(DomainError{"numthy_lcm", "expected numthy_lcm(a,b)"});
             }
-            return std::to_string(numthy::lcm(static_cast<uint64_t>(a_d),
-                                              static_cast<uint64_t>(b_d))) +
+            auto a_u64 = checked_u64_argument(fn, "a", a_d, kMaxU64AsDouble);
+            if (!a_u64) {
+                return std::unexpected(a_u64.error());
+            }
+            auto b_u64 = checked_u64_argument(fn, "b", b_d, kMaxU64AsDouble);
+            if (!b_u64) {
+                return std::unexpected(b_u64.error());
+            }
+            return format_scalar(numthy::lcm(*a_u64,
+                                              *b_u64)) +
                    "\n";
         }
 
@@ -19357,8 +22349,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected numthy_jordan_totient(k,n)"});
             }
-            const int k = static_cast<int>(k_d);
-            if (k < 0 || k_d != k) {
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (k < 0) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer k"});
             }
@@ -19366,9 +22362,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jordan_totient", "expected non-negative integer n"});
             }
-            return std::to_string(numthy::jordan_totient(
-                       static_cast<uint32_t>(k), static_cast<uint64_t>(n_d))) +
-                   "\n";
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return combo_count_text(fn, numthy::jordan_totient(
+                                            static_cast<uint32_t>(k),
+                                            *n_u64));
         }
 
         if (fn == "combo_combinations_with_rep") {
@@ -19379,16 +22379,23 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "combo_combinations_with_rep",
                     "expected combo_combinations_with_rep(n,k)"});
             }
-            const int n = static_cast<int>(n_d);
-            const int k = static_cast<int>(k_d);
-            if (n < 0 || k < 0 || n_d != n || k_d != k) {
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
+            auto k_checked = checked_int_argument(fn, "k", k_d);
+            if (!k_checked) {
+                return std::unexpected(k_checked.error());
+            }
+            const int k = *k_checked;
+            if (n < 0 || k < 0 || k_d != k) {
                 return std::unexpected(
                     DomainError{"combo_combinations_with_rep",
                                 "expected non-negative integer n and k"});
             }
-            return std::to_string(combo::combinations_with_rep(static_cast<uint32_t>(n),
-                                                               static_cast<uint32_t>(k))) +
-                   "\n";
+            return combo_count_text(fn, combo::combinations_with_rep(
+                                           static_cast<uint32_t>(n), static_cast<uint32_t>(k)));
         }
 
         if (fn == "numthy_legendre_symbol") {
@@ -19406,8 +22413,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_legendre_symbol", "expected odd prime p"});
             }
-            return std::to_string(numthy::legendre_symbol(static_cast<int64_t>(a_d),
-                                                          static_cast<uint64_t>(p_d))) +
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            return format_scalar(numthy::legendre_symbol(static_cast<int64_t>(a_d),
+                                                          *p_u64)) +
                    "\n";
         }
 
@@ -19422,12 +22433,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected integer arguments"});
             }
-            if (n_d <= 0.0 || static_cast<uint64_t>(n_d) % 2u == 0u) {
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            if (n_d <= 0.0 || *n_u64 % 2u == 0u) {
                 return std::unexpected(
                     DomainError{"numthy_jacobi_symbol", "expected odd positive integer n"});
             }
-            return std::to_string(numthy::jacobi_symbol(static_cast<int64_t>(a_d),
-                                                        static_cast<uint64_t>(n_d))) +
+            return format_scalar(numthy::jacobi_symbol(static_cast<int64_t>(a_d),
+                                                        *n_u64)) +
                    "\n";
         }
 
@@ -19442,7 +22457,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_kronecker_symbol", "expected integer arguments"});
             }
-            return std::to_string(numthy::kronecker_symbol(static_cast<int64_t>(a_d),
+            return format_scalar(numthy::kronecker_symbol(static_cast<int64_t>(a_d),
                                                            static_cast<int64_t>(n_d))) +
                    "\n";
         }
@@ -19458,7 +22473,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!root) {
                 return std::unexpected(root.error());
             }
-            return std::to_string(*root) + "\n";
+            return format_scalar(*root) + "\n";
         }
 
         if (fn == "numthy_mod_inv") {
@@ -19472,7 +22487,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!inv) {
                 return std::unexpected(inv.error());
             }
-            return std::to_string(*inv) + "\n";
+            return format_scalar(*inv) + "\n";
         }
 
         if (fn == "numthy_multiplicative_order") {
@@ -19487,7 +22502,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!ord) {
                 return std::unexpected(ord.error());
             }
-            return std::to_string(*ord) + "\n";
+            return format_scalar(*ord) + "\n";
         }
 
         if (fn == "numthy_extended_gcd") {
@@ -19501,7 +22516,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!g) {
                 return std::unexpected(g.error());
             }
-            return std::to_string(*g) + "\n";
+            return format_scalar(*g) + "\n";
         }
 
         if (fn == "numthy_is_primitive_root") {
@@ -19519,8 +22534,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_is_primitive_root", "expected g >= 0 and p > 0"});
             }
-            return std::to_string(numthy::is_primitive_root(static_cast<uint64_t>(g_d),
-                                                            static_cast<uint64_t>(p_d))
+            auto g_u64 = checked_u64_argument(fn, "g", g_d, kMaxU64AsDouble);
+            if (!g_u64) {
+                return std::unexpected(g_u64.error());
+            }
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            return format_scalar(numthy::is_primitive_root(*g_u64,
+                                                            *p_u64)
                                       ? 1
                                       : 0) +
                    "\n";
@@ -19533,7 +22556,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{"cplx_joukowski", "expected cplx_joukowski(re,im)"});
             }
             const cplx::C w = cplx::joukowski(cplx::C{re, im});
-            return std::to_string(std::abs(w)) + "\n";
+            return format_scalar(std::abs(w)) + "\n";
         }
 
         if (fn == "cplx_joukowski_inv") {
@@ -19547,7 +22570,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "geo_vec2d_length") {
@@ -19557,7 +22580,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"geo_vec2d_length", "expected geo_vec2d_length(x,y)"});
             }
-            return std::to_string(geo::length(geo::Vec2D{x, y})) + "\n";
+            return format_scalar(geo::length(geo::Vec2D{x, y})) + "\n";
         }
 
         if (fn == "finance_npv") {
@@ -19580,7 +22603,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "combo_multinomial") {
@@ -19607,7 +22630,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "finance_kelly_fraction") {
@@ -19618,7 +22641,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"finance_kelly_fraction",
                                   "expected finance_kelly_fraction(win_prob,win_loss_ratio)"});
             }
-            return std::to_string(finance::kelly_fraction(win_prob, win_loss_ratio)) + "\n";
+            return format_scalar(finance::kelly_fraction(win_prob, win_loss_ratio)) + "\n";
         }
 
         if (fn == "info_shannon_hartley") {
@@ -19629,7 +22652,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_shannon_hartley",
                                   "expected info_shannon_hartley(bandwidth_hz,snr_linear)"});
             }
-            return std::to_string(info::shannon_hartley(bandwidth_hz, snr_linear)) + "\n";
+            return format_scalar(info::shannon_hartley(bandwidth_hz, snr_linear)) + "\n";
         }
 
         if (fn == "info_rate_distortion_gaussian") {
@@ -19640,7 +22663,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_rate_distortion_gaussian",
                                   "expected info_rate_distortion_gaussian(variance,distortion)"});
             }
-            return std::to_string(info::rate_distortion_gaussian(variance, distortion)) + "\n";
+            return format_scalar(info::rate_distortion_gaussian(variance, distortion)) + "\n";
         }
 
         if (fn == "info_differential_entropy_uniform") {
@@ -19651,7 +22674,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{"info_differential_entropy_uniform",
                                   "expected info_differential_entropy_uniform(a,b)"});
             }
-            return std::to_string(info::differential_entropy_uniform(a, b)) + "\n";
+            return format_scalar(info::differential_entropy_uniform(a, b)) + "\n";
         }
 
         if (fn == "info_renyi_entropy") {
@@ -19675,7 +22698,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "info_tsallis_entropy") {
@@ -19699,7 +22722,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "geo_bezier_eval_x" || fn == "geo_bezier_eval_y" || fn == "bwt_decode_vec" ||
@@ -19757,7 +22780,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "combo_rank_combination") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || t != n) {
                     return std::unexpected(DomainError{
                         "combo_rank_combination", "expected non-negative integer n"});
@@ -19766,10 +22793,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "combo_next_comb") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || t != n) {
                     return std::unexpected(DomainError{
                         "combo_next_comb", "expected non-negative integer n"});
@@ -19784,7 +22815,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "combo_prev_comb") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || t != n) {
                     return std::unexpected(DomainError{
                         "combo_prev_comb", "expected non-negative integer n"});
@@ -19799,7 +22834,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "signal_moving_average") {
-                const int window = static_cast<int>(t);
+                auto window_checked = checked_int_argument(fn, "window", t);
+                if (!window_checked) {
+                    return std::unexpected(window_checked.error());
+                }
+                const int window = *window_checked;
                 if (window < 1 || t != window) {
                     return std::unexpected(DomainError{
                         "signal_moving_average", "expected positive integer window"});
@@ -19839,7 +22878,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return format_labeled_matrix(label, *value);
             }
             if (fn == "graph_bfs") {
-                const int source = static_cast<int>(t);
+                auto source_checked = checked_int_argument(fn, "source", t);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
                 if (source < 0 || t != source) {
                     return std::unexpected(DomainError{
                         "graph_bfs", "expected non-negative integer source"});
@@ -19854,7 +22897,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "graph_dfs") {
-                const int source = static_cast<int>(t);
+                auto source_checked = checked_int_argument(fn, "source", t);
+                if (!source_checked) {
+                    return std::unexpected(source_checked.error());
+                }
+                const int source = *source_checked;
                 if (source < 0 || t != source) {
                     return std::unexpected(DomainError{
                         "graph_dfs", "expected non-negative integer source"});
@@ -19869,7 +22916,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "graph_k_core_subgraph") {
-                const int k = static_cast<int>(t);
+                auto k_checked = checked_int_argument(fn, "k", t);
+                if (!k_checked) {
+                    return std::unexpected(k_checked.error());
+                }
+                const int k = *k_checked;
                 if (t != k) {
                     return std::unexpected(DomainError{
                         "graph_k_core_subgraph", "expected integer k"});
@@ -19884,7 +22935,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "graph_bipartite_match") {
-                const int left_size = static_cast<int>(t);
+                auto left_size_checked = checked_int_argument(fn, "left_size", t);
+                if (!left_size_checked) {
+                    return std::unexpected(left_size_checked.error());
+                }
+                const int left_size = *left_size_checked;
                 if (left_size < 0 || t != left_size) {
                     return std::unexpected(DomainError{
                         "graph_bipartite_match", "expected non-negative integer left_size"});
@@ -19893,52 +22948,56 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_percentile") {
                 auto value = eval_stats_percentile(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "finance_historical_var") {
                 auto value = eval_finance_historical_var(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "finance_historical_cvar") {
                 auto value = eval_finance_historical_cvar(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_ttest") {
                 auto value = eval_stats_ttest(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_trimmed_mean") {
                 auto value = eval_stats_trimmed_mean(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "stats_vif" || fn == "stats_variance_inflation_factor") {
                 auto value = eval_stats_vif(*ctrl, t, fn.c_str());
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "fft_irfft") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 1 || t != n) {
                     return std::unexpected(DomainError{
                         "fft_irfft", "expected positive integer n"});
@@ -19983,7 +23042,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "poly_pow") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || t != n) {
                     return std::unexpected(
                         DomainError{"poly_pow", "expected non-negative integer n"});
@@ -19998,7 +23061,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return out.str();
             }
             if (fn == "poly_cheb_expand") {
-                const int n = static_cast<int>(t);
+                auto n_checked = checked_int_argument(fn, "n", t);
+                if (!n_checked) {
+                    return std::unexpected(n_checked.error());
+                }
+                const int n = *n_checked;
                 if (n < 0 || t != n) {
                     return std::unexpected(
                         DomainError{"poly_cheb_expand", "expected non-negative integer n"});
@@ -20017,14 +23084,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             if (fn == "poly_cheb_eval") {
                 auto value = eval_poly_cheb_eval(*ctrl, t);
                 if (!value) {
                     return std::unexpected(value.error());
                 }
-                return std::to_string(*value) + "\n";
+                return format_scalar(*value) + "\n";
             }
             Result<double> value =
                 std::unexpected(DomainError{fn.c_str(), "unsupported bezier eval call"});
@@ -20036,7 +23103,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "bigint_gcd") {
@@ -20050,7 +23117,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "sym_diff") {
@@ -20099,7 +23166,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg_a, n) || !parse_number(arg_b, x)) {
                 return std::unexpected(DomainError{"legendre_p", "expected legendre_p(n,x)"});
             }
-            return std::to_string(legendre_p(static_cast<int>(n), x)) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(legendre_p(*n_order, x)) + "\n";
         }
 
         if (fn == "plot" || fn == "scatter" || fn == "solve" || fn == "lsq" || fn == "bicgstab" ||
@@ -20340,8 +23411,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     if (!C) {
                         return std::unexpected(C.error());
                     }
+                    // A matrix call written without a target prints under `_` and stores there, which is
+                    // what the registry fallback does for every other matrix-returning callee and what
+                    // the documentation says. These few callees were given hand-written branches before
+                    // that fallback existed, and the branches shadow it: they printed under an invented
+                    // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                    // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                    // could be both.
+                    state_.scalars.erase("_");
+                    state_.matrices["_"] = *C;
                     std::ostringstream out;
-                    out << "C =\n";
+                    out << "_ =\n";
                     print_matrix(out, *C);
                     return out.str();
                 }
@@ -20366,8 +23446,17 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!C) {
                     return std::unexpected(C.error());
                 }
+                // A matrix call written without a target prints under `_` and stores there, which is
+                // what the registry fallback does for every other matrix-returning callee and what
+                // the documentation says. These few callees were given hand-written branches before
+                // that fallback existed, and the branches shadow it: they printed under an invented
+                // `C` -- a name no lookup can spell back, since nothing was stored -- so the result
+                // of `matmul(A, B)` could be read and not used, while `rand(2, 2)` on the next line
+                // could be both.
+                state_.scalars.erase("_");
+                state_.matrices["_"] = *C;
                 std::ostringstream out;
-                out << "C =\n";
+                out << "_ =\n";
                 print_matrix(out, *C);
                 return out.str();
             }
@@ -20379,7 +23468,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         if (!value) {
             return std::unexpected(value.error());
         }
-        return std::to_string(*value) + "\n";
+        return format_scalar(*value) + "\n";
     }
 
     static const std::regex unary(R"((\w+)\(([^)]+)\))", std::regex::icase);
@@ -20396,33 +23485,33 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(DomainError{fn, "expected numeric argument"});
             }
             if (fn == "special_erfinv") {
-                return std::to_string(erfinv(value)) + "\n";
+                return format_scalar(erfinv(value)) + "\n";
             }
             if (fn == "special_erfcinv") {
-                return std::to_string(erfcinv(value)) + "\n";
+                return format_scalar(erfcinv(value)) + "\n";
             }
             if (fn == "special_log_gamma") {
-                return std::to_string(log_gamma(value)) + "\n";
+                return format_scalar(log_gamma(value)) + "\n";
             }
             if (fn == "special_digamma") {
-                return std::to_string(digamma(value)) + "\n";
+                return format_scalar(digamma(value)) + "\n";
             }
             if (fn == "special_airy_ai") {
-                return std::to_string(airy_ai(value)) + "\n";
+                return format_scalar(airy_ai(value)) + "\n";
             }
             if (fn == "special_airy_bi") {
-                return std::to_string(airy_bi(value)) + "\n";
+                return format_scalar(airy_bi(value)) + "\n";
             }
             if (fn == "special_airy_aip" || fn == "airy_aip") {
-                return std::to_string(airy_aip(value)) + "\n";
+                return format_scalar(airy_aip(value)) + "\n";
             }
             if (fn == "special_airy_bip" || fn == "airy_bip") {
-                return std::to_string(airy_bip(value)) + "\n";
+                return format_scalar(airy_bip(value)) + "\n";
             }
             if (fn == "special_rgamma") {
-                return std::to_string(rgamma(value)) + "\n";
+                return format_scalar(rgamma(value)) + "\n";
             }
-            return std::to_string(trigamma(value)) + "\n";
+            return format_scalar(trigamma(value)) + "\n";
         }
 
         if (fn == "beta_dirichlet") {
@@ -20430,7 +23519,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, s)) {
                 return std::unexpected(DomainError{"beta_dirichlet", "expected numeric s"});
             }
-            return std::to_string(beta_dirichlet(s)) + "\n";
+            return format_scalar(beta_dirichlet(s)) + "\n";
         }
 
         if (fn == "bernoulli_number") {
@@ -20439,7 +23528,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"bernoulli_number", "expected non-negative integer n"});
             }
-            return std::to_string(bernoulli_number(static_cast<int>(n))) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(bernoulli_number(*n_order)) + "\n";
         }
 
         if (fn == "euler_number") {
@@ -20448,7 +23541,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"euler_number", "expected non-negative integer n"});
             }
-            return std::to_string(euler_number(static_cast<int>(n))) + "\n";
+            auto n_order = checked_int_argument(fn, "n", n);
+            if (!n_order) {
+                return std::unexpected(n_order.error());
+            }
+            return format_scalar(euler_number(*n_order)) + "\n";
         }
 
         if (fn == "plot") {
@@ -20469,20 +23566,35 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected non-negative integer argument"});
             }
-            auto value = eval_bigint_unary(fn, static_cast<int>(n_d));
+            auto n_checked = checked_int_argument(fn, "argument", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            auto value = eval_bigint_unary(fn, *n_checked);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            return std::to_string(*value) + "\n";
+            return format_scalar(*value) + "\n";
         }
 
         if (fn == "numthy_prime_nth") {
             double n_d = 0.0;
-            if (!parse_number(arg, n_d) || n_d < 1.0 || std::floor(n_d) != n_d) {
+            if (!parse_number(arg, n_d) || n_d < 1.0) {
                 return std::unexpected(
                     DomainError{"numthy_prime_nth", "expected integer n >= 1"});
             }
-            return std::to_string(numthy::prime_nth(static_cast<uint64_t>(n_d))) + "\n";
+            auto n_arg = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_arg) {
+                return std::unexpected(n_arg.error());
+            }
+            // The second route to the same command, and the reason the first guard
+            // alone left `numthy_prime_nth(10000000)` at 20 s: the sweep measured it
+            // unchanged and said so.
+            auto bounded_n = checked_prime_index(fn, static_cast<double>(*n_arg));
+            if (!bounded_n) {
+                return std::unexpected(bounded_n.error());
+            }
+            return sieve_count_text(fn, numthy::prime_nth(*n_arg));
         }
 
         if (fn == "numthy_factor_exp" || fn == "numthy_farey" ||
@@ -20506,17 +23618,21 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 }
                 n_d = *n_expr;
             }
-            const int n = static_cast<int>(n_d);
+            auto n_checked = checked_int_argument(fn, "n", n_d);
+            if (!n_checked) {
+                return std::unexpected(n_checked.error());
+            }
+            const int n = *n_checked;
             Result<Matrix<double>> value = std::unexpected(
                 DomainError{fn, "unsupported matrix call"});
             if (fn == "numthy_factor_exp") {
-                if (n < 2 || n_d != n) {
+                if (n < 2) {
                     return std::unexpected(
                         DomainError{"numthy_factor_exp", "expected integer n >= 2"});
                 }
                 value = eval_numthy_factor_exp(n);
             } else if (fn == "numthy_farey") {
-                if (n < 1 || n_d != n) {
+                if (n < 1) {
                     return std::unexpected(
                         DomainError{"numthy_farey", "expected positive integer n"});
                 }
@@ -20556,12 +23672,25 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p >= 2"});
             }
-            const auto p = static_cast<uint64_t>(p_d);
+            auto p_u64 = checked_u64_argument(fn, "p", p_d, kMaxU64AsDouble);
+            if (!p_u64) {
+                return std::unexpected(p_u64.error());
+            }
+            const auto p = *p_u64;
             if (!numthy::isprime(p)) {
                 return std::unexpected(
                     DomainError{"numthy_primitive_root", "expected prime p"});
             }
-            return std::to_string(numthy::primitive_root(static_cast<int>(p))) + "\n";
+            if (p > static_cast<uint64_t>(std::numeric_limits<int>::max())) {
+                return std::unexpected(DomainError{
+                    "numthy_primitive_root", "p is too large: expected p <= 2147483647"});
+            }
+            const int root = numthy::primitive_root(static_cast<int>(p));
+            if (root < 0) {
+                return std::unexpected(
+                    DomainError{"numthy_primitive_root", "no primitive root found"});
+            }
+            return format_scalar(root) + "\n";
         }
 
         if (fn == "numthy_von_mangoldt") {
@@ -20570,7 +23699,11 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"numthy_von_mangoldt", "expected non-negative integer n"});
             }
-            return std::to_string(numthy::von_mangoldt(static_cast<uint64_t>(n_d))) + "\n";
+            auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+            if (!n_u64) {
+                return std::unexpected(n_u64.error());
+            }
+            return format_scalar(numthy::von_mangoldt(*n_u64)) + "\n";
         }
 
         if (fn == "combo_factorial" || fn == "combo_catalan" || fn == "combo_bell" ||
@@ -20590,103 +23723,134 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     DomainError{fn, "expected non-negative integer argument"});
             }
             if (fn == "combo_factorial") {
-                return std::to_string(
-                           combo::factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::factorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_catalan") {
-                return std::to_string(
-                           combo::catalan_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::catalan_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_bell" || fn == "combo_bell_num") {
-                return std::to_string(
-                           combo::bell_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::bell_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_involutions") {
-                return std::to_string(
-                           combo::involutions(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::involutions(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_motzkin") {
-                return std::to_string(
-                           combo::motzkin_num(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::motzkin_num(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_subfactorial") {
-                return std::to_string(
-                           combo::subfactorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::subfactorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "combo_double_factorial") {
-                return std::to_string(
-                           combo::double_factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
-            }
-            if (fn == "combo_double_factorial") {
-                return std::to_string(
-                           combo::double_factorial(static_cast<uint32_t>(n_d))) +
-                       "\n";
+                return combo_count_text(fn, combo::double_factorial(static_cast<uint32_t>(n_d)));
             }
             if (fn == "numthy_isprime") {
-                return std::to_string(numthy::isprime(static_cast<uint64_t>(n_d)) ? 1 : 0) + "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::isprime(*n_u64) ? 1 : 0) + "\n";
             }
             if (fn == "numthy_is_carmichael") {
-                return std::to_string(numthy::is_carmichael(static_cast<uint64_t>(n_d)) ? 1 : 0) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::is_carmichael(*n_u64) ? 1 : 0) +
                        "\n";
             }
             if (fn == "numthy_euler_phi") {
-                return std::to_string(numthy::euler_phi(static_cast<uint64_t>(n_d))) + "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::euler_phi(*n_u64)) + "\n";
             }
             if (fn == "numthy_carmichael_lambda") {
-                return std::to_string(numthy::carmichael_lambda(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(numthy::carmichael_lambda(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_mobius") {
-                return std::to_string(
-                           static_cast<double>(numthy::mobius(static_cast<uint64_t>(n_d)))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           static_cast<double>(numthy::mobius(*n_u64))) +
                        "\n";
             }
             if (fn == "numthy_nextprime") {
-                return std::to_string(
-                           numthy::nextprime(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           numthy::nextprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
-                return std::to_string(
-                           numthy::prevprime(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           numthy::prevprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_prevprime") {
-                return std::to_string(
-                           numthy::prevprime(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           numthy::prevprime(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_liouville") {
-                return std::to_string(
-                           static_cast<double>(numthy::liouville(static_cast<uint64_t>(n_d)))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           static_cast<double>(numthy::liouville(*n_u64))) +
                        "\n";
             }
             if (fn == "numthy_prime_pi") {
-                return std::to_string(numthy::prime_pi(static_cast<uint64_t>(n_d))) + "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return sieve_count_text(fn, numthy::prime_pi(*n_u64));
             }
             if (fn == "numthy_num_divisors") {
-                return std::to_string(
-                           numthy::num_divisors(static_cast<uint64_t>(n_d))) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           numthy::num_divisors(*n_u64)) +
                        "\n";
             }
             if (fn == "numthy_factor_count") {
-                return std::to_string(
-                           numthy::factor(static_cast<uint64_t>(n_d)).size()) +
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return format_scalar(
+                           numthy::factor(*n_u64).size()) +
                        "\n";
             }
             if (fn == "numthy_sum_divisors") {
-                return std::to_string(
-                           numthy::sum_divisors(static_cast<uint64_t>(n_d))) +
-                       "\n";
+                auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
+                if (!n_u64) {
+                    return std::unexpected(n_u64.error());
+                }
+                return combo_count_text(fn, numthy::sum_divisors(*n_u64));
             }
-            return std::to_string(numthy::partition(static_cast<uint32_t>(n_d))) + "\n";
+            return combo_count_text(fn, numthy::partition(static_cast<uint32_t>(n_d)));
         }
 
         if (fn == "info_channel_capacity_bsc") {
@@ -20695,7 +23859,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_channel_capacity_bsc", "expected numeric p_error"});
             }
-            return std::to_string(info::channel_capacity_bsc(p_error)) + "\n";
+            return format_scalar(info::channel_capacity_bsc(p_error)) + "\n";
         }
 
         if (fn == "info_channel_capacity_bec") {
@@ -20704,7 +23868,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_channel_capacity_bec", "expected numeric epsilon"});
             }
-            return std::to_string(info::channel_capacity_bec(epsilon)) + "\n";
+            return format_scalar(info::channel_capacity_bec(epsilon)) + "\n";
         }
 
         if (fn == "info_differential_entropy_gaussian") {
@@ -20713,7 +23877,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"info_differential_entropy_gaussian", "expected numeric sigma"});
             }
-            return std::to_string(info::differential_entropy_gaussian(sigma)) + "\n";
+            return format_scalar(info::differential_entropy_gaussian(sigma)) + "\n";
         }
 
         if (fn == "clausen") {
@@ -20721,7 +23885,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, theta)) {
                 return std::unexpected(DomainError{"clausen", "expected numeric theta"});
             }
-            return std::to_string(clausen(theta)) + "\n";
+            return format_scalar(clausen(theta)) + "\n";
         }
 
         if (fn == "sym_simplify") {
@@ -20740,12 +23904,28 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             return *value;
         }
 
+        if (fn == "sym_latex") {
+            auto value = eval_sym_latex_string(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_from_latex") {
+            auto value = eval_sym_from_latex_string(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
         if (fn == "eta_dirichlet") {
             double s = 0.0;
             if (!parse_number(arg, s)) {
                 return std::unexpected(DomainError{"eta_dirichlet", "expected numeric s"});
             }
-            return std::to_string(eta_dirichlet(s)) + "\n";
+            return format_scalar(eta_dirichlet(s)) + "\n";
         }
 
         if (fn == "erf" || fn == "erfc" || fn == "erfi" || fn == "erfcx" || fn == "dawson" ||
@@ -20756,42 +23936,46 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!parse_number(arg, value)) {
                 return std::unexpected(DomainError{"special", "expected numeric argument"});
             }
-            std::ostringstream out;
+            // Through the shared formatter, not a bare ostream. The default is six
+            // SIGNIFICANT digits, which is a much coarser thing than the six DECIMAL
+            // places std::to_string gives: gamma(20) printed 1.21645e+17 where the
+            // value is 121645100408832000 exactly, an answer short by a hundred
+            // billion. These sixteen were the last group still streaming raw.
+            double result = 0.0;
             if (fn == "erf") {
-                out << erf(value);
+                result = erf(value);
             } else if (fn == "erfc") {
-                out << erfc(value);
+                result = erfc(value);
             } else if (fn == "erfi") {
-                out << erfi(value);
+                result = erfi(value);
             } else if (fn == "erfcx") {
-                out << erfcx(value);
+                result = erfcx(value);
             } else if (fn == "dawson") {
-                out << dawson(value);
+                result = dawson(value);
             } else if (fn == "dawsonx") {
-                out << dawsonx(value);
+                result = dawsonx(value);
             } else if (fn == "gamma") {
-                out << gamma_func(value);
+                result = gamma_func(value);
             } else if (fn == "bessel_j0") {
-                out << bessel_j0(value);
+                result = bessel_j0(value);
             } else if (fn == "bessel_j1") {
-                out << bessel_j1(value);
+                result = bessel_j1(value);
             } else if (fn == "bessel_y0") {
-                out << bessel_y0(value);
+                result = bessel_y0(value);
             } else if (fn == "bessel_y1") {
-                out << bessel_y1(value);
+                result = bessel_y1(value);
             } else if (fn == "fresnel_c") {
-                out << fresnel_c(value);
+                result = fresnel_c(value);
             } else if (fn == "fresnel_s") {
-                out << fresnel_s(value);
+                result = fresnel_s(value);
             } else if (fn == "ellip_k") {
-                out << ellip_k(value);
+                result = ellip_k(value);
             } else if (fn == "ellip_e") {
-                out << ellip_e(value);
+                result = ellip_e(value);
             } else {
-                out << zeta(value);
+                result = zeta(value);
             }
-            out << "\n";
-            return out.str();
+            return format_scalar(result) + "\n";
         }
 
         if (fn == "gria") {
@@ -20911,54 +24095,128 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             std::ostringstream out;
             out << "fft magnitudes:\n";
             for (size_t i = 0; i < spectrum->size(); ++i) {
-                out << "  [" << i << "] " << std::abs((*spectrum)[i]) << "\n";
+                out << "  [" << i << "] " << format_scalar(std::abs((*spectrum)[i])) << "\n";
             }
             return out.str();
         }
 
         auto matrix = parse_matrix(arg);
         if (matrix) {
+            state_.scalars.erase("_");
             state_.matrices["_"] = *matrix;
         } else {
             matrix = resolve_matrix(arg);
             if (!matrix) {
+                // The argument names no matrix, so this was never a call on one.
+                // `zeros(3)` and `eye(2)` build a matrix out of numbers, and
+                // `sqrt(2)`, `sin(0.5)` and `pow(x, 2)` are scalar expressions;
+                // all of them merely share the f(arg) shape. Serve them here
+                // rather than reporting a matrix the user never mentioned.
+                // Three readings of one line compete here, and the question is which
+                // of them gets to report when they all fail. `f(x)` is the shape of a
+                // call on a matrix, of a matrix constructor, and of a scalar function,
+                // and nothing but the argument tells them apart.
+                std::optional<Error> built_error;
+                MatrixCallAssign matrix_call{};
+                if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
+                    auto built = dispatch_matrix_call(*this, matrix_call);
+                    if (built) {
+                        state_.scalars.erase("_");
+                        state_.matrices["_"] = *built;
+                        std::ostringstream built_out;
+                        built_out << "_ =\n";
+                        print_matrix(built_out, *built);
+                        return built_out.str();
+                    }
+                    built_error = built.error();
+                }
+                auto value = eval_scalar_expr(state_, cmd);
+                if (value) {
+                    return format_scalar(*value) + "\n";
+                }
+
+                // In order of how much each reading actually established.
+                //
+                // The scalar reading wins when it diagnosed the line rather than
+                // declining it: `sqrt(-1)` is a domain error, and "unknown matrix: -1"
+                // would send the reader looking for a variable. A bare word is the
+                // exception, for the reason given at the bare-expression fallback.
+                if (!is_identifier(cmd) && !scalar_error_is_a_decline(value.error())) {
+                    return std::unexpected(value.error());
+                }
+                // Then the matrix call that got as far as dispatching: `zeros(-1, 2)`
+                // is a constructor rejecting its own arguments, and that beats the
+                // outer failure to resolve "-1, 2" as the name of a matrix.
+                if (built_error) {
+                    return std::unexpected(*built_error);
+                }
+                // Last, the outer failure to resolve the argument as the name of a
+                // matrix -- but only when the argument IS a name. `det(no_such)` should
+                // keep naming `no_such`; `not_a_function(1)` was reported as "unknown
+                // matrix: 1", which sends the reader looking for a matrix called 1 when
+                // the fault is the callee.
+                //
+                // The obvious fix -- say "unknown function" instead -- is wrong, and
+                // measuring it is what showed that: 278 real callees reach this same
+                // return in the one-argument shape, `mat_at`, `finance_npv` and
+                // `stats_percentile` among them, because they are dispatched from other
+                // blocks of `execute` that no predicate here enumerates. Nothing at this
+                // point knows whether the callee exists. So the message says only what
+                // is established, which is that no reading of the line worked.
+                if (!is_identifier(arg)) {
+                    return std::unexpected(DomainError{
+                        "repl", "could not read '" + cmd +
+                                    "' as a matrix call, a matrix constructor, or a "
+                                    "scalar expression"});
+                }
                 return std::unexpected(matrix.error());
             }
         }
 
         std::ostringstream out;
+        // Set only by the final `else` of the chain below, so that "one of the 92
+        // branches answered" and "nothing here knows this name" stay distinguishable
+        // after the chain has ended.
+        bool reached_display_tail = false;
+        std::optional<Result<std::string>> display_tail;
         if (fn == "det") {
             auto result = det(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "trace") {
             auto result = trace(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "norm") {
             auto result = norm(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "rank") {
             auto result = rank(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "matrix_rank") {
             out << matrix_rank(*matrix) << "\n";
+        } else if (fn == "mat_rows") {
+            out << matrix->rows() << "\n";
+        } else if (fn == "mat_cols") {
+            out << matrix->cols() << "\n";
+        } else if (fn == "mat_numel") {
+            out << (matrix->rows() * matrix->cols()) << "\n";
         } else if (fn == "cond") {
             auto result = cond(*matrix);
             if (!result) {
                 return std::unexpected(result.error());
             }
-            out << *result << "\n";
+            out << format_scalar(*result) << "\n";
         } else if (fn == "geo_convex_hull_area") {
             auto points = matrix_to_points2d(*matrix, "geo_convex_hull_area");
             if (!points) {
@@ -20979,325 +24237,331 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_polygon_perimeter") {
             auto value = eval_geo_polygon_perimeter(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_signed_area") {
             auto value = eval_geo_signed_area(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_moment_of_inertia") {
             auto value = eval_geo_moment_of_inertia(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_centroid_x") {
             auto value = eval_geo_centroid_x(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "geo_centroid_y") {
             auto value = eval_geo_centroid_y(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "bwt_primary_index") {
             auto value = eval_bwt_primary_index(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "combo_rank_permutation") {
             auto value = eval_combo_rank_permutation(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "ml_vec_norm") {
             auto value = eval_ml_vec_norm(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_entropy") {
             auto value = eval_info_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_lz_complexity") {
             auto value = eval_info_lz_complexity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_redundancy") {
             auto value = eval_info_redundancy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_efficiency") {
             auto value = eval_info_efficiency(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_source_coding_rate") {
             auto value = eval_info_source_coding_rate(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_mutual_info") {
             auto value = eval_info_mutual_info(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_blahut_arimoto") {
             auto value = eval_info_blahut_arimoto(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_channel_capacity") {
             auto value = eval_info_channel_capacity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "info_normalized_entropy") {
             auto value = eval_info_normalized_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_irr") {
             auto value = eval_finance_irr(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_sharpe") {
             auto value = eval_finance_sharpe(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_sortino") {
             auto value = eval_finance_sortino(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_var") {
             auto value = eval_finance_var(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_cvar") {
             auto value = eval_finance_cvar(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "finance_max_drawdown") {
             auto value = eval_finance_max_drawdown(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_von_neumann_entropy") {
             auto value = eval_quantum_von_neumann_entropy(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_purity") {
             auto value = eval_quantum_purity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "quantum_concurrence") {
             auto value = eval_quantum_concurrence(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "tensorops_norm") {
             auto value = eval_tensorops_norm(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_diameter") {
             auto value = eval_graph_diameter(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_radius") {
             auto value = eval_graph_radius(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_algebraic_connectivity") {
             auto value = eval_graph_algebraic_connectivity(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_bipartite") {
             auto value = eval_graph_is_bipartite(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_chromatic_number") {
             auto value = eval_graph_chromatic_number(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_dag") {
             auto value = eval_graph_is_dag(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "poly_discriminant") {
             auto value = eval_poly_discriminant(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mean") {
             auto value = eval_stats_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_median") {
             auto value = eval_stats_median(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_stddev") {
             auto value = eval_stats_stddev(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_skewness") {
             auto value = eval_stats_skewness(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_kurtosis") {
             auto value = eval_stats_kurtosis(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_var") {
             auto value = eval_stats_var(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mode") {
             auto value = eval_stats_mode(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_geometric_mean") {
             auto value = eval_stats_geometric_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_harmonic_mean") {
             auto value = eval_stats_harmonic_mean(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_rms") {
             auto value = eval_stats_rms(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_mad") {
             auto value = eval_stats_mad(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_iqr") {
             auto value = eval_stats_iqr(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_min_value") {
             auto value = eval_stats_min_value(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "stats_max_value") {
             auto value = eval_stats_max_value(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "count_components") {
             auto value = eval_count_components(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_connected") {
             auto value = eval_graph_is_connected(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_strongly_connected") {
             auto value = eval_graph_is_strongly_connected(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_tree") {
             auto value = eval_graph_is_tree(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_is_planar") {
             auto value = eval_graph_is_planar(*matrix);
             if (!value) {
                 return std::unexpected(value.error());
             }
-            out << *value << "\n";
+            out << format_scalar(*value) << "\n";
+        } else if (fn == "graph_is_planar_heuristic") {
+            auto value = eval_graph_is_planar_heuristic(*matrix);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            out << format_scalar(*value) << "\n";
         } else if (fn == "graph_pagerank") {
             auto G = graph_from_adjacency(*matrix, "graph_pagerank");
             if (!G) {
@@ -21306,7 +24570,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             const auto scores = graph::pagerank(*G);
             out << "pagerank:\n";
             for (size_t i = 0; i < scores.size(); ++i) {
-                out << "  [" << i << "] " << scores[i] << "\n";
+                out << "  [" << i << "] " << format_scalar(scores[i]) << "\n";
             }
         } else if (fn == "graph_betweenness") {
             auto bc = eval_graph_betweenness(*matrix);
@@ -21315,7 +24579,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "betweenness:\n";
             for (size_t i = 0; i < bc->rows(); ++i) {
-                out << "  [" << i << "] " << (*bc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*bc)(i, 0)) << "\n";
             }
         } else if (fn == "graph_closeness") {
             auto cc = eval_graph_closeness(*matrix);
@@ -21324,7 +24588,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "closeness:\n";
             for (size_t i = 0; i < cc->rows(); ++i) {
-                out << "  [" << i << "] " << (*cc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*cc)(i, 0)) << "\n";
             }
         } else if (fn == "graph_degree_centrality") {
             auto dc = eval_graph_degree_centrality(*matrix);
@@ -21333,7 +24597,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "degree_centrality:\n";
             for (size_t i = 0; i < dc->rows(); ++i) {
-                out << "  [" << i << "] " << (*dc)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*dc)(i, 0)) << "\n";
             }
         } else if (fn == "fft_rfft") {
             auto spectrum = eval_fft_rfft(*matrix);
@@ -21505,15 +24769,141 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             }
             out << "eigenvector_centrality:\n";
             for (size_t i = 0; i < ec->rows(); ++i) {
-                out << "  [" << i << "] " << (*ec)(i, 0) << "\n";
+                out << "  [" << i << "] " << format_scalar((*ec)(i, 0)) << "\n";
             }
         }
         else {
-            return format_unary_matrix_fn_tail(fn, *matrix);
+            reached_display_tail = true;
+            display_tail = format_unary_matrix_fn_tail(fn, *matrix);
         }
-        return out.str();
+        // Everything from here to the end of this block sits OUTSIDE the else-if chain
+        // above, at the depth of the `return out.str()` it replaces. That is deliberate:
+        // the chain is 92 levels deep and exists in two functions because MSVC refused
+        // it as one (C1061), so a fix that added nesting to it would be paid for on the
+        // Windows runner an hour later.
+        if (!reached_display_tail) {
+            return out.str();
+        }
+        if (display_tail) {
+            return *display_tail;
+        }
+
+        // No branch above, and none in the tail, has heard of this name. The branches
+        // are a hand-written list; the matrix-call registry is the generated one, and
+        // it knows every matrix-returning callee together with the arities each
+        // accepts. Asking it here is what gives `transpose(A)` a no-target form --
+        // and, with it, 97 other callees that worked when assigned and reported
+        // "unknown function" when printed.
+        //
+        // The result is stored under `_` as well as printed. A value that can be read
+        // and not used is the defect the six hand-written branches had before the
+        // registry fallback replaced them.
+        MatrixCallAssign unary_call{};
+        if (!try_parse_matrix_call_assignment("_ = " + cmd, unary_call)) {
+            // Either no such callee, or none at this arity. Both are "unknown function"
+            // to a user who wrote a name nothing answers to.
+            return std::unexpected(DomainError{"repl", "unknown function: " + fn});
+        }
+        auto unary_called = dispatch_matrix_call(*this, unary_call);
+        if (!unary_called) {
+            // The registry's generic decline names neither the function nor the fault.
+            // It means the arity table lists this callee at one argument and the
+            // handler implements no such form -- the two disagree, and that is a defect
+            // in the handler rather than a mystery to hand the user.
+            const auto* why = std::get_if<DomainError>(&unary_called.error());
+            if (why != nullptr && why->function == "assign" &&
+                why->reason == "unsupported matrix call") {
+                return std::unexpected(
+                    DomainError{fn, "no form of this call takes a single matrix"});
+            }
+            return std::unexpected(unary_called.error());
+        }
+        state_.scalars.erase("_");
+        state_.matrices["_"] = *unary_called;
+        std::ostringstream unary_out;
+        unary_out << "_ =\n";
+        print_matrix(unary_out, *unary_called);
+        return unary_out.str();
     }
 
+    // A matrix call written without a target prints its result under `_`. The
+    // registry already knows every matrix-returning callee and the arities it
+    // accepts, so this covers the whole set at once rather than the hand-listed
+    // subset the branches above cover. Like the bare expression below it, this
+    // only ever sees lines every earlier form has declined.
+    std::optional<Error> matrix_call_error;
+    {
+        MatrixCallAssign matrix_call{};
+        if (try_parse_matrix_call_assignment("_ = " + cmd, matrix_call)) {
+            auto result = dispatch_matrix_call(*this, matrix_call);
+            if (!result) {
+                // Not returned yet. `sqrt(-1)` parses as a matrix call as readily as
+                // `sqrt(A)` does -- the shape is the same and only the argument differs
+                // -- so this branch failing means the line may simply not be a matrix
+                // call, and saying "unknown matrix: -1" claims a line that belongs to
+                // the scalar path. The error is kept and only reported if nothing else
+                // can read the line either.
+                matrix_call_error = result.error();
+            } else {
+            state_.scalars.erase("_");
+            state_.matrices["_"] = *result;
+            std::ostringstream out;
+            out << "_ =\n";
+            print_matrix(out, *result);
+            return out.str();
+            }
+        }
+    }
+
+    // Bare expression. `A`, `x`, `1 + 2`, `sqrt(2)` and `x + 1` print their value
+    // instead of being rejected; every REPL user expects to be able to look at a
+    // variable without assigning it somewhere first. This is the last thing tried,
+    // after every command form and every assignment form has declined the line, so
+    // it can never shadow one of them. A line that is not an expression either
+    // still falls through to the parse error below.
+    {
+        const auto matrix_it = state_.matrices.find(cmd);
+        if (matrix_it != state_.matrices.end()) {
+            std::ostringstream out;
+            out << cmd << " =\n";
+            print_matrix(out, matrix_it->second);
+            return out.str();
+        }
+        auto value = eval_scalar_expr(state_, cmd);
+        if (value) {
+            return format_scalar(*value) + "\n";
+        }
+        // A bare word is the one line shape the REPL genuinely cannot classify. `load`
+        // is an incomplete command; `no_such_variable` is a name that does not exist;
+        // they are spelled identically. Reporting either as an unknown *scalar*
+        // asserts a category this code does not know -- the same defect as telling
+        // someone their matrix is an unknown scalar -- so a bare word keeps the parse
+        // error, which claims nothing.
+        //
+        // Anything else is an expression, and its diagnosis is the useful thing to
+        // report. `1 / 0` used to say "could not parse: 1 / 0", which sends the reader
+        // looking for a typo that is not there, and `sqrt(-1)` used to say "unknown
+        // matrix: -1", which sends them looking for a variable.
+        //
+        // The test for that is `is_identifier`, not "does it contain an operator or
+        // parse as a call": `sqrt(-1)` is a call whose argument is a negative literal,
+        // which the call parser declines, so the narrower test let exactly the case
+        // this comment is about fall through.
+        // A different question from the one above. There, several readings competed and
+        // a decline meant "let another reading answer". Here nothing else could read
+        // the line at all, so the most specific thing available is what to say --
+        // including "'C' is a matrix, not a scalar", which is the whole answer for
+        // `C + D` and reads far better than "could not parse".
+        if (!is_identifier(cmd) && !scalar_error_says_nothing(value.error())) {
+            return std::unexpected(value.error());
+        }
+    }
+
+    // A matrix-call reading of the line failed and nothing else could read it either,
+    // so that reading was the right one after all and its diagnosis is the useful one.
+    if (matrix_call_error) {
+        return std::unexpected(*matrix_call_error);
+    }
     return std::unexpected(DomainError{"repl", "could not parse: " + cmd});
 }
 

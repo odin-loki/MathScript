@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/numthy/numthy.hpp"
 #include <gtest/gtest.h>
 #include <cmath>
@@ -237,11 +239,16 @@ TEST(NumthyMult, JordanTotientMatchesEulerPhi) {
 }
 
 TEST(NumthyMult, JordanTotientK2) {
+    // These five used to assert (1 - 1/p) where the Jordan totient is (1 - 1/p^k) --
+    // the comments derived each expected value from the same wrong formula the code
+    // used, so all three agreed and none was the Jordan totient. See
+    // tests/unit/numthy/test_numthy_overflow.cpp, which checks J_k against a direct
+    // count of the k-tuples it is defined as.
     EXPECT_EQ(jordan_totient(2, 1), 1u);
-    EXPECT_EQ(jordan_totient(2, 6), 12u);   // 36*(1-1/2)*(1-1/3) = 12
-    EXPECT_EQ(jordan_totient(2, 12), 48u);  // 144*(1-1/2)*(1-1/3) = 48
-    EXPECT_EQ(jordan_totient(2, 7), 42u);   // 7^2 - 7 = 42
-    EXPECT_EQ(jordan_totient(3, 6), 72u);   // 216*(1-1/2)*(1-1/3) = 72
+    EXPECT_EQ(jordan_totient(2, 6), 24u);   // 36*(1-1/4)*(1-1/9) = 24
+    EXPECT_EQ(jordan_totient(2, 12), 96u);  // 144*(1-1/4)*(1-1/9) = 96
+    EXPECT_EQ(jordan_totient(2, 7), 48u);   // 7^2 - 1 = 48
+    EXPECT_EQ(jordan_totient(3, 6), 182u);  // 216*(1-1/8)*(1-1/27) = 182
 }
 
 TEST(NumthyMult, VonMangoldtPrimePowers) {
@@ -826,9 +833,12 @@ TEST(NumthyMult, JordanTotientZeroInputs) {
     EXPECT_EQ(jordan_totient(0, 0), 0u);
 }
 
-TEST(NumthyMult, JordanTotientOverflowReturnsZero) {
-    EXPECT_EQ(jordan_totient(32, 1000003), 0u);
-    EXPECT_EQ(jordan_totient(20, 720720), 0u);
+TEST(NumthyMult, JordanTotientOverflowIsReported) {
+    // It used to return 0, which is a value J_k(n) never takes for k, n >= 1 but which
+    // the REPL printed as the answer. UINT64_MAX is the marker the rest of the tree
+    // uses, and the REPL now reports it.
+    EXPECT_EQ(jordan_totient(32, 1000003), UINT64_MAX);
+    EXPECT_EQ(jordan_totient(20, 720720), UINT64_MAX);
 }
 
 TEST(NumthyMult, EulerPhiZeroAndMobiusThreePrimes) {

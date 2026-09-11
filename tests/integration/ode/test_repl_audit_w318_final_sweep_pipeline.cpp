@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript Integration Tests: REPL Interpreter – Audit Wave 318 Final Sweep Pipeline
 //
 // Inventory: leftover C++ names are already bound as combo_catalan/motzkin/eulerian,

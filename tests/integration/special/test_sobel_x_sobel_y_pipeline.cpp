@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -35,7 +37,7 @@ TEST(IntegrationSpecial,  SobelXYTail28) {
     EXPECT_EQ(interp.state().matrices.at("Sx").rows(), 2u);
 }
 
-TEST(IntegrationSpecial,  ChebyshevWScalar) {
+TEST(IntegrationSpecial, ChebyshevWScalar_SobelXSobelYPipeline) {
     Interpreter interp;
     expect_ok(interp, "cw = chebyshev_w(2, 0.5)");
     EXPECT_NEAR(interp.state().scalars.at("cw"), ms::chebyshev_w(2, 0.5), 1e-8);

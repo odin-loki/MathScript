@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 // MathScript: Advanced Polynomial Tests (Wave 48)
 // Tests for poly_eval, poly_add, poly_sub, poly_mul, poly_deriv
 

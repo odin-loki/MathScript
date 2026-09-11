@@ -1,0 +1,2 @@
+bin50 = stats_percentile([1; 2; 3; 4; 5], 5 = coml(5, 2)
+ml_kmeans_predict

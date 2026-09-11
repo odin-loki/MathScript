@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Odin Loch
 
 #include <gtest/gtest.h>
 #include <cmath>
@@ -41,7 +43,7 @@ TEST(IntegrationLinalg,  LinalgGeo) {
     EXPECT_EQ(interp.state().matrices.at("pt").cols(), 2u);
 }
 
-TEST(IntegrationLinalg,  SpecialScalar) {
+TEST(IntegrationLinalg, SpecialScalar_HessDiagPipeline) {
     Interpreter interp;
 
     expect_ok(interp, "ln = laguerre_ln(2, 0, 0.5)");
