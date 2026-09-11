@@ -587,6 +587,53 @@ honest message on the way past: it used to say "result does not fit in 64 bits" 
 pi(3000000000), a number near 1.4e8 that fits in a double with room to spare. The limit
 is the sieve, not the width, and it now says so.
 
+### Closing it: four more shapes, and the sweep that should have found them
+
+The remaining candidates were measured and bounded, and four of them were not new caps
+at all:
+
+  - **A guard can be wrong in the direction it was added to fix.** The
+    `checked_matrix_sized_parameter` above had Mathieu's rule -- `ceil(sqrt(|q|))` --
+    baked in, and was also applied to the three spheroidal commands, whose rule is
+    `(n - m)/2 + 22 + ceil(|c|)`. Linear, not a square root. `c = 1e10` read as a
+    dimension of 1e5, passed, and all three were measured ABORTING the process on it.
+    Neither family bounded the ORDER either. Each caller computes its own dimension now
+    and only the bound is shared.
+  - **`sym_series` was fixed rather than capped.** It differentiated a tree it never
+    simplified -- the coefficient was read off a simplified COPY and the copy thrown
+    away -- so every unsimplified term of one derivative was carried into the next. The
+    tree grew about eight times an order: 0.3 s at order 9, 2.6 s at 10, 20.2 s at 11,
+    and order 25 did not finish. It is instant now, at the same answer.
+  - **`stats_kendall` likewise.** Its pair loop is 5e9 comparisons on 100000
+    observations. Kendall's tau-b is an identity away from an inversion count --
+    `C - D = n0 - n1 - n2 + n3 - 2 * inversions` -- so Knight's O(n log n) form reaches
+    the same number, checked exactly against the quadratic definition over four tie
+    regimes. 30 s to 0.2 s.
+  - **`numthy_prime_nth` is a cost that is not the argument.** It sieves to
+    `n(ln n + ln ln n)`, so at n = 1e7 the span is 1.8e8 and the command took 20 s.
+
+The rest are the same four shapes one level further out each time: **a cap on the
+accumulator is not a cap on the work** (both Hough commands: 262144 angles over a
+512x512 image is an accumulator that fits exactly and 6.9e10 votes); **a cap on the grid
+is not a cap on the system it assembles** (`pde_helmholtz_2d` builds the five-point
+stencil DENSELY, so an ordinary 100x100 grid is a 9604-unknown system and 738 MB);
+**a design matrix that fits is not normal equations that fit** (`ones(1, 262144)` is
+exactly `kMaxReplMatrixElems` and X^T X is 1.1 TB); and **a per-argument ceiling is not a
+product ceiling** (10000 trees over a 10000-row subsample, both inside their own
+maximum, is 1e8 sampled rows).
+
+**And the sweep itself had the blind spot.** `test_repl_malformed_sweep`'s oversized
+probes were 3000000000 and 1e18, which `kMaxReplIntegerArgument` refuses -- so the sweep
+could not see a command that dies on a value inside the cap, which is what every one of
+these was. It probes 10000000 as well now, and found a process abort on its first run
+(`info_transfer_entropy`'s `bins^3` joint distribution, formed in `int`, where the cube
+overflows at 1291) plus sixteen commands spending between 2 and 52 seconds building a
+result they were then refused for. The oversized sweep went from 193 s to 7.9 s.
+
+**Verified over the whole probe set**: 119 lines, every candidate from every sweep this
+session, run under a 4 GB address-space limit with a 20 s timeout. **Zero aborts, zero
+timeouts.**
+
 ## §7 — Stubs and half-implementations
 
 **Open.** Ship-or-cut decisions, tracked in
