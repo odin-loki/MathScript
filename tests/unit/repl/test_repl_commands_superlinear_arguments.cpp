@@ -471,3 +471,127 @@ TEST(ReplSuperlinearArguments, LandmarkSelectionRescansForEveryLandmark) {
     expect_ok(interp, "Q = zeros(500,2)");
     expect_ok(interp, "topo_select_landmarks(Q, 40)");
 }
+
+TEST(ReplSuperlinearArguments, ACapOnTheGridIsNotACapOnTheSystemItAssembles) {
+    // Three commands assemble a DENSE square system and none of them takes its size as an
+    // argument, so nothing in what the user typed looks like a size at all.
+    //
+    //   - `stats_pacf` builds the Yule-Walker table at (max_lag+1)^2, so max_lag 100000
+    //     asks for 80 GB -- and the series it was asked about has five elements in it.
+    //     Measured ABORTING the process at 2.3 s.
+    //   - `stats_arfit` builds a p by p Toeplitz system the same way.
+    //   - `pde_helmholtz_2d` assembles the five-point stencil densely, one row per
+    //     interior point: an ordinary 100 by 100 grid is a 9604-unknown system, 738 MB of
+    //     coefficients and 8.9e11 operations. It did not finish in 25 s.
+    Interpreter interp;
+    expect_ok(interp, "x = ones(2000,1)");
+    expect_error_contains(interp, "stats_pacf(x, 100000)", "dense");
+    expect_error_contains(interp, "stats_arfit(x, 20000)", "dense");
+    expect_ok(interp, "G = ones(100,100)");
+    expect_error_contains(interp, "pde_helmholtz_2d(G, 1.0, 0.01, 0.01)", "dense");
+    // The sizes these are actually used at are unaffected.
+    expect_ok(interp, "stats_pacf(x, 40)");
+    expect_ok(interp, "stats_arfit(x, 20)");
+    expect_ok(interp, "H = ones(20,20)");
+    expect_ok(interp, "pde_helmholtz_2d(H, 1.0, 0.01, 0.01)");
+}
+
+TEST(ReplSuperlinearArguments, AModelCanBeBiggerThanTheDataItWasFittedTo) {
+    // `ml_gmm_fit` returns 2K+2 rows by max(features, K, 3) columns, so the component
+    // count enters the answer TWICE: 100000 components is a 200002 by 100000 model, 160
+    // GB, and it ABORTED the process in 2.0 s. A component also needs a point to be a
+    // mixture of, which is the other half of the bound.
+    //
+    // `ml_pca_fit` is the milder version of the same thing: its model is n_components+1
+    // rows of one weight per feature, and a 512 by 512 matrix at the full 512 components
+    // is 262656 -- just past the cap. It used to fit for 3.5 s and be refused afterwards.
+    Interpreter interp;
+    expect_ok(interp, "X = ones(1000,1)");
+    expect_error_contains(interp, "ml_gmm_fit(X, 100000)", "expected 1 <= n_components");
+    expect_ok(interp, "W = ones(512,512)");
+    expect_error_contains(interp, "ml_pca_fit(W, 512)", "model, which is limited to");
+    expect_ok(interp, "ml_gmm_fit(X, 5)");
+    expect_ok(interp, "V = ones(200,50)");
+    expect_ok(interp, "ml_pca_fit(V, 10)");
+}
+
+TEST(ReplSuperlinearArguments, AnMLFitCostsTheDataTimesTheThingBeingFitted) {
+    // Six more products, each measured on a run that completes:
+    //
+    //   ml_kmeans_fit          rows x k^2 (more centres, more Lloyd passes)      15 ns
+    //   ml_spectral_clustering rows^3 for the embedding, rows x k^2 after   8 / 350 ns
+    //   ml_tsne_fit            rows x n_iter                                  25 us
+    //   stats_bootstrap_mean   length x n_boot                                 23 ns
+    //   stats_kde              samples x grid                                  14 ns
+    //   lz77_encode_vec        bytes x window                                   6 ns
+    //
+    // `ml_kmeans_fit` and `ml_pca_fit` already bounded k by the data -- k clusters need k
+    // points -- and that bound is not the cost: 3000 points at k = 3000 satisfies it and
+    // did not finish in 25 s.
+    Interpreter interp;
+    expect_ok(interp, "X = ones(3000,2)");
+    expect_error_contains(interp, "ml_kmeans_fit(X, 3000)", "k 3000 is too large");
+    expect_ok(interp, "Y = ones(400,2)");
+    expect_error_contains(interp, "ml_spectral_clustering(Y, 400)", "k 400 is too large");
+    expect_ok(interp, "Z = ones(200,2)");
+    expect_error_contains(interp, "ml_tsne_fit(Z, 30, 2000000000)",
+                          "n_iter 2000000000 is too large");
+    expect_ok(interp, "v = ones(1000,1)");
+    expect_error_contains(interp, "m = stats_bootstrap_mean(v, 10000000)",
+                          "n_boot 10000000 is too large");
+    expect_ok(interp, "s = ones(100000,1)");
+    expect_error_contains(interp, "stats_kde(s, s, 1)", "the grid length 100000 is too large");
+    expect_ok(interp, "M = ones(512,512)");
+    expect_error_contains(interp, "lz77_encode_vec(M, 262144, 1)", "window 262144 is too large");
+    // And the sizes these are used at:
+    expect_ok(interp, "ml_kmeans_fit(X, 5)");
+    expect_ok(interp, "ml_spectral_clustering(Y, 4)");
+    expect_ok(interp, "ml_tsne_fit(Z, 30, 250)");
+    expect_ok(interp, "m = stats_bootstrap_mean(v, 10000)");
+    expect_ok(interp, "g = ones(500,1)");
+    expect_ok(interp, "stats_kde(v, g, 1)");
+    expect_ok(interp, "N = ones(128,128)");
+    expect_ok(interp, "lz77_encode_vec(N, 1024, 15)");
+}
+
+TEST(ReplSuperlinearArguments, APerArgumentCeilingIsNotAProductCeiling) {
+    // The four ensemble commands already refuse more than 10000 learners and
+    // `ml_isolation_forest_fit` also refuses a subsample past a million. Both are
+    // per-argument, and what it costs is the two multiplied: 10000 trees over a 10000-row
+    // subsample is 1e8 sampled rows and took 6.4 s, with each argument inside its own
+    // maximum. `ml_random_forest_fit` was 4.3 s the same way.
+    Interpreter interp;
+    expect_ok(interp, "X = ones(10000,1)");
+    expect_error_contains(interp, "ml_isolation_forest_fit(X, 10000, 10000)",
+                          "n_trees 10000 is too large");
+    expect_ok(interp, "S = ones(1000,1)");
+    expect_ok(interp, "y = ones(1000,1)");
+    expect_error_contains(interp, "ml_random_forest_fit(S, y, 10000, 5)",
+                          "n_trees 10000 is too large");
+    expect_ok(interp, "ml_isolation_forest_fit(X, 100, 256)");
+    expect_ok(interp, "ml_random_forest_fit(S, y, 100, 5)");
+}
+
+TEST(ReplSuperlinearArguments, ASolverWhoseProbeConvergedWasMissedByTheLastPass) {
+    // `pde_poisson_2d` has the same shape as the ten PDE solvers bounded in the previous
+    // pass -- one relaxation sweep of the whole grid per iteration -- and it was missed
+    // because its probe CONVERGED and came back in 1.66 s. Given a tolerance it cannot
+    // reach, it runs the full count: 200x200 for 1e7 iterations is 4e11 cell-sweeps.
+    //
+    // `poly_cheb_expand` is the other one this pass found only by hand: the sweep wrote
+    // its probe in a form the REPL could not parse, so the sweep's own record of it said
+    // "parse_matrix: expected [ ... ]" rather than anything about the command. Every one
+    // of the n+1 coefficients sums over all n+1 nodes, and at n = 2147483647 the samples
+    // alone are 17 GB -- measured ABORTING the process before any summing began.
+    Interpreter interp;
+    expect_ok(interp, "G = ones(200,200)");
+    expect_error_contains(interp, "pde_poisson_2d(G, 0.01, 0.01, 10000000, 1e-300)",
+                          "max_iterations 10000000 is too large");
+    expect_error_contains(interp, "poly_cheb_expand([1;2;3], 10000000)",
+                          "n 10000000 is too large");
+    expect_error_contains(interp, "c = poly_cheb_expand([1;2;3], 2147483647, -1, 1)",
+                          "n 2147483647 is too large");
+    expect_ok(interp, "P = ones(60,60)");
+    expect_ok(interp, "pde_poisson_2d(P, 0.01, 0.01, 5000, 1e-8)");
+    expect_ok(interp, "poly_cheb_expand([1;2;3], 40)");
+}

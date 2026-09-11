@@ -1138,6 +1138,18 @@ Result<Matrix<double>> eval_ml_pca_fit(const Matrix<double>& X_m, int n_componen
             "ml_pca_fit", "expected 1 <= n_components <= " + format_scalar(rank) +
                               ", the number of components this matrix has"});
     }
+    // The model that comes back is n_components+1 rows of one weight per feature, and a
+    // 512 by 512 matrix at the full 512 components is 262656 of them -- just past the cap.
+    // `ml_pca_fit(ones(512,512), 512)` fitted for 3.5 s and was refused afterwards.
+    if (!repl_elems_allowed(static_cast<std::size_t>(n_components) + 1,
+                            X->front().size())) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit", "n_components " + describe_count(n_components) +
+                              " gives a " + describe_count(n_components + 1) + " by " +
+                              describe_count(static_cast<double>(X->front().size())) +
+                              " model, which is limited to " +
+                              std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
     ml::PCA pca(n_components);
     pca.fit(*X);
     return ml_pca_model_to_matrix(pca);
@@ -1184,6 +1196,16 @@ Result<Matrix<double>> eval_ml_kmeans_fit(const Matrix<double>& X_m, int k) {
         return std::unexpected(DomainError{
             "ml_kmeans_fit", "expected 1 <= k <= " + format_scalar(samples) +
                                  ", the number of rows"});
+    }
+    // k <= samples was the bound that was missing before; it is not the whole cost. Each
+    // Lloyd iteration compares every point to every centre, and more centres also mean
+    // more iterations before it settles, so k enters TWICE: 3000 points at k = 100 took
+    // 0.4 s and at k = 400 took 7.0 s, seventeen times for four. 15 ns a unit.
+    WorkBudget budget("ml_kmeans_fit", 15.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_k = budget.take_square("k", static_cast<double>(k));
+    if (!bounded_k) {
+        return std::unexpected(bounded_k.error());
     }
     ml::KMeans km(k);
     km.fit(*X);
@@ -1291,8 +1313,27 @@ Result<Matrix<double>> eval_ml_gmm_fit(const Matrix<double>& X_m, int n_componen
     if (X->empty()) {
         return std::unexpected(DomainError{"ml_gmm_fit", "expected non-empty X"});
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_gmm_fit", "expected n_components >= 1"});
+    // A mixture component needs a point to be a mixture of, and the model that comes back
+    // is 2*K+2 rows by max(features, K, 3) columns -- so K enters the answer TWICE.
+    // `ml_gmm_fit(ones(100000,1), 100000)` is a 200002 by 100000 model, 160 GB, and it
+    // ABORTED the process in 2.0 s.
+    const auto samples = static_cast<int>(X->size());
+    if (n_components < 1 || n_components > samples) {
+        return std::unexpected(DomainError{
+            "ml_gmm_fit", "expected 1 <= n_components <= " + format_scalar(samples) +
+                              ", the number of rows"});
+    }
+    const double features = static_cast<double>(X->front().size());
+    const double model_cols =
+        std::max({features, static_cast<double>(n_components), 3.0});
+    if (!repl_elems_allowed(static_cast<std::size_t>(2 * n_components + 2),
+                            static_cast<std::size_t>(model_cols))) {
+        return std::unexpected(DomainError{
+            "ml_gmm_fit", "n_components " + describe_count(n_components) +
+                              " gives a " + describe_count(2.0 * n_components + 2.0) +
+                              " by " + describe_count(model_cols) +
+                              " model, which is limited to " +
+                              std::to_string(kMaxReplMatrixElems) + " elements"});
     }
     ml::GaussianMixture gmm;
     gmm.config.n_components = static_cast<size_t>(n_components);
@@ -1353,8 +1394,28 @@ Result<Matrix<double>> eval_ml_spectral_clustering(const Matrix<double>& X_m, in
         return std::unexpected(
             DomainError{"ml_spectral_clustering", "expected non-empty X"});
     }
-    if (k < 1) {
-        return std::unexpected(DomainError{"ml_spectral_clustering", "expected k >= 1"});
+    const auto samples = static_cast<int>(X->size());
+    if (k < 1 || k > samples) {
+        return std::unexpected(DomainError{
+            "ml_spectral_clustering", "expected 1 <= k <= " + format_scalar(samples) +
+                                          ", the number of rows"});
+    }
+    // Two costs with very different constants, so two bounds. The affinity matrix is
+    // n by n and its eigendecomposition is cubic -- 8 ns per n^3, which is what a small k
+    // spends all its time on -- and the k-means over the embedding is the same n * k^2 as
+    // `ml_kmeans_fit` but on vectors k wide rather than two, at about 350 ns. 400 points
+    // at k = 100 took 1.4 s; at k = 400, the sweep's probe, it did not finish in 25 s.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_spectral_clustering", "the row count", static_cast<double>(samples), 3, 8.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
+    }
+    WorkBudget clustering("ml_spectral_clustering", 350.0, kMaxReplSimulationWorkNanos);
+    clustering.charge(X->size());
+    auto bounded_k = clustering.take_square("k", static_cast<double>(k));
+    if (!bounded_k) {
+        return std::unexpected(bounded_k.error());
     }
     auto labels = ml::spectral_clustering(*X, k, sigma, n_neighbors);
     return int_vector_to_column(labels);
@@ -1473,6 +1534,16 @@ Result<Matrix<double>> eval_ml_isolation_forest_fit(const Matrix<double>& X_m, s
         return std::unexpected(DomainError{
             "ml_isolation_forest_fit", "sample_size exceeds the supported maximum of 1000000"});
     }
+    // Both ceilings above are per-argument, and what it costs is the two of them
+    // multiplied: 10000 trees over a 10000-row subsample is 1e8 and took 6.4 s, right
+    // past the simulation budget, with both arguments inside their own maximum.
+    // 60 ns a sampled row.
+    WorkBudget budget("ml_isolation_forest_fit", 60.0, kMaxReplSimulationWorkNanos);
+    budget.charge(std::min(sample_size, X->size()));
+    auto bounded_trees = budget.take("n_trees", static_cast<double>(n_trees));
+    if (!bounded_trees) {
+        return std::unexpected(bounded_trees.error());
+    }
     ml::IsolationForest iso(n_trees, sample_size, seed);
     iso.fit(*X);
     return ml_isolation_forest_to_matrix(iso.export_state());
@@ -1522,6 +1593,17 @@ Result<Matrix<double>> eval_ml_tsne_fit(const Matrix<double>& X_m, double perple
     }
     if (n_iter < 1) {
         return std::unexpected(DomainError{"ml_tsne_fit", "expected n_iter >= 1"});
+    }
+    // Barnes-Hut still rebuilds the tree and walks every point on every iteration, so the
+    // cost is the product: 200 points over 250 iterations took 1.0 s and 400 points over
+    // the same 250 took 2.5 s -- about 25 us per point-iteration either way. A longer run
+    // is a request rather than a slip, so it is budgeted against the simulation policy;
+    // the sweep asked for two billion iterations.
+    WorkBudget budget("ml_tsne_fit", 25000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_iter = budget.take("n_iter", static_cast<double>(n_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
     }
     ml::TSNE tsne(2, perplexity, 200.0, n_iter, seed);
     return grid_to_matrix(tsne.fit_transform(*X));
@@ -2605,6 +2687,14 @@ Result<Matrix<double>> eval_ml_random_forest_fit(const Matrix<double>& X_m, cons
             "ml_random_forest_fit",
             "n_trees exceeds the supported maximum of 10000, or max_depth of 512"});
     }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_random_forest_fit", 450.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_trees", static_cast<double>(n_trees));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
+    }
     ml::RandomForest rf;
     rf.config.n_trees = n_trees;
     rf.config.max_depth = max_depth;
@@ -2643,6 +2733,14 @@ Result<Matrix<double>> eval_ml_adaboost_fit(const Matrix<double>& X_m, const Mat
         return std::unexpected(DomainError{
             "ml_adaboost_fit",
             "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
+    }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_adaboost_fit", 85.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_estimators", static_cast<double>(n_estimators));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
     }
     ml::AdaBoost ab;
     ab.config.n_estimators = n_estimators;
@@ -2684,6 +2782,14 @@ Result<Matrix<double>> eval_ml_gradient_boosting_fit(const Matrix<double>& X_m,
         return std::unexpected(DomainError{
             "ml_gradient_boosting_fit",
             "n_estimators exceeds the supported maximum of 10000, or max_depth of 512"});
+    }
+    // Same again: the per-argument ceiling of 10000 says nothing about the rows each of
+    // those learners is fitted to, and the cost is the product.
+    WorkBudget budget("ml_gradient_boosting_fit", 50.0, kMaxReplSimulationWorkNanos);
+    budget.charge(X->size());
+    auto bounded_learners = budget.take("n_estimators", static_cast<double>(n_estimators));
+    if (!bounded_learners) {
+        return std::unexpected(bounded_learners.error());
     }
     ml::GradientBoosting gb;
     gb.config.n_trees = n_estimators;
@@ -5357,6 +5463,16 @@ Result<Matrix<double>> eval_lz77_encode_vec(const Matrix<double>& m, int window 
     auto bytes = matrix_to_bytes(m, "lz77_encode_vec");
     if (!bytes) {
         return std::unexpected(bytes.error());
+    }
+    // The match search rescans the whole window at every position, so the cost is the
+    // input times the window: 65536 bytes at a 16384-byte window took 5.3 s, about 6 ns a
+    // comparison. The sweep's 262144-byte window over 262144 bytes is 6.9e10 of them.
+    // A larger window is a better ratio, which makes it a request rather than a slip.
+    WorkBudget budget("lz77_encode_vec", 6.0, kMaxReplSimulationWorkNanos);
+    budget.charge(bytes->size());
+    auto bounded_window = budget.take("window", static_cast<double>(window));
+    if (!bounded_window) {
+        return std::unexpected(bounded_window.error());
     }
     const auto tokens = compress::lz77_encode(*bytes, window, lookahead);
     Matrix<double> out(tokens.size(), 3);
@@ -8677,6 +8793,18 @@ Result<Matrix<double>> eval_pde_poisson_2d(const Matrix<double>& f_m, double dx,
     if (!f) {
         return std::unexpected(f.error());
     }
+    // One relaxation sweep of the whole grid per iteration, the same shape as the ten PDE
+    // solvers bounded in the previous pass -- this one was missed because its earlier
+    // probe CONVERGED and came back in 1.66 s. With a tolerance it cannot reach it runs
+    // the full count: 34 ns a cell-sweep, so 200x200 for 1e7 iterations is 4e11.
+    const double cells = f->empty() ? 0.0 : static_cast<double>(f->size()) *
+                                                static_cast<double>(f->front().size());
+    WorkBudget budget("pde_poisson_2d", 34.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(cells));
+    auto bounded_iters = budget.take("max_iterations", static_cast<double>(max_iterations));
+    if (!bounded_iters) {
+        return std::unexpected(bounded_iters.error());
+    }
     const auto value = pde_poisson_2d(*f, dx, dy, max_iterations, tolerance);
     if (value.u.empty()) {
         return std::unexpected(DomainError{
@@ -8726,6 +8854,19 @@ Result<Matrix<double>> eval_pde_helmholtz_2d(const Matrix<double>& f_m, double k
             return std::unexpected(g_grid.error());
         }
         g = std::move(*g_grid);
+    }
+    // The five-point stencil is assembled DENSELY, one row per interior point, so what
+    // this costs is set by the grid and never appears as an argument: a 100 by 100 grid
+    // is a 9604-unknown system, 738 MB of coefficients, and it did not finish in 25 s.
+    // Measured 2.7 ns per side^3 -- 20x20 took 0.1 s, 30x30 took 1.3 s, 40x40 took 8.2 s.
+    const double interior_x = f->empty() ? 0.0 : static_cast<double>(f->front().size()) - 2.0;
+    const double interior_y = static_cast<double>(f->size()) - 2.0;
+    auto bounded_side = checked_dense_system_side(
+        "pde_helmholtz_2d",
+        (interior_x <= 0.0 || interior_y <= 0.0) ? 0.0 : interior_x * interior_y,
+        "the grid's interior");
+    if (!bounded_side) {
+        return std::unexpected(bounded_side.error());
     }
     const auto value = pde_helmholtz_2d(*f, k, dx, dy, g);
     if (value.u.empty()) {
@@ -12334,6 +12475,14 @@ Result<Matrix<double>> eval_poly_cheb_expand(const Matrix<double>& coeffs_m, int
     if (n < 0) {
         return std::unexpected(DomainError{fn, "expected non-negative integer n"});
     }
+    // Every one of the n+1 coefficients is a sum over all n+1 Chebyshev nodes, each term a
+    // cos(j*acos(x)): 30 ns for the pair, so n = 3000 takes 0.2 s and n = 1e7 is 3e15.
+    // At n = 2147483647 the n+1 samples alone are 17 GB and the allocation ABORTED the
+    // process before any of the summing started.
+    auto bounded_n = checked_superlinear_argument(fn, "n", static_cast<double>(n), 2, 30.0);
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
+    }
     const std::vector<double> p = *coeffs;
     auto f = [p](double x) {
         const auto value = poly::poly_eval(p, x);
@@ -12646,6 +12795,16 @@ Result<double> eval_stats_bootstrap_mean(const Matrix<double>& x_m, int n_boot, 
         return std::unexpected(
             DomainError{"stats_bootstrap_mean", "expected positive integer n_boot"});
     }
+    // Each resample draws the whole vector again, so the cost is the product: 1000
+    // elements over 100000 resamples took 2.3 s, about 23 ns a draw. The resample count
+    // is a request -- the standard error falls like 1/sqrt(n_boot) -- so it is budgeted
+    // against the simulation policy; ten million of them is 1e10 draws.
+    WorkBudget budget("stats_bootstrap_mean", 23.0, kMaxReplSimulationWorkNanos);
+    budget.charge(x->size());
+    auto bounded_boot = budget.take("n_boot", static_cast<double>(n_boot));
+    if (!bounded_boot) {
+        return std::unexpected(bounded_boot.error());
+    }
     return bootstrap_mean(*x, n_boot, seed);
 }
 
@@ -12688,6 +12847,10 @@ Result<Matrix<double>> eval_stats_arfit(const Matrix<double>& x_m, int p) {
     }
     if (p < 1) {
         return std::unexpected(DomainError{"stats_arfit", "expected positive integer p"});
+    }
+    auto bounded_p = checked_dense_system_side("stats_arfit", static_cast<double>(p), "p");
+    if (!bounded_p) {
+        return std::unexpected(bounded_p.error());
     }
     auto phi = arfit(*x, p);
     if (phi.empty()) {
@@ -13653,6 +13816,11 @@ Result<Matrix<double>> eval_stats_pacf(const Matrix<double>& x_m, int max_lag) {
         return std::unexpected(
             DomainError{"stats_pacf", "expected non-negative integer max_lag"});
     }
+    auto bounded_lag = checked_dense_system_side(
+        "stats_pacf", static_cast<double>(max_lag) + 1.0, "max_lag");
+    if (!bounded_lag) {
+        return std::unexpected(bounded_lag.error());
+    }
     return vector_to_column(pacf(*x, max_lag));
 }
 
@@ -13675,6 +13843,15 @@ Result<Matrix<double>> eval_stats_kde(const Matrix<double>& samples_m,
     }
     if (!(h > 0.0)) {
         return std::unexpected(DomainError{"stats_kde", "expected positive bandwidth h"});
+    }
+    // Every grid point sums a kernel over every sample, so neither vector's length is the
+    // cost -- the product is. 8000 of each took 0.9 s, about 14 ns a kernel evaluation,
+    // and 100000 of each is 1e10 of them.
+    WorkBudget budget("stats_kde", 14.0, kMaxReplSimulationWorkNanos);
+    budget.charge(samples->size());
+    auto bounded_grid = budget.take("the grid length", static_cast<double>(grid->size()));
+    if (!bounded_grid) {
+        return std::unexpected(bounded_grid.error());
     }
     return vector_to_column(kde(*samples, *grid, h, kernel));
 }

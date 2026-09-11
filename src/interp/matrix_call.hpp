@@ -336,6 +336,39 @@ inline Result<double> checked_spheroidal_dimension(const std::string& fn, double
     return checked_internal_matrix_dimension(fn, dim, "(n - m)/2 + 22 + ceil(|c|)");
 }
 
+/// The side of a DENSE internal system that the arguments size.
+///
+/// `checked_internal_matrix_dimension` above is for a dimension whose storage is linear in
+/// it -- a tridiagonal kept as two vectors, where a side of 262144 is 2 MB. This one is
+/// for the square case, where the matrix really is `side` by `side` and the same number
+/// would be half a terabyte, so what has to fit is `side^2`.
+///
+/// Three commands assemble one and none of them takes its size as an argument:
+///
+///   - `stats_pacf` builds the Yule-Walker table at (max_lag+1)^2, so `max_lag = 100000`
+///     asks for 80 GB and ABORTED the process -- for a five-element series;
+///   - `stats_arfit` builds a p by p Toeplitz system the same way;
+///   - `pde_helmholtz_2d` assembles the five-point stencil DENSELY at
+///     ((nx-2)(ny-2))^2, so an ordinary 100 by 100 grid is a 9604-unknown system, 738 MB
+///     of coefficients and 8.9e11 operations to eliminate.
+///
+/// Which is #54's lesson one level further out again: a cap on the grid is not a cap on
+/// the system it assembles.
+inline Result<std::size_t> checked_dense_system_side(const std::string& fn, double side,
+                                                     const std::string& how) {
+    if (!std::isfinite(side) || side < 0.0) {
+        return std::unexpected(DomainError{fn, "expected finite arguments"});
+    }
+    if (side > static_cast<double>(kMaxReplMatrixElems) ||
+        !repl_elems_allowed(static_cast<std::size_t>(side), static_cast<std::size_t>(side))) {
+        return std::unexpected(DomainError{
+            fn, how + " gives a dense " + describe_count(side) + " by " +
+                    describe_count(side) + " system, which is limited to " +
+                    std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
+    return static_cast<std::size_t>(side);
+}
+
 /// How many simplices a complex over `n_points` can hold at `max_dim`, as a double.
 ///
 /// The enumerations in `topo` are written as nested loops with a distance test in each
