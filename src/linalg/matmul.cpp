@@ -108,6 +108,20 @@ Result<Matrix<S, OC, AllocC>> matmul(
         return C;
     }
 
+    // The float path used to fall through to the loop below, which is written
+    // i, k, j -- so on a column-major C it strides the innermost index by ldc. It
+    // was not merely unvectorised but the slowest of the three orderings.
+    if constexpr (std::is_same_v<S, float> && OA == StorageOrder::ColMajor &&
+                  OB == StorageOrder::ColMajor && OC == StorageOrder::ColMajor) {
+        Matrix<S, OC, AllocC> C(A.rows(), B.cols());
+        const int m = static_cast<int>(A.rows());
+        const int k = static_cast<int>(A.cols());
+        const int n = static_cast<int>(B.cols());
+        cpu::blas::sgemm('N', 'N', m, n, k, 1.0F, A.data(), m, B.data(), k, 0.0F,
+                         C.data(), m);
+        return C;
+    }
+
     Matrix<S, OC, AllocC> C(A.rows(), B.cols());
     for (size_t i = 0; i < A.rows(); ++i) {
         for (size_t k = 0; k < A.cols(); ++k) {

@@ -41,6 +41,27 @@ void dgemm(
     double* C,
     int ldc);
 
+/// Column-major SGEMM: C = alpha * op(A) * op(B) + beta * C, in single precision.
+///
+/// Accumulation is in float, as every BLAS sgemm does it: widening the accumulator
+/// would make this disagree with the naive loop a caller can write themselves, and
+/// the precision is the choice a user of a float matrix has already made.
+/// transa/transb are 'N' or 'T'. lda/ldb/ldc are leading dimensions (column-major).
+void sgemm(
+    char transa,
+    char transb,
+    int m,
+    int n,
+    int k,
+    float alpha,
+    const float* A,
+    int lda,
+    const float* B,
+    int ldb,
+    float beta,
+    float* C,
+    int ldc);
+
 /// Symmetric rank-k update: C = alpha * op(A) * op(A)^T + beta * C (column-major).
 void dsyrk(
     char uplo,

@@ -3,6 +3,7 @@
 set(MS_RUNTIME_CPU_SOURCES
     ${CMAKE_SOURCE_DIR}/src/cpu/blas.cpp
     cpu/blas_dgemm.cpp
+    cpu/blas_sgemm.cpp
     cpu/blas_dger.cpp
     cpu/blas_dsyrk_dtrsm.cpp
     cpu/lapack_dpotrf.cpp
@@ -24,9 +25,9 @@ else()
 endif()
 
 if(MS_ENABLE_AVX2)
-    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm.cpp)
+    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm.cpp cpu/avx2_sgemm.cpp)
 else()
-    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm_stub.cpp)
+    list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm_stub.cpp cpu/avx2_sgemm_stub.cpp)
 endif()
 
 add_library(ms_runtime STATIC
@@ -60,8 +61,10 @@ endif()
 
 if(MS_ENABLE_AVX2)
     if(MSVC)
-        set_source_files_properties(cpu/avx2_dgemm.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+        set_source_files_properties(cpu/avx2_dgemm.cpp cpu/avx2_sgemm.cpp
+                                    PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     else()
-        set_source_files_properties(cpu/avx2_dgemm.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+        set_source_files_properties(cpu/avx2_dgemm.cpp cpu/avx2_sgemm.cpp
+                                    PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     endif()
 endif()

@@ -151,11 +151,11 @@ void dgemm_nn(
     double beta,
     double* C,
     int ldc) {
-    detail::scale_c(m, n, beta, C, ldc);
+    detail::scale_c<double>(m, n, beta, C, ldc);
     if (alpha == 0.0 || k == 0) {
         return;
     }
-    detail::gemm_blocked<kMr, kNr>(m, n, k, alpha, A, lda, B, ldb, C, ldc, kBlocks,
+    detail::gemm_blocked<double, kMr, kNr>(m, n, k, alpha, A, lda, B, ldb, C, ldc, kBlocks,
                                    micro_kernel_16x8);
 }
 
