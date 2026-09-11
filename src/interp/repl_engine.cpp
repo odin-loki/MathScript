@@ -15164,6 +15164,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!nz) {
                 return std::unexpected(nz.error());
             }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1) * (*nz + 1));
+            if (!order) {
+                return std::unexpected(order.error());
+            }
             auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
                 return std::unexpected(value.error());
@@ -16921,6 +16928,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto nz = budget.take("nz", nz_d);
             if (!nz) {
                 return std::unexpected(nz.error());
+            }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1) * (*nz + 1));
+            if (!order) {
+                return std::unexpected(order.error());
             }
             auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
@@ -21116,6 +21130,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!n) {
                 return std::unexpected(n.error());
             }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", *n + 1);
+            if (!order) {
+                return std::unexpected(order.error());
+            }
             auto value = eval_fem_poisson1d(*n);
             if (!value) {
                 return std::unexpected(value.error());
@@ -21141,6 +21162,13 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto ny = budget.take("ny", ny_d);
             if (!ny) {
                 return std::unexpected(ny.error());
+            }
+            // The result is a vector of node values, which is what the extent budget above
+            // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+            // that is what actually gets allocated, so the order is charged a second time.
+            auto order = budget.charge_dense_order("the mesh", (*nx + 1) * (*ny + 1));
+            if (!order) {
+                return std::unexpected(order.error());
             }
             auto value = eval_fem_poisson2d(*nx, *ny);
             if (!value) {

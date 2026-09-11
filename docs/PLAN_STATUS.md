@@ -460,6 +460,29 @@ did. `sum_divisors(3000000000)` answers in 0.01 s and it is `sum_divisors(1e18)`
     bound p_n < n(ln n + ln ln n), with the first five primes listed because that bound is
     not valid below n=6.
 
+**A cap on the result is not a cap on the working set.** `fem_poisson1d(262144)` still
+aborted the process AFTER §54's extent guard was in place, and at exactly the number that
+guard enforces. The guard charged `n` against `kMaxReplMatrixElems`, which is right for
+the RESULT -- a vector of `n` node values. It is not what gets allocated:
+`assemble_stiffness_1d` builds a **dense** `n_nodes` by `n_nodes` `ColMatrix`, so
+`n = 262144` asks for 6.9e10 doubles, 550 GB. `fem_poisson2d` and `fem_poisson3d` assemble
+the same way from `(nx+1)(ny+1)` and `(nx+1)(ny+1)(nz+1)` nodes.
+
+It is the same sentence as §54's own "a cap on each extent is not a cap on the
+allocation", one level further out, and it is worth separating because §54 read as closed.
+`ExtentBudget::charge_dense_order` charges the mesh order a second time, so what the
+budget bounds is the stiffness matrix rather than the answer, at all seven dispatch sites.
+
+The `fem_mesh` family had the plain version of the same defect and no budget at all:
+`parse_positive_size_arg` bounds each extent at 1e7 on its own, so
+`fem_mesh2d(0, 0, 1, 1, 10000000, 10000000)` asks for 1e14 nodes. Measured aborting;
+`fem_mesh2d`, `fem_mesh2d_rectangular`, `fem_mesh3d` and `fem_mesh3d_box` now charge the
+product.
+
+Both were found the same way -- by running the probes the audit proposed, against the
+guard that was supposed to have closed them. A guard is not a fix until the input that
+motivated it has been re-run against it.
+
 **One reported finding did not survive a probe.** The allocation audit recorded
 `graph_bipartite_match` aborting at its second argument. It does not:
 `graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and

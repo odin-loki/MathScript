@@ -200,3 +200,30 @@ TEST(ReplSizeArguments, AnOrderIsRefusedRatherThanTruncated) {
     expect_error_contains(interp, "legendre_p(1e9999, 0.5)", "expected an integer n");
 }
 
+
+TEST(ReplSizeArguments, AFemSolveIsBoundedByItsStiffnessMatrixAndNotByItsAnswer) {
+    // 262144 IS the element budget, and charging `n` against it still let the process
+    // die: the result is a vector of n node values, but `assemble_stiffness_1d` builds a
+    // DENSE n_nodes by n_nodes matrix to solve it through, so this asked for 6.9e10
+    // doubles -- 550 GB. Measured aborting with the extent guard already in place, which
+    // is why it is a separate assertion from the one above rather than a second value in
+    // the same loop.
+    Interpreter interp;
+    expect_error_contains(interp, "fem_poisson1d(262144)", "stiffness matrix");
+    expect_error_contains(interp, "fem_poisson2d(512, 512)", "stiffness matrix");
+    expect_error_contains(interp, "fem_poisson3d(64, 64, 64)", "stiffness matrix");
+    // A mesh anyone would actually solve on still solves.
+    expect_contains(interp, "fem_poisson1d(16)", "_ =");
+}
+
+TEST(ReplSizeArguments, AMeshIsBoundedOnTheProductOfItsExtents) {
+    // `parse_positive_size_arg` bounds each extent at 1e7 on its own and says nothing
+    // about the two together, so a mesh of 1e7 by 1e7 is 1e14 nodes.
+    Interpreter interp;
+    expect_error_contains(interp, "fem_mesh2d(0, 0, 1, 1, 10000000, 10000000)", "too large");
+    expect_error_contains(interp, "fem_mesh2d_rectangular(0, 0, 1, 1, 10000000, 10000000)",
+                          "too large");
+    expect_error_contains(interp, "fem_mesh3d(0,0,0,1,1,1,10000,10000,10000)", "too large");
+    expect_error_contains(interp, "fem_mesh3d_box(0,0,0,1,1,1,10000,10000,10000)", "too large");
+    expect_ok(interp, "fem_mesh2d(0, 0, 1, 1, 8, 8)");
+}

@@ -21,6 +21,13 @@ Result<Matrix<double>> handle_fem_poisson1d(Interpreter& interp, const MatrixCal
         if (!n) {
             return std::unexpected(n.error());
         }
+        // The result is a vector of node values, which is what the extent budget above
+        // charged. The solve goes through a DENSE nodes x nodes stiffness matrix, and
+        // that is what actually gets allocated, so the order is charged a second time.
+        auto order = budget.charge_dense_order("the mesh", *n + 1);
+        if (!order) {
+            return std::unexpected(order.error());
+        }
         result = eval_fem_poisson1d(*n);
     }
 

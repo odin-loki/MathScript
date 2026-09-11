@@ -21,17 +21,42 @@ Result<Matrix<double>> handle_fem_mesh3d(Interpreter& interp, const MatrixCallAs
                 return std::unexpected(scalars[i].error());
             }
         }
-        auto nx_i = ctx.parse_positive_size_arg(*scalars[6], fn, "expected positive integer nx");
+        // A mesh has (nx+1)(ny+1)... nodes and a multiple of that in cells, so what
+        // is allocated is the PRODUCT of the extents. Bounding each of them alone --
+        // which is all `parse_positive_size_arg` does -- leaves fem_mesh2d(0,0,1,1,
+        // 1e7, 1e7) asking for 1e14 nodes, measured aborting the process.
+        //
+        // The per-extent check stays in FRONT of the budget rather than being
+        // replaced by it: `ExtentBudget::take` admits a zero extent on purpose (an
+        // empty result costs nothing), and that is the one case where this check
+        // still has something to say -- and it names which extent.
+        ExtentBudget budget(fn);
+        auto nx_i = ctx.parse_positive_size_arg(*scalars[6], fn,
+                                              "expected positive integer nx");
         if (!nx_i) {
             return std::unexpected(nx_i.error());
         }
-        auto ny_i = ctx.parse_positive_size_arg(*scalars[7], fn, "expected positive integer ny");
+        if (auto charged = budget.take("nx", static_cast<double>(*nx_i));
+            !charged) {
+            return std::unexpected(charged.error());
+        }
+        auto ny_i = ctx.parse_positive_size_arg(*scalars[7], fn,
+                                              "expected positive integer ny");
         if (!ny_i) {
             return std::unexpected(ny_i.error());
         }
-        auto nz_i = ctx.parse_positive_size_arg(*scalars[8], fn, "expected positive integer nz");
+        if (auto charged = budget.take("ny", static_cast<double>(*ny_i));
+            !charged) {
+            return std::unexpected(charged.error());
+        }
+        auto nz_i = ctx.parse_positive_size_arg(*scalars[8], fn,
+                                              "expected positive integer nz");
         if (!nz_i) {
             return std::unexpected(nz_i.error());
+        }
+        if (auto charged = budget.take("nz", static_cast<double>(*nz_i));
+            !charged) {
+            return std::unexpected(charged.error());
         }
         result = eval_fem_mesh3d_box(*scalars[0], *scalars[1], *scalars[2], *scalars[3],
                                      *scalars[4], *scalars[5], *nx_i, *ny_i, *nz_i);

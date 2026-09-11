@@ -463,6 +463,23 @@ read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in
 so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
 unchanged.
 
+### The FEM guard bounded the answer, not the matrix it was solved through
+
+`fem_poisson1d(262144)` still aborted after the extent guard was added, and at exactly
+the number that guard enforces. It charged `n` against `kMaxReplMatrixElems`, which is
+right for the result -- a vector of `n` node values -- and is not what gets allocated:
+`assemble_stiffness_1d` builds a dense `n_nodes` by `n_nodes` matrix, so `n = 262144` asks
+for 550 GB. The mesh order is now charged a second time, at all seven dispatch sites for
+`fem_poisson1d`, `_2d` and `_3d`.
+
+The `fem_mesh` family had the plain version and no budget at all -- each extent bounded
+at 1e7 on its own, so `fem_mesh2d(0, 0, 1, 1, 1e7, 1e7)` asks for 1e14 nodes. All four
+now charge the product.
+
+Both were found by re-running the audit's own probes against the guard that was supposed
+to have closed them. A guard is not a fix until the input that motivated it has been run
+against it again.
+
 ### Eighty-one conversions that fabricated an answer
 
 `static_cast<uint64_t>` of a double outside `[0, 2^64)` is undefined, and every guard in

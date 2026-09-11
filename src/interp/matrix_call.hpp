@@ -371,6 +371,32 @@ public:
         return taken;
     }
 
+    /// The order of a dense matrix the command assembles from the extents already taken,
+    /// charged as a SECOND factor because what gets allocated is its square.
+    ///
+    /// `kMaxReplMatrixElems` bounds the RESULT, and the result of a FEM solve is a vector
+    /// of `order` values. The stiffness matrix it solves through is `order` by `order`,
+    /// and that is what is actually allocated -- densely, in `assemble_stiffness_1d` and
+    /// its 2-D and 3-D siblings. So `fem_poisson1d(262144)` sits exactly ON the element
+    /// budget and asks for 550 GB, which under `-fno-exceptions` is a dead process rather
+    /// than a diagnostic; it was measured aborting at that value with the extent guard
+    /// already in place.
+    ///
+    /// Which is the same sentence as "a cap on each extent is not a cap on the
+    /// allocation", one level further out: **a cap on the result is not a cap on the
+    /// working set.**
+    Result<std::size_t> charge_dense_order(const char* what, std::size_t order) {
+        if (order > remaining_) {
+            return std::unexpected(DomainError{
+                fn_, std::string(what) + " gives a dense " + std::to_string(order) +
+                         " by " + std::to_string(order) + " stiffness matrix, and this "
+                         "command is limited to " + std::to_string(kMaxReplMatrixElems) +
+                         " elements"});
+        }
+        remaining_ /= (order == 0 ? 1 : order);
+        return order;
+    }
+
 private:
     const char* fn_;
     std::size_t remaining_ = kMaxReplMatrixElems;
