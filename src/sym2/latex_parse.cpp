@@ -271,8 +271,8 @@ constexpr const char* kMsgRelation =
     "[E-LATEX-0020] the subset parses expressions, not equations; '=' has no expression "
     "head. Parse the two sides separately, or write the difference";
 constexpr const char* kMsgBigOperator =
-    "[E-LATEX-0021] \\sum_{i=1}^{n} has no expression head in ms::sym2 (see expr.hpp "
-    "Head); big operators are outside the subset";
+    "[E-LATEX-0021] \\sum_{i=1}^{n} has no expression head here; big operators are "
+    "outside the subset";
 constexpr const char* kMsgBinomial =
     "[E-LATEX-0022] \\binom{n}{k} has no expression head; write "
     "\\operatorname{binomial}(n, k)";
@@ -294,8 +294,8 @@ constexpr const char* kMsgEvaluationBar =
     "[E-LATEX-0027] an evaluation bar (a null delimiter with limits) has no expression "
     "head";
 constexpr const char* kMsgNestedBar =
-    "[E-LATEX-0028] a bare \\| cannot be paired: the open and close delimiter are the "
-    "same character. Write \\left\\| ... \\right\\| or \\lvert ... \\rvert";
+    "[E-LATEX-0028] a bare vertical bar cannot be paired: the open and close delimiter "
+    "are the same character. Write \\left| ... \\right| or \\lvert ... \\rvert";
 constexpr const char* kMsgDecoration =
     "[E-LATEX-0029] decoration is not part of a name in this subset: \\hat{x} and x are "
     "different symbols to a reader and the same name to the parser. Write x_{hat} or "
@@ -306,6 +306,16 @@ constexpr const char* kMsgFontVariant =
 constexpr const char* kMsgScientific =
     "[E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode; "
     "write 1 \\times 10^{20}";
+constexpr const char* kMsgLeibniz =
+    "[E-LATEX-0045] \\frac{dy}{dx} is a derivative to a reader and a quotient to this "
+    "grammar, whose derivative is \\frac{d}{dx} with the function after it. Read as a "
+    "quotient the two d's cancel and it means y/x, which is not what you wrote; write "
+    "\\frac{d}{dx} y";
+constexpr const char* kMsgIntegralExtent =
+    "[E-LATEX-0046] the integrand runs to the end of its group, so an integral with "
+    "something after its differential does not say where it stops: \\int f \\, dx + 1 "
+    "is (\\int f \\, dx) + 1 to a reader and \\int (f \\, dx + 1) here. Bracket the "
+    "integral";
 constexpr const char* kMsgInfimum =
     "[E-LATEX-0033] \\inf is the infimum operator, not infinity; write \\infty. (\\sup "
     "is a function name in this subset; \\inf is not.)";
@@ -320,8 +330,8 @@ constexpr const char* kMsgEnvironment =
     "presentation rather than structure; use pmatrix, and parse a matrix with the "
     "matrix entry point";
 constexpr const char* kMsgMatrixInExpression =
-    "[E-LATEX-0037] a matrix is not an expression in ms::sym2 (expr.hpp has no matrix "
-    "head); parse it with parse_latex_matrix";
+    "[E-LATEX-0037] a matrix is not an expression here and has no head to be read into; "
+    "parse it with parse_latex_matrix";
 constexpr const char* kMsgCellSeparator =
     "[E-LATEX-0038] '&' is a matrix cell separator and '\\\\' a row separator; neither "
     "is an expression token";
@@ -1825,6 +1835,9 @@ private:
             if (!vars.empty()) {
                 return finish_derivative(vars);
             }
+            if (at_leibniz_fraction()) {
+                return fail(peek(), kMsgLeibniz);
+            }
         }
         if (lex::is_word(peek(), "int") || lex::is_word(peek(), "iint") ||
             lex::is_word(peek(), "iiint")) {
@@ -1855,6 +1868,75 @@ private:
             return true;
         }
         return false;
+    }
+
+    /// A differential `d` at token index `at`, in either spelling, with `next` set past
+    /// it. Written over the token vector rather than over the cursor because both
+    /// callers are speculative and must not move it.
+    bool differential_d_at(std::size_t at, std::size_t& next) const {
+        if (at < limit_ && lex::is_char(toks_[at], 'd')) {
+            next = at + 1;
+            return true;
+        }
+        if (at + 3 < limit_ && lex::is_word(toks_[at], "mathrm") &&
+            lex::is_char(toks_[at + 1], '{') && lex::is_char(toks_[at + 2], 'd') &&
+            lex::is_char(toks_[at + 3], '}')) {
+            next = at + 4;
+            return true;
+        }
+        return false;
+    }
+
+    /// The index just past the `{...}` group opening at `at`, or `limit_` if it does not
+    /// close inside the current bound.
+    std::size_t brace_group_end(std::size_t at) const {
+        int depth = 0;
+        for (std::size_t i = at; i < limit_; ++i) {
+            if (lex::is_char(toks_[i], '{')) {
+                ++depth;
+            } else if (lex::is_char(toks_[i], '}')) {
+                --depth;
+                if (depth == 0) {
+                    return i + 1;
+                }
+            }
+        }
+        return limit_;
+    }
+
+    /// `\frac{dy}{dx}` and its relatives: both halves begin with a differential `d`, and
+    /// the numerator is not the bare `{d}` that A4's derivative shape requires.
+    ///
+    /// A4 rules that `\frac{d}{dx} f` is the derivative and that anything else in that
+    /// position is a quotient. The ruling is right and it left a hole, because the
+    /// quotient reading of `\frac{dy}{dx}` is `(d \cdot y) / (d \cdot x)` -- and `mul`
+    /// cancels the `d` at construction, so what came back was `y/x`.
+    /// `\frac{d^{2}y}{dx^{2}}` came back `d*y/x^2`, carrying a factor of `d` the author
+    /// never wrote, standing where the order of the derivative had been.
+    ///
+    /// Both readings are genuinely available, and almost nobody writing `\frac{dy}{dx}`
+    /// means the quotient. That is the case §3.2 exists for.
+    bool at_leibniz_fraction() const {
+        if (!at_fraction()) {
+            return false;
+        }
+        const std::size_t numerator = pos_ + 1;
+        if (numerator >= limit_ || !lex::is_char(toks_[numerator], '{')) {
+            return false;
+        }
+        std::size_t after_d = 0;
+        if (!differential_d_at(numerator + 1, after_d)) {
+            return false;
+        }
+        if (lex::is_char(toks_[after_d], '}')) {
+            return false; // the bare `{d}`: A4's derivative, handled above.
+        }
+        const std::size_t denominator = brace_group_end(numerator);
+        if (denominator >= limit_ || !lex::is_char(toks_[denominator], '{')) {
+            return false;
+        }
+        std::size_t unused = 0;
+        return differential_d_at(denominator + 1, unused);
     }
 
     /// `FracCS "{" DiffD "}" "{" DiffD Variable "}"`, matched speculatively: A4 turns on
@@ -1972,8 +2054,20 @@ private:
 
         const std::size_t found = reversed.size();
         // The `k == 0 && n == 1` exemption is the empty-variable-list form: `\int f`
-        // with no differential at all, which `integral(f, {})` prints
-        // (notation_latex.cpp:434) and which therefore has to read back.
+        // with NO DIFFERENTIAL AT ALL, which `integral(f, {})` prints and which
+        // therefore has to read back.
+        //
+        // The capitalised half is load-bearing and went unchecked. `\int x \, dx + 1`
+        // has a differential, but the backwards scan requires each unit to end at the
+        // group boundary and this one ends before `+ 1`, so `found` came back 0, the
+        // exemption fired, and the whole line became the integrand -- `\, dx` included,
+        // which juxtaposition then read as a product. The answer was
+        // `integral(d*x^2 + 1)`: a factor of `d` the author never wrote, and the `+ 1`
+        // swallowed into the integral it was added to.
+        if (found == 0 && !separators.empty() &&
+            differential_unit_starts_at(separators.back())) {
+            return fail(first, kMsgIntegralExtent);
+        }
         if (found != signs && !(found == 0 && signs == 1)) {
             return fail(first, std::string("[E-LATEX-0031] ") +
                                    std::to_string(signs) + " integral signs but " +
@@ -2032,6 +2126,24 @@ private:
     /// Whether `[at, boundary)` is exactly one `\, DiffD Variable`. It has to end
     /// *exactly* at the boundary, which is what makes the walk maximal from the right
     /// and what stops `\, d` with nothing after it from being taken for a differential.
+    /// Whether a `\,` at `at` begins a `d<name>` unit, without requiring it to reach any
+    /// boundary. `match_differential_unit` answers the stricter question the backwards
+    /// scan needs; this one is how the caller tells "there is no differential here" from
+    /// "there is one and it is not at the end", which are the two cases the
+    /// empty-variable-list exemption must not confuse.
+    bool differential_unit_starts_at(std::size_t at) const {
+        if (at + 1 >= limit_) {
+            return false;
+        }
+        std::size_t after_d = 0;
+        if (!differential_d_at(at + 1, after_d)) {
+            return false;
+        }
+        return after_d < limit_ &&
+               (toks_[after_d].kind == TokKind::Char ||
+                toks_[after_d].kind == TokKind::ControlWord);
+    }
+
     bool match_differential_unit(std::size_t at, std::size_t boundary, std::string& var) {
         if (at >= boundary) {
             return false;

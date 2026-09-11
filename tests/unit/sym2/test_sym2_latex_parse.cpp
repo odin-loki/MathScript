@@ -198,6 +198,53 @@ TEST(Sym2LatexParse, A4_TheDerivativeSpellingNeedsAnExactNumeratorAndDenominator
     expect_parses_as("\\frac{d}{d \\cdot x}", div(integer(1), symbol("x")));
 }
 
+// A53 and A54, both from an adversarial review of the parser after the grammar was
+// written. Neither was a crash and neither was a rejection: each ACCEPTED the input and
+// returned an expression nobody wrote, which is the failure this whole subset exists to
+// prevent, arriving by the one route a grammar cannot be read for -- a ruling that is
+// right about the shape it names and silent about the shape beside it.
+TEST(Sym2LatexParse, A53_ALeibnizDerivativeIsNotAQuotient) {
+    // Read as a quotient -- which is what A4's ruling makes it -- the two `d`s cancel in
+    // `mul` at construction, so this used to come back `y/x`.
+    expect_rejected("\\frac{dy}{dx}", "E-LATEX-0045", 1, 1, "is a derivative to a reader");
+    expect_rejected("\\frac{\\mathrm{d}y}{\\mathrm{d}x}", "E-LATEX-0045", 1, 1,
+                    "is a derivative to a reader");
+    // And the one that invented a factor: this came back `d*y/x^2`, with the `d` left
+    // over where the order of the derivative had been.
+    expect_rejected("\\frac{d^{2}y}{dx^{2}}", "E-LATEX-0045", 1, 1,
+                    "is a derivative to a reader");
+
+    // The shapes either side of it are untouched: A4's derivative, and A4's own escape
+    // hatch, whose N28 answer is `1/x`.
+    expect_parses_as("\\frac{d}{dx} f", derivative(symbol("f"), {symbol("x")}));
+    expect_parses_as("\\frac{d}{d \\cdot x}", div(integer(1), symbol("x")));
+    // A fraction that merely starts with `d` on one side is a fraction.
+    expect_parses_as("\\frac{dy}{2}", div(mul({symbol("d"), symbol("y")}), integer(2)));
+    // Spelled as two divisions because that is what N28 says a product denominator
+    // becomes: the reciprocal is distributed, so this is x * d^-1 * y^-1 and not
+    // x * (d y)^-1. Writing the second and expecting it to match is the same slip A4's
+    // test made before it.
+    expect_parses_as("\\frac{x}{dy}", div(div(symbol("x"), symbol("d")), symbol("y")));
+}
+
+TEST(Sym2LatexParse, A54_AnIntegralSaysWhereItStops) {
+    // The integrand runs to the end of its group, so this used to put the `+ 1` inside
+    // the integral -- and with no differential then ending at the boundary, the
+    // empty-variable-list exemption fired and `\, dx` became a product as well. The
+    // answer was `integral(d*x^2 + 1)`.
+    expect_rejected("\\int x \\, dx + 1", "E-LATEX-0046", 1, 1, "does not say where it stops");
+    expect_rejected("\\int x \\, dx - 1", "E-LATEX-0046", 1, 1, "does not say where it stops");
+    expect_rejected("\\int x \\, dx \\cdot 2", "E-LATEX-0046", 1, 1,
+                    "does not say where it stops");
+
+    // What the printer emits still reads, including the empty-variable-list form that
+    // the exemption exists for.
+    expect_parses_as("\\int x \\, dx", integral(symbol("x"), {symbol("x")}));
+    expect_parses_as("\\int f", integral(symbol("f"), {}));
+    expect_parses_as("(\\int x \\, dx) + 1",
+                     add({integral(symbol("x"), {symbol("x")}), integer(1)}));
+}
+
 TEST(Sym2LatexParse, A5_AThinSpaceBeforeATrailingDIsADifferentialByPosition) {
     // The rule keys on position, never on the thin space itself: `\,` is multiplication
     // at one call site in the printer and a differential separator at another, so a rule
@@ -424,7 +471,7 @@ TEST(Sym2LatexParse, A29_ABigOperator) {
                                          "\\bigcap",  "\\coprod", "\\bigoplus"};
     for (const char* big : kBigOperators) {
         expect_rejected(std::string(big) + "_{i} i", "E-LATEX-0021", 1, 1,
-                        "has no expression head in ms::sym2");
+                        "has no expression head here; big operators");
     }
 }
 
@@ -484,8 +531,8 @@ TEST(Sym2LatexParse, A36_ANestedBareDoubleBar) {
     // The open and close delimiter are the same character, so a second one cannot be
     // told from a close. The sized and the `\lvert` spellings both carry the direction
     // and are accepted (§2.9 H3).
-    expect_rejected("\\|\\|x\\|\\|", "E-LATEX-0028", 1, 3, "a bare \\| cannot be paired");
-    expect_rejected("\\|a\\|b\\|", "E-LATEX-0028", 1, 7, "a bare \\| cannot be paired");
+    expect_rejected("\\|\\|x\\|\\|", "E-LATEX-0028", 1, 3, "a bare vertical bar cannot be paired");
+    expect_rejected("\\|a\\|b\\|", "E-LATEX-0028", 1, 7, "a bare vertical bar cannot be paired");
 }
 
 TEST(Sym2LatexParse, A37_Decoration) {
@@ -573,7 +620,7 @@ TEST(Sym2LatexParse, A45_AMatrixInsideAnExpression) {
     // `expr.hpp` has no matrix head, so there is no node to build. The separate entry
     // point is the answer, and naming it is the whole content of the diagnostic.
     expect_rejected("x + \\begin{pmatrix} 1 \\end{pmatrix}", "E-LATEX-0037", 1, 5,
-                    "a matrix is not an expression in ms::sym2");
+                    "a matrix is not an expression here");
 }
 
 TEST(Sym2LatexParse, A46_ACellOrRowSeparatorOutsideAMatrix) {
@@ -640,7 +687,7 @@ TEST(Sym2LatexParse, ThePositionIsOnTheLineWhereTheProblemIs) {
     // A diagnostic that reports line 1 for a problem on line 2 is worse than one with no
     // line at all: the reader stops looking at the place it names.
     expect_rejected("x +\n  \\sum_{i} i", "E-LATEX-0021", 2, 3,
-                    "has no expression head in ms::sym2");
+                    "has no expression head here; big operators");
 }
 
 TEST(Sym2LatexParse, TheColumnCountsCharactersRatherThanBytes) {

@@ -296,6 +296,21 @@ ToCS         = "\to" | "\rightarrow" | "\longrightarrow" ;
 4. Let `k` = units consumed. Require `k == n`, or (`k == 0` and `n == 1`) — the latter is the empty-variable-list form `\int x^{2}`, which the printer emits and which round-trips (notation_latex.cpp:434). Otherwise diagnose `E-LATEX-0031`.
 5. The span between the signs and the first differential is the integrand, parsed as an `Expression`.
 
+**Two rejections these rules imply**, both found by an adversarial review of the parser
+after the grammar was written, and both cases where the accepted reading was *available*
+and was not what anyone means:
+
+- A4 says the derivative is `\frac{d}{dx}` and anything else in that position is a
+  quotient. `\frac{dy}{dx}` is therefore a quotient of `d·y` over `d·x` — and the
+  builders cancel the `d`, so it came back `y/x`. `\frac{d^{2}y}{dx^{2}}` came back
+  `d*y/x^2`, carrying a factor of `d` standing where the order of the derivative was.
+  **A53** rejects the shape.
+- The integrand runs to the end of its enclosing group, so `\int f \, dx + 1` put the
+  `+ 1` *inside* the integral — and since the backwards scan then found no differential
+  ending at the boundary, the empty-variable-list exemption fired and `\, dx` became a
+  product too. **A54** rejects it. The printer never emits this: `notation.cpp` places an
+  integral at `kPrecAdd`, so inside a sum it is already parenthesised.
+
 **Limit.** The point is an `Expression` that must contain no top-level `\to`. The body is unfenced and greedy: `\lim_{x \to 0} x + y` is `limit(x+y, x, 0)` (verified).
 
 ### 2.7 Matrix — a separate entry point
@@ -392,7 +407,7 @@ Diagnostics are quoted verbatim; `L:C` is the line and column of the offending t
 | A26 | `f'(x)`, `\dot{x}`, `\ddot{x}` | `[E-LATEX-0018] a prime or a dot is a derivative with respect to an unwritten variable (and a prime is also a transpose); write \frac{d}{dx} f(x)` |
 | A27 | `a \pm b`, `a \mp b` | `[E-LATEX-0019] a \pm b denotes two expressions at once; a MathScript expression is one value` |
 | A28 | `=` `<` `>` `\le` `\leq` `\ge` `\neq` `\ne` `\approx` `\equiv` `\sim` `\propto` `\in` `\mid` | `[E-LATEX-0020] the subset parses expressions, not equations; '=' has no expression head. Parse the two sides separately, or write the difference` |
-| A29 | `\sum` `\prod` `\bigcup` `\bigcap` `\coprod` `\bigoplus` | `[E-LATEX-0021] \sum_{i=1}^{n} has no expression head in ms::sym2 (see expr.hpp Head); big operators are outside the subset` |
+| A29 | `\sum` `\prod` `\bigcup` `\bigcap` `\coprod` `\bigoplus` | `[E-LATEX-0021] \sum_{i=1}^{n} has no expression head here; big operators are outside the subset` |
 | A30 | `\binom{n}{k}`, `{n \choose k}` | `[E-LATEX-0022] \binom{n}{k} has no expression head; write \operatorname{binomial}(n, k)` |
 | A31 | `\int_{a}^{b}`, `\oint` | `[E-LATEX-0023] an integral here records no bounds, so limits would be silently discarded; write \int f \, dx` |
 | A32 | `\lim_{x \to 0^{+}}`, `\limsup`, `\liminf` | `[E-LATEX-0024] a limit here records no direction, so a one-sided limit would be read as a two-sided one` |
@@ -408,13 +423,15 @@ Diagnostics are quoted verbatim; `L:C` is the line and column of the offending t
 | A42 | `\cfrac` | `[E-LATEX-0034] \cfrac is continued-fraction layout with an optional alignment argument, not a distinct operation; write \frac{a}{b}` |
 | A43 | `\newcommand` `\renewcommand` `\def` `\let` `\providecommand` | `[E-LATEX-0035] macro expansion is not performed; TeX is Turing-complete. Expand the macro before parsing` |
 | A44 | `\begin{array}` `{cases}` `{aligned}` `{align}` `{equation}` `{gather}` `{split}` `{smallmatrix}` | `[E-LATEX-0036] \begin{array}{cc} carries a column specification, which is presentation rather than structure; use pmatrix, and parse a matrix with the matrix entry point` |
-| A45 | a matrix environment inside an expression | `[E-LATEX-0037] a matrix is not an expression in ms::sym2 (expr.hpp has no matrix head); parse it with parse_latex_matrix` |
+| A45 | a matrix environment inside an expression | `[E-LATEX-0037] a matrix is not an expression here and has no head to be read into; parse it with parse_latex_matrix` |
 | A46 | `&` or `\\` outside a matrix | `[E-LATEX-0038] '&' is a matrix cell separator and '\\' a row separator; neither is an expression token` |
 | A47 | `\operatorname{}` | `[E-LATEX-0039] an empty function name carries no name to recover` |
 | A48 | a subscript on anything that is not a name (`\frac{a}{b}_{1}`, `(x)_{1}`) | `[E-LATEX-0040] a subscript belongs to a symbol name; it has no meaning here` |
 | A49 | `{,}` when configured `decimal_separator = '.'` (or a bare `,` inside a numeral) | `[E-LATEX-0041] 1,5 is one number with a decimal comma or two numbers in a list; write 1{,}5 and configure decimal_separator = ','` |
 | A50 | `\sqrt{}` | `[E-LATEX-0042] empty radicand` |
 | A51 | `\surd`, `\root` | `[E-LATEX-0043] \surd is a glyph with no radicand; write \sqrt{x}` |
+| A53 | `\frac{dy}{dx}`, `\frac{d^{2}y}{dx^{2}}`, `\frac{\mathrm{d}y}{\mathrm{d}x}` — a fraction whose numerator AND denominator both open with a differential `d`, where the numerator is not the bare `{d}` of A4 | `[E-LATEX-0045] \frac{dy}{dx} is a derivative to a reader and a quotient to this grammar, whose derivative is \frac{d}{dx} with the function after it. Read as a quotient the two d's cancel and it means y/x, which is not what you wrote; write \frac{d}{dx} y` |
+| A54 | `\int f \, dx + 1` — anything after the last differential of an integral | `[E-LATEX-0046] the integrand runs to the end of its group, so an integral with something after its differential does not say where it stops: \int f \, dx + 1 is (\int f \, dx) + 1 to a reader and \int (f \, dx + 1) here. Bracket the integral` |
 | A52 | any other control sequence | `[E-LATEX-0044] unknown control sequence \foo; the accepted subset is documented in docs/LATEX_SUBSET.md` |
 
 ---

@@ -11,6 +11,9 @@ nothing was checking it.
     python3 scripts/mutation_test.py --source src/compress/compress.cpp \\
                                      --target test_compress
 
+`--target` takes every target that covers the file, comma-separated. A mutant is killed
+if any of them fails, and naming only some of them reports survivors that are not.
+
 For each mutation the harness edits one character-range of the source, rebuilds just
 the target that covers it, runs that target, and puts the result in one of four boxes:
 
@@ -189,7 +192,10 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--source", required=True, help="the file to mutate")
     parser.add_argument("--target", required=True,
-                        help="the CTest/ninja target that covers it, e.g. test_compress")
+                        help="the target(s) covering it, comma-separated, e.g. "
+                             "test_combo,test_combo_exact_tables,test_combo_overflow. A "
+                             "mutant is killed if ANY of them fails, so leaving one out "
+                             "reports a survivor that is not one")
     parser.add_argument("--build-dir", default="build-test")
     parser.add_argument("--limit", type=int, default=30, help="mutants to try")
     parser.add_argument("--seed", type=int, default=1,
@@ -207,11 +213,30 @@ def main() -> int:
         print(f"no mutation sites in {source}", file=sys.stderr)
         return 1
 
-    build = ["ninja", "-C", args.build_dir, args.target]
-    test = [str(Path(args.build_dir) / "tests" / args.target)]
+    targets = [name.strip() for name in args.target.split(",") if name.strip()]
+    if not targets:
+        print("--target named nothing", file=sys.stderr)
+        return 1
+    build = ["ninja", "-C", args.build_dir, *targets]
+    tests = [[str(Path(args.build_dir) / "tests" / name)] for name in targets]
+
+    def run_tests() -> tuple[str, int]:
+        """The first target that fails, and its code. ("", 0) when they all pass.
+
+        A mutant is killed by ANY of them. Running one target of several is how a
+        harness reports a survivor that is not one -- the mutation WAS caught, by a test
+        the run did not execute -- and every false survivor costs somebody the
+        investigation it takes to find that out. `src/combo/combo.cpp` is covered by
+        three targets; `src/compress/compress.cpp` happened to be covered by one.
+        """
+        for name, command in zip(targets, tests):
+            code, _ = run(command, args.test_timeout)
+            if code != 0:
+                return name, code
+        return "", 0
 
     print(f"{source}: {len(sites)} sites, trying {min(args.limit, len(sites))} "
-          f"(seed {args.seed})")
+          f"(seed {args.seed}) against {', '.join(targets)}")
     # The baseline may be a cold build of everything the target links, which is a
     # different order of cost from a mutant's rebuild of one translation unit. Giving it
     # the same budget is how the first run of this harness reported "the unmutated tree
@@ -227,10 +252,10 @@ def main() -> int:
         print("the unmutated tree does not build; fix that first\n" + output[-2000:],
               file=sys.stderr)
         return 1
-    code, output = run(test, args.test_timeout)
-    if code != 0:
-        print("the unmutated tree does not pass; a survivor would mean nothing\n"
-              + output[-2000:], file=sys.stderr)
+    failed, code = run_tests()
+    if failed:
+        print(f"the unmutated tree does not pass ({failed} exited {code}); a survivor "
+              "would mean nothing", file=sys.stderr)
         return 1
     print("baseline green\n", flush=True)
 
@@ -250,13 +275,14 @@ def main() -> int:
                 not_viable += 1
                 print(f"{label}: not viable", flush=True)
                 continue
-            test_code, _ = run(test, args.test_timeout)
+            failed_target, test_code = run_tests()
             if test_code == 124:
                 timed_out += 1
-                print(f"{label}: TIMED OUT (counted as killed)", flush=True)
+                print(f"{label}: TIMED OUT in {failed_target} (counted as killed)",
+                      flush=True)
             elif test_code != 0:
                 killed += 1
-                print(f"{label}: killed", flush=True)
+                print(f"{label}: killed by {failed_target}", flush=True)
             else:
                 survived += 1
                 survivors.append(mutation)

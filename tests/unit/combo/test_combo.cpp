@@ -170,6 +170,58 @@ TEST(ComboEnum, NextCombination) {
     EXPECT_FALSE(next_comb(v, 4));
 }
 
+// `next_comb` is an enumerator, and the tests above take one step each. A single step
+// never reaches the state where only the FIRST element can still advance, which is
+// exactly where its termination test lives:
+//
+//     while (i >= 0 && v[i] == n - k + i) --i;
+//     if (i < 0) return false;
+//
+// A mutation run turned `<` into `<=` and every test still passed: that stops the
+// enumeration one combination early, and nothing was counting. What pins it is the
+// defining property -- C(n, k) combinations, strictly increasing, in lexicographic
+// order -- which no number of single steps can express.
+TEST(ComboEnum, NextCombinationEnumeratesExactlyCnk) {
+    for (const auto [n, k] : {std::pair{3, 2}, std::pair{4, 2}, std::pair{5, 3},
+                              std::pair{6, 1}, std::pair{6, 6}, std::pair{7, 4}}) {
+        std::vector<int> v(static_cast<size_t>(k));
+        for (int i = 0; i < k; ++i) {
+            v[static_cast<size_t>(i)] = i;
+        }
+        std::vector<std::vector<int>> seen{v};
+        while (next_comb(v, n)) {
+            for (int i = 1; i < k; ++i) {
+                ASSERT_LT(v[static_cast<size_t>(i - 1)], v[static_cast<size_t>(i)])
+                    << "n=" << n << " k=" << k << ": not strictly increasing";
+            }
+            ASSERT_LT(seen.back(), v) << "n=" << n << " k=" << k << ": not lexicographic";
+            seen.push_back(v);
+            ASSERT_LT(seen.size(), 1000u) << "n=" << n << " k=" << k << ": runaway";
+        }
+        // C(n, k), computed here rather than called, so the test does not agree with a
+        // binomial that is itself wrong.
+        size_t expected = 1;
+        for (int i = 0; i < k; ++i) {
+            expected = expected * static_cast<size_t>(n - i) / static_cast<size_t>(i + 1);
+        }
+        EXPECT_EQ(seen.size(), expected) << "n=" << n << " k=" << k;
+
+        // The last one is the k largest values, and prev_comb walks the whole way back.
+        for (int i = 0; i < k; ++i) {
+            EXPECT_EQ(seen.back()[static_cast<size_t>(i)], n - k + i) << "n=" << n;
+        }
+        size_t steps = 0;
+        while (prev_comb(v, n)) {
+            ++steps;
+            ASSERT_LT(steps, 1000u) << "n=" << n << " k=" << k << ": runaway backwards";
+        }
+        EXPECT_EQ(steps, expected - 1) << "n=" << n << " k=" << k;
+        for (int i = 0; i < k; ++i) {
+            EXPECT_EQ(v[static_cast<size_t>(i)], i) << "n=" << n << ": did not return home";
+        }
+    }
+}
+
 TEST(ComboEnum, PrevPermutationRoundTrip) {
     std::vector<int> v = {1, 2, 3};
     ASSERT_TRUE(next_perm(v));
