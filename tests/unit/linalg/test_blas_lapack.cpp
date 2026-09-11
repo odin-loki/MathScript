@@ -965,11 +965,12 @@ TEST(LapackGesvdTest, dgesvd_tall_4x3_reconstructs_matrix) {
     for (int i = 0; i < k; ++i) {
         Sigma(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = S[static_cast<std::size_t>(i)];
     }
+    // dgesvd returns V**T, so V is its transpose.
     ColMatrix<double> V(static_cast<std::size_t>(n), static_cast<std::size_t>(k));
     for (int j = 0; j < k; ++j) {
         for (int i = 0; i < n; ++i) {
             V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
-                VT(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+                VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
         }
     }
     const ColMatrix<double> prod = U * Sigma * transpose(V);
@@ -1040,10 +1041,11 @@ TEST(LapackGesvdTest, dgesvd_reconstructs_matrix) {
     for (int i = 0; i < k; ++i) {
         Sigma(static_cast<std::size_t>(i), static_cast<std::size_t>(i)) = S[static_cast<std::size_t>(i)];
     }
+    // dgesvd returns V**T, so V is its transpose.
     ColMatrix<double> V(static_cast<std::size_t>(n), static_cast<std::size_t>(k));
     for (int j = 0; j < k; ++j) {
         for (int i = 0; i < n; ++i) {
-            V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = VT(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+            V(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = VT(static_cast<std::size_t>(j), static_cast<std::size_t>(i));
         }
     }
     const ColMatrix<double> prod = U * Sigma * transpose(V);
@@ -2617,11 +2619,21 @@ TEST(LapackDgesvdTest, empty_or_k_zero) {
     EXPECT_EQ(cpu::lapack::dgesvd(0, 0, dummy.data(), 1, S.data(), U.data(), 1, VT.data(), 1), 0);
     EXPECT_EQ(cpu::lapack::dgesvd(1, 0, dummy.data(), 1, S.data(), U.data(), 1, VT.data(), 1), 0);
 
+    // A 1x1 matrix has a perfectly ordinary SVD: [5] = [1] * [5] * [1]. This
+    // asserted a failure return, which is what the code did at the time --
+    // `dgebd2` rejected the legitimately empty off-diagonal array, so `dgesvd`
+    // failed for EVERY matrix with min(m, n) == 1 -- rather than what it should
+    // do. Asserting the observed behaviour is how a defect gets a test defending
+    // it.
     std::vector<double> A1{5.0};
     std::vector<double> S1(1, 0.0);
     std::vector<double> U1(1, 0.0);
     std::vector<double> VT1(1, 0.0);
-    EXPECT_EQ(cpu::lapack::dgesvd(1, 1, A1.data(), 1, S1.data(), U1.data(), 1, VT1.data(), 1), 1);
+    EXPECT_EQ(cpu::lapack::dgesvd(1, 1, A1.data(), 1, S1.data(), U1.data(), 1, VT1.data(), 1), 0);
+    EXPECT_NEAR(S1[0], 5.0, 1e-12);
+    EXPECT_NEAR(std::abs(U1[0]), 1.0, 1e-12);
+    EXPECT_NEAR(std::abs(VT1[0]), 1.0, 1e-12);
+    EXPECT_NEAR(U1[0] * S1[0] * VT1[0], 5.0, 1e-12);
 
     std::vector<double> A{3.0, 0.0, 0.0, 4.0};
     std::vector<double> S2(2, 0.0);

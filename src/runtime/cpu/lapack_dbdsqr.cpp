@@ -221,46 +221,13 @@ void drot_cols(int col1, int col2, double cs, double sn, double* U, int ldu, int
     }
 }
 
-void dlasr_left_v_forward(int nrows, int ncols, int row_off, const double* c, const double* s, double* A, int lda) {
-    if (nrows <= 1) {
-        return;
-    }
-    for (int j = 0; j < nrows - 1; ++j) {
-        const double cs = c[j];
-        const double sn = s[j];
-        if (cs == 1.0 && sn == 0.0) {
-            continue;
-        }
-        const int r0 = row_off + j;
-        const int r1 = row_off + j + 1;
-        for (int col = 0; col < ncols; ++col) {
-            const double temp = A[r1 * lda + col];
-            A[r1 * lda + col] = cs * temp - sn * A[r0 * lda + col];
-            A[r0 * lda + col] = sn * temp + cs * A[r0 * lda + col];
-        }
-    }
-}
 
-void dlasr_left_v_backward(int nrows, int ncols, int row_off, const double* c, const double* s, double* A, int lda) {
-    if (nrows <= 1) {
-        return;
-    }
-    for (int j = nrows - 2; j >= 0; --j) {
-        const double cs = c[j];
-        const double sn = s[j];
-        if (cs == 1.0 && sn == 0.0) {
-            continue;
-        }
-        const int r0 = row_off + j;
-        const int r1 = row_off + j + 1;
-        for (int col = 0; col < ncols; ++col) {
-            const double temp = A[r1 * lda + col];
-            A[r1 * lda + col] = cs * temp - sn * A[r0 * lda + col];
-            A[r0 * lda + col] = sn * temp + cs * A[r0 * lda + col];
-        }
-    }
-}
 
+// Only the forward right-side applier is reached: `dbdsqr` uses it once, to carry
+// the lower-to-upper conversion rotations into U. Its three siblings -- the two
+// left-side appliers and the backward right-side one -- had no caller anywhere in
+// the tree, which is why every mutation of them survived: not a line that ran
+// unasserted, a line that never ran. Removed rather than tested.
 void dlasr_right_v_forward(int nrows, int ncols, int col_off, const double* c, const double* s, double* A, int lda) {
     if (ncols <= 1) {
         return;
@@ -281,25 +248,6 @@ void dlasr_right_v_forward(int nrows, int ncols, int col_off, const double* c, c
     }
 }
 
-void dlasr_right_v_backward(int nrows, int ncols, int col_off, const double* c, const double* s, double* A, int lda) {
-    if (ncols <= 1) {
-        return;
-    }
-    for (int j = ncols - 2; j >= 0; --j) {
-        const double cs = c[j];
-        const double sn = s[j];
-        if (cs == 1.0 && sn == 0.0) {
-            continue;
-        }
-        const int c0 = col_off + j;
-        const int c1 = col_off + j + 1;
-        for (int r = 0; r < nrows; ++r) {
-            const double temp = A[r + c1 * lda];
-            A[r + c1 * lda] = cs * temp - sn * A[r + c0 * lda];
-            A[r + c0 * lda] = sn * temp + cs * A[r + c0 * lda];
-        }
-    }
-}
 
 void init_identity_rows(int n, double* VT, int ldvt) {
     for (int i = 0; i < n; ++i) {
@@ -315,6 +263,33 @@ void init_identity_cols(int nrows, int ncols, double* U, int ldu) {
             U[j * ldu + r] = (r == j) ? 1.0 : 0.0;
         }
     }
+}
+
+// Below this, a vector orthogonalised against the rows above it has no direction
+// of its own left and has to be replaced rather than normalised.
+constexpr double kNullVectorTolerance = 1e-8;
+
+// Removes from `row` every component lying along rows 0..k-1 of VT and returns
+// what length is left. Twice, because one pass of classical Gram-Schmidt loses
+// orthogonality to first order when the input is nearly dependent, which is
+// exactly the case this is here to handle.
+double orthogonalise_against_rows(int n, int k, const double* VT, int ldvt, double* row) {
+    for (int pass = 0; pass < 2; ++pass) {
+        for (int r = 0; r < k; ++r) {
+            double dot = 0.0;
+            for (int j = 0; j < n; ++j) {
+                dot += VT[r * ldvt + j] * row[j];
+            }
+            for (int j = 0; j < n; ++j) {
+                row[j] -= dot * VT[r * ldvt + j];
+            }
+        }
+    }
+    double norm = 0.0;
+    for (int j = 0; j < n; ++j) {
+        norm += row[j] * row[j];
+    }
+    return std::sqrt(norm);
 }
 
 void recompute_vt_from_u(
@@ -354,6 +329,44 @@ void recompute_vt_from_u(
                 acc += U[k * ldu + i] * bij;
             }
             VT[k * ldvt + j] = inv_sk * acc;
+        }
+    }
+
+    // A row whose singular value is zero has nothing to recover from U and B:
+    // (1/sigma) * U_k**T * B is 0/0, and the guard above turned that into a zero
+    // row. A zero row is not a null-space basis vector, it is the absence of one,
+    // so V**T came back non-orthogonal -- V V**T had a zero on its diagonal --
+    // for every rank-deficient input, and was entirely zero for the zero matrix.
+    // A row whose singular value is merely tiny is the same problem one step less
+    // far along: 1/sigma amplifies whatever error U carries.
+    //
+    // The rows arrive in decreasing order of sigma, so orthonormalising them in
+    // that order leaves the accurate leading rows alone (to within a rounding) and
+    // rebuilds the trailing ones. Where a row has no direction left at all, a
+    // standard basis vector orthogonalised against the rows already fixed supplies
+    // one; every candidate that fails is in the span of what is already accepted,
+    // and that span only grows, so the scan never needs to revisit it.
+    std::vector<double> row(static_cast<std::size_t>(n));
+    int candidate = 0;
+    for (int k = 0; k < n; ++k) {
+        for (int j = 0; j < n; ++j) {
+            row[static_cast<std::size_t>(j)] = VT[k * ldvt + j];
+        }
+
+        double norm = orthogonalise_against_rows(n, k, VT, ldvt, row.data());
+        while (norm <= kNullVectorTolerance && candidate < n) {
+            for (int j = 0; j < n; ++j) {
+                row[static_cast<std::size_t>(j)] = (j == candidate) ? 1.0 : 0.0;
+            }
+            ++candidate;
+            norm = orthogonalise_against_rows(n, k, VT, ldvt, row.data());
+        }
+        if (norm <= kNullVectorTolerance) {
+            continue;
+        }
+
+        for (int j = 0; j < n; ++j) {
+            VT[k * ldvt + j] = row[static_cast<std::size_t>(j)] / norm;
         }
     }
 }
@@ -403,6 +416,19 @@ int dbdsqr_upper(
         return 0;
     }
     if (n == 1) {
+        // The one-by-one case still has vectors, and they still have to be the ones
+        // the caller asked for. This returned without touching U or VT, so a caller
+        // that handed in zeroed buffers -- which `dgesvd` does -- got a zero U back
+        // and a factorisation of the zero matrix. The rotation loop below
+        // initialises them; there is no rotation here, so it is done directly.
+        if (init_vectors) {
+            if (U != nullptr) {
+                init_identity_cols((nru > 0) ? nru : n, n, U, ldu);
+            }
+            if (VT != nullptr) {
+                init_identity_rows(n, VT, ldvt);
+            }
+        }
         if (d[0] < 0.0) {
             d[0] = -d[0];
             if (VT != nullptr) {

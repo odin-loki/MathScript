@@ -211,11 +211,21 @@ int dgebd2(int m, int n, double* A, int lda, double* D, double* E, double* tauq,
     if (m <= 0 || n <= 0) {
         return 0;
     }
-    if (A == nullptr || D == nullptr || E == nullptr || tauq == nullptr || taup == nullptr) {
+    if (A == nullptr || D == nullptr || tauq == nullptr || taup == nullptr) {
         return 1;
     }
 
     const int k = (std::min)(m, n);
+    // E holds the k - 1 off-diagonal entries, so a reduction with k = 1 has none and
+    // an empty array is exactly the right thing to hand it. `std::vector<double>(0)`
+    // never allocates and its `data()` is null, so requiring E unconditionally
+    // rejected EVERY matrix with a single row or column -- and `dgesvd` turned that
+    // into a failure for all of them, measured across the whole 8x8 shape grid:
+    // info = 1 for every m x 1 and every 1 x n. `dbdsqr`'s own guard already reads
+    // `(n > 1 && e == nullptr)`; this one did not.
+    if (k > 1 && E == nullptr) {
+        return 1;
+    }
 
     if (m >= n) {
         for (int i = 0; i < n; ++i) {

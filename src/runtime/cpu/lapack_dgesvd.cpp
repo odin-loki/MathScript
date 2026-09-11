@@ -108,10 +108,15 @@ int dgesvd_tall(int m, int n, const double* A, int lda, double* S, double* U, in
     std::vector<double> v(static_cast<std::size_t>(n) * static_cast<std::size_t>(n));
     blas::dgemm('T', 'N', n, n, n, 1.0, pt.data(), n, vb.data(), n, 0.0, v.data(), n);
 
+    // `v` holds V itself, n x n column-major. The contract is V**T, k x n with
+    // ldvt = k -- the same thing `dgesvd_wide` returns -- so transpose on the way
+    // out. Writing V here and calling it VT left the two paths disagreeing about
+    // what the third output means, and every caller compensating by reading the
+    // array one way for m >= n and the other way for m < n.
     for (int j = 0; j < n; ++j) {
-        for (int i = 0; i < n; ++i) {
-            VT[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldvt)] =
-                v[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * static_cast<std::size_t>(n)];
+        for (int p = 0; p < n; ++p) {
+            VT[static_cast<std::size_t>(p) + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldvt)] =
+                v[static_cast<std::size_t>(j) + static_cast<std::size_t>(p) * static_cast<std::size_t>(n)];
         }
     }
 
@@ -150,10 +155,12 @@ int dgesvd_wide(int m, int n, const double* A, int lda, double* S, double* U, in
         return 1;
     }
 
+    // A**T = U' Sigma V'**T, so A = V' Sigma U'**T: the left singular vectors of A
+    // are V', which `vtt` holds transposed.
     for (int j = 0; j < m; ++j) {
         for (int i = 0; i < m; ++i) {
             U[static_cast<std::size_t>(i) + static_cast<std::size_t>(j) * static_cast<std::size_t>(ldu)] =
-                vtt[static_cast<std::size_t>(j) * static_cast<std::size_t>(m) + static_cast<std::size_t>(i)];
+                vtt[static_cast<std::size_t>(j) + static_cast<std::size_t>(i) * static_cast<std::size_t>(m)];
         }
     }
 

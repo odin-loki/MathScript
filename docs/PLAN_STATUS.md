@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; nine files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% -- every survivor either killed by a new test, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; ten files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -902,6 +902,75 @@ from `ans_decode_vec`, and all verified before and after:
   usable symbols left the decoders indexing an empty model. **SIGSEGV.** A guard that
   returns an empty model turns a division by zero into an out-of-bounds read unless the
   caller is guarded too.
+
+Tenth file: `src/runtime/cpu/lapack_dbdsqr.cpp`, 24 mutants at seed 7 against the three
+suites that cover it. **14 of 22 viable killed, 63.6%** on the first run -- and the
+survivor list was the finding, because all eight were in the rotation appliers: the
+routines that carry the sweep's Givens rotations into U and V**T. That is a structural
+answer, not a thin-suite one. `test_blas_lapack` alone has 164 tests.
+
+What none of them asserted was the singular **vectors**. The implicit QR computes the
+singular VALUES from the bidiagonal `d` and `e` alone, so they are insensitive to
+anything the rotation accumulation does, and the three reconstruction tests were at three
+fixed small shapes. So the file got `tests/unit/linalg/test_lapack_svd_properties.cpp`,
+which asks the two questions no accident satisfies --
+
+    A = U * Sigma * V**T           the factorisation is of the matrix it was given
+    U**T U = I and V V**T = I      the vectors are orthonormal
+
+-- over square, tall and wide shapes from 1x1 to 33x33, plus rank-one, repeated-singular-
+value, all-zero and badly-scaled inputs, with everything computed in plain loops rather
+than through the library's own matrix operations. A test that uses the thing it is
+testing to check the thing it is testing has one fewer independent opinion in it than it
+appears to.
+
+**It failed on the first run, and it found four defects, three of them silent.**
+
+| Defect | What it was |
+|---|---|
+| `dgesvd` failed for EVERY matrix with `min(m, n) == 1` | `dgebd2`'s null guard required `E != nullptr`. A reduction with `k = 1` has no off-diagonal entries, and `std::vector<double>(0).data()` is null, so every `m x 1` and every `1 x n` input returned `info = 1`. Not silent -- but a test was defending it: `LapackDgesvdTest.empty_or_k_zero` asserted `dgesvd(1, 1, ...) == 1`. Writing down the observed behaviour is how a defect acquires a guard. |
+| `dbdsqr_upper`'s `n == 1` path never initialised the vectors | It returned early without touching U or VT. A caller that hands in zeroed buffers -- which `dgesvd` does -- got a zero U back, and a factorisation of the zero matrix. |
+| `dgesvd_tall` returned V where the contract says V**T | The header documents `VT` as `k x n`; the tall path wrote V and the wide path wrote V**T. Both callers in the tree compensated by reading the array one way for `m >= n` and the other for `m < n`, which is why nothing failed -- and why the next caller would have been wrong. The tall path transposes on the way out now, and the branch in `ms::svd` is gone. |
+| `recompute_vt_from_u` returned a ZERO ROW for every zero singular value | V**T's rows are derived as `(1/sigma_k) * U_k**T * B`; where `sigma_k` is zero the guard substituted `1/sigma = 0`, so the row came out zero. A zero row is not a null-space basis vector, it is the absence of one. **V was not orthogonal for any rank-deficient input, and was entirely zero for the zero matrix.** The two existing rank-deficient tests checked orthogonality of the leading columns only -- `ortho_error(result->V, 2)` on a 4x4 of rank 2 -- so the null space was exactly the part nobody looked at. The rows arrive in decreasing order of sigma, so they are orthonormalised in that order now: accurate leading rows survive to within a rounding, degenerate trailing ones are rebuilt, and a row with no direction left takes a standard basis vector orthogonalised against the rows already fixed. |
+
+The remaining survivors were then classified, and the classification is the more
+interesting half. **`dbdsqr` recomputes V**T from U and B after the sweep, which
+discards everything the sweep accumulated into it.** Measured rather than argued: zeroing
+VT immediately before that recompute leaves every one of the 331 tests passing. So for
+every caller that asks for both U and V**T -- which is every caller in the tree -- the
+rotation accumulation into V**T is not untested, it is **unobservable**. A mutant there
+cannot be killed by any test, because no test can see the line at all.
+
+Two things followed from that.
+
+- Three of the four `dlasr_*` appliers -- both left-side ones and the backward right-side
+  one -- had **no caller anywhere in the tree**. Confirmed by deleting them and compiling.
+  Removed rather than tested: a mutation survivor in a function nobody calls is not a
+  coverage gap, and dead code shaped like the real algorithm is worse than no code,
+  because a maintainer fixing a V-related bug would fix it there and see no change.
+- The API still admits `U == nullptr` with V**T asked for, and on that path the
+  accumulation IS the answer. Nothing exercised it. Without U there is no factorisation
+  to check, but there is still a property that pins the vectors: **V**T diagonalises
+  B**T B, with the squared singular values on the diagonal.** That is now asserted for
+  `n` in {2, 3, 4, 6, 9, 14} in both the upper and lower bidiagonal forms, and it passes
+  -- so the accumulated path is correct, and it is now covered.
+
+Score after: **95.5%** -- 21 of 22 viable, with the last survivor classified by
+measurement rather than by the argument for it. `iter += m - ll` is the give-up counter;
+the only way to see it is at the threshold. Instrumented across all three suites, the
+threshold is reached exactly **once**, by a bidiagonal whose off-diagonal is NaN, which
+never converges however fast the counter advances and returns 1 either way. Every other
+input in the corpus finishes with the counter at **22% of its budget or less** (33 of 198
+at n = 33, 32 of 144 at n = 24, 21 of 102 at n = 17), and the mutation at most doubles the
+increment, so every one of them still finishes inside it. Killing that line would take an
+input contrived to need between half and all of the iteration budget, which tests the
+budget rather than the code.
+
+As with `image.cpp`, the two runs are different samples rather than the same mutants
+re-scored -- the site list is derived from the file and the file changed -- so 63.6% and
+95.5% are two measurements, not a ratchet. What is firmer than either: every survivor of
+the first run is now either killed by a named test, deleted as uncalled, or classified by
+an instrumented measurement.
 
 ### What the corpus found on its first run
 

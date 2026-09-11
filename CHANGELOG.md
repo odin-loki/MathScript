@@ -739,6 +739,59 @@ were fixed — a table normalising to no usable symbols left the decoders indexi
 empty model (**SIGSEGV**). A guard that returns an empty model turns a division by zero
 into an out-of-bounds read unless the caller is guarded too.
 
+### §8.4 — the SVD's singular vectors, and four defects in them
+
+`src/runtime/cpu/lapack_dbdsqr.cpp` scored **63.6%** over viable mutants, and every
+survivor was in the routines that carry the sweep's Givens rotations into U and V**T.
+With 164 tests in `test_blas_lapack` alone that is a structural answer rather than a
+thin-suite one: what none of them asserted was the singular **vectors**. The implicit QR
+computes the singular VALUES from the bidiagonal `d` and `e` alone, so they cannot see
+the rotation accumulation at all, and the three reconstruction tests sat at three fixed
+small shapes.
+
+`tests/unit/linalg/test_lapack_svd_properties.cpp` asks the two questions no accident
+satisfies — `A = U * Sigma * V**T`, and `U**T U = I` with `V V**T = I` — over square,
+tall and wide shapes from 1x1 to 33x33, plus rank-one, repeated-singular-value, all-zero
+and badly-scaled inputs, all in plain loops rather than through the library's own matrix
+operations. It failed on its first run, and found four defects:
+
+- **`dgesvd` failed for every matrix with `min(m, n) == 1`.** `dgebd2`'s null guard
+  required a non-null off-diagonal array, but a reduction with `k = 1` has no
+  off-diagonal entries and `std::vector<double>(0).data()` is null, so every `m x 1` and
+  every `1 x n` input returned `info = 1`. A test was defending it:
+  `LapackDgesvdTest.empty_or_k_zero` asserted that `dgesvd(1, 1, ...)` fails. Writing
+  down the observed behaviour is how a defect acquires a guard.
+- **`dbdsqr_upper`'s `n == 1` path never initialised the vectors.** It returned early
+  without touching U or VT, so a caller that hands in zeroed buffers — which `dgesvd`
+  does — got a zero U back and a factorisation of the zero matrix.
+- **`dgesvd` returned V from one path and V**T from the other.** The header documents the
+  third output as `V**T`, `k x n`; the tall path wrote V, the wide path wrote V**T. Both
+  in-tree callers compensated by reading the array one way for `m >= n` and the other for
+  `m < n`, so nothing failed — and the next caller would have been silently wrong. The
+  tall path transposes on the way out now and the shape branch in `ms::svd` is gone.
+- **Every zero singular value produced a zero row of V**T.** The rows are derived as
+  `(1/sigma_k) * U_k**T * B`, and where `sigma_k` is zero the guard substituted
+  `1/sigma = 0`. A zero row is not a null-space basis vector, it is the absence of one:
+  **V was not orthogonal for any rank-deficient input, and was entirely zero for the zero
+  matrix.** The two existing rank-deficient tests checked orthogonality of the leading
+  columns only, so the null space was exactly the part nobody looked at. The rows arrive
+  in decreasing order of sigma and are orthonormalised in that order now — accurate
+  leading rows survive to within a rounding, degenerate trailing ones are rebuilt, and a
+  row with no direction left takes a standard basis vector orthogonalised against the
+  rows already fixed.
+
+The remaining survivors were classified by measurement. `dbdsqr` recomputes V**T from U
+and B after the sweep, which **discards everything the sweep accumulated into it**:
+zeroing VT immediately before that recompute leaves all 331 suites passing. So for every
+caller that asks for both — every caller there is — those lines are not untested, they
+are unobservable. Three of the four `dlasr_*` appliers turned out to have no caller
+anywhere in the tree (confirmed by deleting them and compiling) and are removed; dead
+code shaped like the real algorithm is worse than none, because a maintainer fixing a
+V-related bug would fix it there and see no change. The one path where the accumulation
+*is* the answer — `U == nullptr` with V**T asked for — had nothing exercising it, and is
+now pinned by the property that survives the missing U: **V**T diagonalises B**T B, with
+the squared singular values on the diagonal.**
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under
