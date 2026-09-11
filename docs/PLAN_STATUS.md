@@ -249,6 +249,18 @@ its argument, so the guard computes `|F_n|` exactly with a totient sieve rather 
 estimating it — an estimate would have to be conservative, and a conservative estimate
 refuses an order whose sequence actually fits.
 
+**Two of them were in `src/image` rather than at the REPL boundary, and a guard at the
+boundary does not reach them.** `image::impad` computes `img.rows + 2*pad` in `int`. At
+`pad >= (INT_MAX - 2) / 2` that overflows to a negative, `Image`'s constructor clamps a
+non-positive extent to an EMPTY image, and the copy loop -- bounded by the *source's*
+extents rather than the destination's -- ran anyway and wrote an index near 2^30 into a
+zero-length vector, about 4.29 GB past a null base. A negative `pad` reached the same
+write from the other end. `image::imresize` indexed its destination with
+`(r * nc + c) * channels` in `int`, which wraps negative once the output passes INT_MAX
+elements -- and 46341 x 46341 single-channel is an image this type can legitimately
+hold. Both are settled inside the library now: a caller can be asked to keep a request
+affordable, and cannot be asked to keep a function inside its own allocation.
+
 **The 178 are not all fixed.** The list above is what was measured to end the process;
 the rest of the idiom's uses are a survey in progress, and the undefined cast is still
 there in every one that has not been rewritten.
@@ -359,9 +371,16 @@ were regressions; all were already true and none had a test.
 
   Four names -- `boxfilter`, `imgaussfilt`, `laplacian_of_gaussian`, `medfilt2` --
   turned out to be listed at arity 1 in the arity table with no arity-1 form in the
-  handler. That disagreement is a defect in those handlers and is recorded as one; the
-  bare form says `no form of this call takes a single matrix` rather than passing on
-  the registry's contentless `assign: unsupported matrix call`.
+  handler. **Fixed**, and not uniformly, because the four are not the same case.
+  `medfilt2` and `boxfilter` now take the form: a default exists to be used rather than
+  invented -- `image::medfilt2` declares `int ksize = 3` in its own signature, and 3 is
+  what the eight neighbours in the same arity group use. `imgaussfilt` and
+  `laplacian_of_gaussian` answer arity 1 with a diagnostic instead, because sigma is not
+  a setting on a Gaussian blur, it IS the blur: there is no width that a caller who did
+  not name one meant. Answering the arity rather than removing it from the table is
+  deliberate -- the table decides whether the line is a matrix call at all, so dropping
+  the row would stop `B = imgaussfilt(A)` being recognised as a call and report
+  something further still from the truth.
 
   The fix adds no nesting to the 92-deep chain, deliberately: everything new sits
   after it, at the depth of the `return` it replaces. A change that deepened that
@@ -420,11 +439,13 @@ were regressions; all were already true and none had a test.
   predicate generated from every dispatch form. `scripts/extract_manifest.py` covers the
   485-entry matrix-call registry, which is one form of several. **Open.**
 
-- **`bigint("495.0")` is not diagnosed by name.** Noticed while fixing the line above.
-  The literal is rejected -- it no longer answers 0, which was the recorded defect --
-  but no reading of the line claims it, so it reports the generic "could not read" now
-  where it used to report a phantom matrix. `bigint: "495.0" is not an integer literal`
-  is what it should say. **Open.**
+- **`bigint("495.0")` was not diagnosed by name.** Noticed while fixing the line above.
+  The literal was rejected -- it no longer answers 0, which was the recorded defect --
+  but no reading of the line claimed it, so it reported the generic "could not read"
+  where it used to report a phantom matrix. **Fixed**, and the cause was not the
+  message: `bigint` existed only as an ASSIGNMENT form, so the bare line was not a
+  command at all. `bigint("495")` did not work either. Both go through the same
+  reporting parse now, and `bigint("495.0")` says `invalid decimal literal: 495.0`.
 - **`sym_simplify("x + x")` returned `(x + x)`.** Like terms were collected during
   `sym_expand` and not during `sym_simplify`, which folded a constant into a constant,
   dropped a zero, and stopped: `sym_simplify("2*x + 3*x")` came back as

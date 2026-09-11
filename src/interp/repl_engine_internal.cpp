@@ -18168,6 +18168,26 @@ bool try_parse_bigint_assignment(const std::string& line, std::string& name, std
     return is_identifier(name);
 }
 
+/// `bigint("495")` with no target.
+///
+/// The assignment form above has always existed and the bare one had not, so a line
+/// naming a real command with a real argument fell through every reading and came back
+/// "could not read ... as a matrix call, a matrix constructor, or a scalar expression".
+/// That is true and useless: what is wrong with `bigint("495.0")` is one character, and
+/// nothing told the author which. `bigint` has a reporting parse and the bare form now
+/// reaches it.
+bool try_parse_bigint_call(const std::string& line, std::string& decimal) {
+    static const std::regex pattern(R"(bigint\s*\(\s*(\"([^\"]*)\"|'([^']*)')\s*\))",
+                                    std::regex::icase);
+    const std::string trimmed = trim_copy(line);
+    std::smatch match;
+    if (!std::regex_match(trimmed, match, pattern)) {
+        return false;
+    }
+    decimal = match[2].matched ? match[2].str() : match[3].str();
+    return true;
+}
+
 bool parse_scalar_operand(const std::string& text, ScalarOperand& out) {
     const std::string token = trim_copy(text);
     double value = 0.0;

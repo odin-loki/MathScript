@@ -11552,6 +11552,15 @@ Result<std::string> Interpreter::execute(const std::string& line) {
         return execute_assignment(cmd);
     }
 
+    std::string bigint_bare_decimal;
+    if (try_parse_bigint_call(cmd, bigint_bare_decimal)) {
+        auto value = eval_bigint_string(bigint_bare_decimal);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        return format_scalar(*value) + "\n";
+    }
+
 
     if (const auto nullary = parse_nullary_matrix_call(cmd)) {
         auto value = eval_nullary_matrix_call(*nullary);

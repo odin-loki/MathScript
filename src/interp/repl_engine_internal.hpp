@@ -2733,6 +2733,7 @@ std::optional<std::pair<std::string_view, std::string_view>> parse_scalar_unary_
 size_t split_scalar_call_args_view(std::string_view args_text, std::string_view* out, size_t cap);
 
 bool try_parse_bigint_assignment(const std::string& line, std::string& name, std::string& decimal);
+bool try_parse_bigint_call(const std::string& line, std::string& decimal);
 
 bool parse_scalar_operand(const std::string& text, ScalarOperand& out);
 

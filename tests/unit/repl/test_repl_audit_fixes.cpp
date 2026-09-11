@@ -132,6 +132,15 @@ TEST(ReplAuditFixes, CompressRoundTripsReturnWhatTheyWereGiven) {
 TEST(ReplAuditFixes, ABadBigIntLiteralIsReported) {
     Interpreter interp;
     expect_error_contains(interp, "x = bigint(\"495.0\")", "invalid decimal literal");
+    // The bare form had no reading at all, so the same literal came back "could not
+    // read 'bigint(\"495.0\")' as a matrix call, a matrix constructor, or a scalar
+    // expression" -- true, and useless when what is wrong is one character. It reaches
+    // the same reporting parse the assignment form does now, and a valid literal
+    // prints instead of failing to parse.
+    expect_error_contains(interp, "bigint(\"495.0\")", "invalid decimal literal: 495.0");
+    expect_error_contains(interp, "bigint(\"1e3\")", "invalid decimal literal: 1e3");
+    expect_contains(interp, "bigint(\"495\")", "495");
+    expect_contains(interp, "bigint('495')", "495");
     expect_error_contains(interp, "x = bigint(\"1e3\")", "invalid decimal literal");
     expect_ok(interp, "x = bigint(\"495\")");
     EXPECT_NEAR(interp.state().scalars.at("x"), 495.0, 1e-9);

@@ -5193,3 +5193,36 @@ TEST(ReplCommandsTest, boxfilter_noassign) {
     expect_contains(interp, "boxfilter(M, 3)", "filtered =");
     expect_error_contains(interp, "boxfilter(no_such_matrix, 3)", "unknown matrix");
 }
+
+TEST(ReplCommandsTest, TheFourFiltersAnswerTheArityTheTableSaysTheyTake) {
+    // `is_valid_matrix_call_arity` has always listed these four at arity 1, alongside
+    // the eight neighbours in the same group that implement it. They did not, so
+    // `B = boxfilter(A)` came back "assign: unsupported matrix call" -- which names
+    // neither the callee nor what is missing, and is what the registry's sentinel says
+    // when a handler declines a call the table promised it would take.
+    Interpreter interp;
+    expect_ok(interp, "M = ones(5, 5)");
+
+    // Two of them have a default to take rather than invent. `image::medfilt2` declares
+    // `int ksize = 3` in its own signature; boxfilter is the same kind of argument and
+    // 3 is what the eight neighbours use.
+    expect_ok(interp, "B = medfilt2(M)");
+    expect_ok(interp, "C = boxfilter(M)");
+    expect_ok(interp, "D = medfilt2(M, 3)");
+    expect_ok(interp, "E = boxfilter(M, 3)");
+    expect_error_contains(interp, "F = medfilt2(M, 4)", "positive odd integer ksize");
+    // The range is decided on the double now: `static_cast<int>` of one outside int's
+    // range is undefined behaviour, not a wrap, so the old `ksize < 1` after the cast
+    // was reading a value the program was not entitled to have.
+    expect_error_contains(interp, "F = medfilt2(M, 1e18)", "positive odd integer ksize");
+    expect_error_contains(interp, "F = boxfilter(M, 1e18)", "positive odd integer ksize");
+
+    // The other two have no default and say so rather than picking one. Sigma is not a
+    // setting on a Gaussian blur, it is the blur: there is no width that a caller who
+    // did not name one meant.
+    expect_error_contains(interp, "G = imgaussfilt(M)", "sigma has no default");
+    expect_error_contains(interp, "G = imgaussfilt(M)", "imgaussfilt(M, sigma)");
+    expect_error_contains(interp, "H = laplacian_of_gaussian(M)", "sigma has no default");
+    expect_ok(interp, "G = imgaussfilt(M, 1)");
+    expect_ok(interp, "H = laplacian_of_gaussian(M, 1)");
+}

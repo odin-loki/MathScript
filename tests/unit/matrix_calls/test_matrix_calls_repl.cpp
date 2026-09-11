@@ -269,7 +269,7 @@ TEST(MatrixCallArity_repl, imflip_rejects_3) {
                           "unsupported matrix call");
 }
 
-// accepts 2
+// accepts 1, 2
 TEST(MatrixCallArity_repl, imgaussfilt_rejects_3) {
     expect_arity_rejected("imgaussfilt", 3,
                           "assign",
@@ -346,7 +346,7 @@ TEST(MatrixCallArity_repl, label_components_rejects_2) {
                           "unsupported matrix call");
 }
 
-// accepts 2
+// accepts 1, 2
 TEST(MatrixCallArity_repl, laplacian_of_gaussian_rejects_3) {
     expect_arity_rejected("laplacian_of_gaussian", 3,
                           "assign",
@@ -388,7 +388,7 @@ TEST(MatrixCallArity_repl, lzw_encode_vec_rejects_2) {
                           "unsupported matrix call");
 }
 
-// accepts 2
+// accepts 1, 2
 TEST(MatrixCallArity_repl, medfilt2_rejects_3) {
     expect_arity_rejected("medfilt2", 3,
                           "assign",
@@ -481,7 +481,7 @@ TEST(MatrixCallUndefinedOperand_repl, imflip) {
 }
 
 TEST(MatrixCallUndefinedOperand_repl, imgaussfilt) {
-    expect_undefined_operand_propagates("imgaussfilt", 2);
+    expect_undefined_operand_propagates("imgaussfilt", 1);
 }
 
 TEST(MatrixCallUndefinedOperand_repl, imgradient_morph) {
@@ -525,7 +525,7 @@ TEST(MatrixCallUndefinedOperand_repl, label_components) {
 }
 
 TEST(MatrixCallUndefinedOperand_repl, laplacian_of_gaussian) {
-    expect_undefined_operand_propagates("laplacian_of_gaussian", 2);
+    expect_undefined_operand_propagates("laplacian_of_gaussian", 1);
 }
 
 TEST(MatrixCallUndefinedOperand_repl, lsq) {
@@ -549,7 +549,7 @@ TEST(MatrixCallUndefinedOperand_repl, lzw_encode_vec) {
 }
 
 TEST(MatrixCallUndefinedOperand_repl, medfilt2) {
-    expect_undefined_operand_propagates("medfilt2", 2);
+    expect_undefined_operand_propagates("medfilt2", 1);
 }
 
 TEST(MatrixCallUndefinedOperand_repl, mtf_decode_vec) {

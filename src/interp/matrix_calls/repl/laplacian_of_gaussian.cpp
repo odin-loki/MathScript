@@ -11,10 +11,21 @@ Result<Matrix<double>> handle_laplacian_of_gaussian(Interpreter& interp, const M
 
     Result<Matrix<double>> result =
         std::unexpected(DomainError{"assign", "unsupported matrix call"});
-    if (assign.callee == "laplacian_of_gaussian" && assign.args.size() == 2) {
+    if (assign.callee == "laplacian_of_gaussian" &&
+               (assign.args.size() == 1 || assign.args.size() == 2)) {
         auto matrix = ctx.resolve_operand(assign.args[0]);
         if (!matrix) {
             return std::unexpected(matrix.error());
+        }
+        // Same as imgaussfilt, and for the same reason: a Laplacian of Gaussian is
+        // built by blurring at `sigma` and then differencing, so the scale is the
+        // operation. See that handler for why the arity is answered rather than
+        // removed from the table.
+        if (assign.args.size() == 1) {
+            return std::unexpected(DomainError{
+                "laplacian_of_gaussian",
+                "sigma has no default: it is the scale the operator detects at, not a "
+                "setting on it. Write laplacian_of_gaussian(M, sigma)"});
         }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {

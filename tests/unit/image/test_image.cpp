@@ -4,6 +4,8 @@
 #include "ms/image/image.hpp"
 #include <algorithm>
 #include <cmath>
+#include <limits>
+
 #include <gtest/gtest.h>
 #include <set>
 #include <vector>
@@ -2378,6 +2380,39 @@ TEST(ImageGeom, EmptyFlipPadCrop) {
     auto p0 = impad(img, 0, 0.f);
     EXPECT_EQ(p0.rows, 3);
     EXPECT_FLOAT_EQ(p0.at(1, 1, 0), 0.9f);
+}
+
+TEST(ImageGeom, APadTooLargeToRepresentIsRefusedRatherThanWrittenPast) {
+    // `img.rows + 2*pad` was int arithmetic. At pad >= (INT_MAX - 2) / 2 it overflows,
+    // in practice to a negative, and the Image constructor clamps a non-positive extent
+    // to an EMPTY image -- but the copy loop is bounded by the SOURCE's extents, so it
+    // ran anyway and wrote out.at(r + pad, ...), an index near 2^30, into a zero-length
+    // vector. Roughly 4.29 GB past a null base.
+    //
+    // The REPL cannot reach this any more (its own guard caps the padding four orders
+    // of magnitude lower), which is exactly why the check belongs here as well: the
+    // library is one careless caller away from the write, and a caller can be asked to
+    // keep a request affordable but not to keep this function inside its allocation.
+    Image img(2, 2, 1, 1.f);
+    const int overflowing = (std::numeric_limits<int>::max() - 1) / 2;  // 1073741823
+    const Image huge = impad(img, overflowing, 0.f);
+    EXPECT_TRUE(huge.empty()) << huge.rows << "x" << huge.cols;
+
+    // One below it does not overflow; it is merely unaffordable, which is the caller's
+    // problem and not this function's. Not exercised here -- the allocation would be
+    // 18 exabytes -- but the boundary above is the one that was undefined.
+
+    // A negative pad reached out.at() with a negative row and column, which Image::at
+    // converts to size_t and reads as an enormous index. Same class, opposite end.
+    EXPECT_TRUE(impad(img, -1, 0.f).empty());
+    EXPECT_TRUE(impad(img, std::numeric_limits<int>::min(), 0.f).empty());
+
+    // And the ordinary case still pads.
+    const Image ok = impad(img, 2, 0.f);
+    EXPECT_EQ(ok.rows, 6);
+    EXPECT_EQ(ok.cols, 6);
+    EXPECT_FLOAT_EQ(ok.at(2, 2, 0), 1.f);
+    EXPECT_FLOAT_EQ(ok.at(0, 0, 0), 0.f);
 }
 
 TEST(ImageHarris, EmptyAndOneByOneNoKeypoints) {

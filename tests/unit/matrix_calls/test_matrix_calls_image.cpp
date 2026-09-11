@@ -107,7 +107,7 @@ TEST(MatrixCallArity_image, bilateral_rejects_4) {
                           "unsupported matrix call");
 }
 
-// accepts 2
+// accepts 1, 2
 TEST(MatrixCallArity_image, boxfilter_rejects_3) {
     expect_arity_rejected("boxfilter", 3,
                           "assign",
@@ -249,7 +249,7 @@ TEST(MatrixCallUndefinedOperand_image, bilateral) {
 }
 
 TEST(MatrixCallUndefinedOperand_image, boxfilter) {
-    expect_undefined_operand_propagates("boxfilter", 2);
+    expect_undefined_operand_propagates("boxfilter", 1);
 }
 
 TEST(MatrixCallUndefinedOperand_image, canny) {

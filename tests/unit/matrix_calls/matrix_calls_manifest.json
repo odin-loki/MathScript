@@ -309,7 +309,7 @@
       "file": "src/interp/matrix_calls/image/boxfilter.cpp",
       "callee": "boxfilter",
       "handler": "handle_boxfilter",
-      "guard": "assign.callee == \"boxfilter\" && assign.args.size() == 2",
+      "guard": "assign.callee == \"boxfilter\" && (assign.args.size() == 1 || assign.args.size() == 2)",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
@@ -317,6 +317,7 @@
       },
       "dead_guard_callees": [],
       "arities": [
+        1,
         2
       ],
       "open_ended": false,
@@ -335,7 +336,7 @@
         },
         {
           "fn": "boxfilter",
-          "message": "expected boxfilter(M, ksize)"
+          "message": "expected boxfilter(M[, ksize])"
         },
         {
           "fn": "boxfilter",
@@ -6931,7 +6932,7 @@
       "file": "src/interp/matrix_calls/repl/imgaussfilt.cpp",
       "callee": "imgaussfilt",
       "handler": "handle_imgaussfilt",
-      "guard": "assign.callee == \"imgaussfilt\" && assign.args.size() == 2",
+      "guard": "assign.callee == \"imgaussfilt\" && (assign.args.size() == 1 || assign.args.size() == 2)",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
@@ -6939,6 +6940,7 @@
       },
       "dead_guard_callees": [],
       "arities": [
+        1,
         2
       ],
       "open_ended": false,
@@ -6958,6 +6960,10 @@
         {
           "fn": "imgaussfilt",
           "message": "expected imgaussfilt(M, sigma)"
+        },
+        {
+          "fn": "imgaussfilt",
+          "message": "sigma has no default: it is the width of the blur, not a "
         }
       ]
     },
@@ -7670,7 +7676,7 @@
       "file": "src/interp/matrix_calls/repl/laplacian_of_gaussian.cpp",
       "callee": "laplacian_of_gaussian",
       "handler": "handle_laplacian_of_gaussian",
-      "guard": "assign.callee == \"laplacian_of_gaussian\" && assign.args.size() == 2",
+      "guard": "assign.callee == \"laplacian_of_gaussian\" && (assign.args.size() == 1 || assign.args.size() == 2)",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
@@ -7678,6 +7684,7 @@
       },
       "dead_guard_callees": [],
       "arities": [
+        1,
         2
       ],
       "open_ended": false,
@@ -7693,6 +7700,10 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "laplacian_of_gaussian",
+          "message": "sigma has no default: it is the scale the operator detects at, not a "
         }
       ]
     },
@@ -8151,7 +8162,7 @@
       "file": "src/interp/matrix_calls/repl/medfilt2.cpp",
       "callee": "medfilt2",
       "handler": "handle_medfilt2",
-      "guard": "assign.callee == \"medfilt2\" && assign.args.size() == 2",
+      "guard": "assign.callee == \"medfilt2\" && (assign.args.size() == 1 || assign.args.size() == 2)",
       "guard_rejects": false,
       "rejection": {
         "fn": "assign",
@@ -8159,6 +8170,7 @@
       },
       "dead_guard_callees": [],
       "arities": [
+        1,
         2
       ],
       "open_ended": false,
@@ -8177,7 +8189,7 @@
         },
         {
           "fn": "medfilt2",
-          "message": "expected medfilt2(M, ksize)"
+          "message": "expected medfilt2(M[, ksize])"
         },
         {
           "fn": "medfilt2",

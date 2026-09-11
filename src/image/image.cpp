@@ -180,15 +180,17 @@ Image imresize(const Image& img, int nr, int nc) {
 
     const float* src = img.data.data();
     float* dst = out.data.data();
-    const int src_stride = src_cols * channels;
+    const std::size_t channel_count = static_cast<std::size_t>(channels);
+    const std::size_t src_stride =
+        static_cast<std::size_t>(src_cols) * channel_count;
 
     for (int r = 0; r < nr; ++r) {
         const int r0 = row_r0[static_cast<std::size_t>(r)];
         const int r1 = row_r1[static_cast<std::size_t>(r)];
         const float wr0 = row_wr0[static_cast<std::size_t>(r)];
         const float wr1 = row_wr1[static_cast<std::size_t>(r)];
-        const float* src_row0 = src + r0 * src_stride;
-        const float* src_row1 = src + r1 * src_stride;
+        const float* src_row0 = src + static_cast<std::size_t>(r0) * src_stride;
+        const float* src_row1 = src + static_cast<std::size_t>(r1) * src_stride;
 
         for (int c = 0; c < nc; ++c) {
             const int c0 = col_c0[static_cast<std::size_t>(c)];
@@ -200,9 +202,14 @@ Image imresize(const Image& img, int nr, int nc) {
             const float w10 = wr1 * wc0;
             const float w11 = wr1 * wc1;
 
-            const int off00 = c0 * channels;
-            const int off01 = c1 * channels;
-            float* dst_px = dst + (r * nc + c) * channels;
+            const std::size_t off00 = static_cast<std::size_t>(c0) * channel_count;
+            const std::size_t off01 = static_cast<std::size_t>(c1) * channel_count;
+            // In `int` this is `(r * nc + c) * channels`, which wraps negative once the
+            // output passes INT_MAX elements -- 46341 x 46341 single-channel is already
+            // past it, and that is an image this type can legitimately hold. An
+            // overflowed index is a store before the buffer, not a wrong pixel.
+            float* dst_px = dst + (static_cast<std::size_t>(r) * static_cast<std::size_t>(nc) +
+                                   static_cast<std::size_t>(c)) * channel_count;
             for (int ch = 0; ch < channels; ++ch) {
                 dst_px[ch] = w00 * src_row0[off00 + ch] + w01 * src_row0[off01 + ch]
                            + w10 * src_row1[off00 + ch] + w11 * src_row1[off01 + ch];
@@ -235,8 +242,29 @@ Image imrotate90(const Image& img) {
     return out;
 }
 
+/// Two ways this wrote outside its own buffer, and both are settled here rather than
+/// left to the caller. A caller can reasonably be asked to keep a request affordable; it
+/// cannot be asked to keep the function inside its allocation.
+///
+///   - **`img.rows + 2*pad` is `int` arithmetic.** At `pad >= (INT_MAX - 2) / 2` it
+///     overflows -- undefined behaviour, and in practice negative, which `Image`'s
+///     constructor clamps to an EMPTY image. The copy loop below is bounded by `img`'s
+///     extents rather than by `out`'s, so it ran anyway and wrote `out.at(r + pad, ...)`
+///     -- an index near 2^30 -- into a zero-length vector.
+///   - **A negative `pad`** reaches `out.at(r + pad, ...)` with a negative row and
+///     column, which `Image::at` converts to `size_t` and reads as an enormous index.
+///
+/// An input with no padded image to name gets an empty one back, which is what
+/// `hough_circles` and the rest of this file do with an argument they cannot honour.
 Image impad(const Image& img, int pad, float val) {
-    Image out(img.rows+2*pad,img.cols+2*pad,img.channels,val);
+    const long long padded_rows = static_cast<long long>(img.rows) + 2LL * pad;
+    const long long padded_cols = static_cast<long long>(img.cols) + 2LL * pad;
+    constexpr long long kMaxExtent = std::numeric_limits<int>::max();
+    if (pad < 0 || padded_rows > kMaxExtent || padded_cols > kMaxExtent) {
+        return {};
+    }
+    Image out(static_cast<int>(padded_rows), static_cast<int>(padded_cols), img.channels,
+              val);
     for (int r=0;r<img.rows;++r) for (int c=0;c<img.cols;++c) for (int ch=0;ch<img.channels;++ch)
         out.at(r+pad,c+pad,ch)=img.at(r,c,ch);
     return out;
