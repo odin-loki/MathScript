@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; thirteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; fourteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1171,6 +1171,55 @@ this function":
 
 Score after: **65.2% -> 91.3%** -- 21 of 23, the same twenty-four mutants re-scored, with
 both remaining survivors measured equivalent. The highest of the thirteen files.
+
+
+Fourteenth file: `src/graph/graph.cpp`, 24 mutants at seed 61 against the two suites that
+cover it. **16 of 24 viable killed, 66.7%**, nothing not-viable. The most useful survivor
+was not a line of code but a test name.
+
+**`WeightedMatching.NeverBeatsBruteForceOnSmallGraphs` performs no brute force.** It is
+one hand-computed six-vertex graph, and the sixteen weighted-matching cases around it are
+each one hand-computed graph too -- chosen, between them, to make a blossom form, nest, be
+relabelled and be expanded, which is a good set to have chosen. What the mutation run says
+about it is that it is a set of POINTS: `while (j != 0)` in the blossom relabel loop became
+`while (j == 0)`, which stops the loop running at all, and every one of those cases still
+passed.
+
+So the name now describes the test. `AgreesWithExhaustiveSearchOnRandomGraphs` compares the
+matching weight against the true optimum found by enumerating every matching, over **480
+random graphs from 2 to 9 vertices at densities from 20% to 100%**, with small integer
+weights so ties are common -- a tie is where a tie-break decides which blossom forms. A
+second test does the same for the two shapes the algorithm exists for: odd cycles and
+cliques at 3, 5, 7 and 9 vertices, 320 of them. The corpus asserts its own worth: more
+than half the graphs must have an optimum of two edges or more, or it is a test of the
+empty case.
+
+The implementation agrees with exhaustive search on every one of them -- it was right --
+and the corpus kills three survivors the case list could not, one of them by **segfault**:
+`for (i = 0; i < blossomchilds[b].size(); ++i)` becoming `<=` reads one past the end, and
+a sample of a thousand graphs reaches it where seventeen hand-written ones did not. That
+is worth recording on its own, because it is the one place this session where the
+plain-build blindness to memory errors did not hold: given enough inputs, an
+out-of-bounds read stops being invisible and starts being a crash.
+
+The other kill came from a tie-break nobody had asserted. **A\*'s relaxation `ng < g[u]`
+became `ng <= g[u]`** -- which cannot change a distance, only which of several equal-cost
+routes is returned. Every existing A\* test has a unique cheapest route, so both readings
+answer them identically. On a 4x4 grid of unit edges there are twenty equal-cost routes
+from corner to corner, and the two readings return opposite sides of the grid: measured,
+`0 1 2 3 7 11 15` against `0 4 8 12 13 14 15`. The contract -- the first route to reach a
+vertex at the best cost keeps it -- is asserted now, along with the path being a real one.
+
+Score after: **66.7% -> 79.2%**, the same twenty-four mutants re-scored. Five survive, each
+classified:
+
+| Survivor | Why |
+|---|---|
+| `:1559` PageRank's convergence sum, from index 1 | Dropping one node from the L1 change that decides when to stop. Measured: the ranks come back **identical to seventeen significant digits** on three graphs of 5, 12 and 30 vertices at 35% density -- the omitted term does not move the 1e-10 threshold to a different iteration. Same family as the bidiagonal QR's give-up counter and the Schur sweep budget: a mutation inside a criterion whose purpose is to be satisfied approximately. |
+| `:1298` the planarity DFS root height | `height[root] = 0` becoming `1` shifts every height in that root's tree by one. The Left-Right criterion reads height DIFFERENCES, so a constant offset per tree is not visible to it. |
+| `:1328` `right_ref.assign(n, -1)` -> `-2` | A sentinel that is never read before it is written: `half_edge_cw` assigns every entry it later reads. |
+| `:38` the Jacobi sweep's `<` -> `<=` | Reads one past the end. The plain build cannot see it, and unlike the blossom case above there is no corpus large enough here to turn it into a crash. ASan in CI is what covers it. |
+| `:2288` the blossom's `allowedge` initialisation | Marking every edge allowed at the top of each stage instead of none. It is a starting hint the algorithm re-derives from slack, and the answer is unchanged over the **eight hundred graphs** above, every one verified against exhaustive search. Not proved equivalent -- stated as measured: if it is a defect, no graph of nine vertices or fewer exhibits it. |
 
 
 ### What the corpus found on its first run

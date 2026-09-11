@@ -931,6 +931,42 @@ three" changes nothing, because the divergence of a two-point embedding is ident
 zero however the points are placed: P has one pair and puts all its mass there, Q has the
 same one pair and does the same, so KL is `1·log(1/1)` whatever the distance between them.
 
+### §8.4 — a test named for a brute force it did not perform
+
+`src/graph/graph.cpp` scored **66.7%**, and the most useful survivor was not a line of code
+but a test name. **`WeightedMatching.NeverBeatsBruteForceOnSmallGraphs` performs no brute
+force**: it is one hand-computed six-vertex graph, and the sixteen weighted-matching cases
+around it are each one hand-computed graph too — chosen between them to make a blossom
+form, nest, be relabelled and be expanded, which is a good set to have chosen. What the
+mutation run says about it is that it is a set of *points*: `while (j != 0)` in the blossom
+relabel loop became `while (j == 0)`, stopping the loop from running at all, and every one
+of those cases still passed.
+
+The name now describes the test. The matching weight is compared against the true optimum
+found by enumerating every matching, over **480 random graphs from 2 to 9 vertices** at
+densities from 20% to 100% with small integer weights so ties are common, plus 320 odd
+cycles and cliques — the two shapes the blossom algorithm exists for. The implementation
+agrees on every one of them; what the corpus adds is reach. It kills three survivors the
+case list could not, one of them **by segfault**: `for (i = 0; i < blossomchilds[b].size();
+++i)` becoming `<=` reads one past the end, and a thousand graphs reach it where seventeen
+hand-written ones did not. Given enough inputs an out-of-bounds read stops being invisible
+to a plain build and starts being a crash.
+
+A second kill came from a tie-break nobody had asserted. **A\*'s relaxation `ng < g[u]`
+became `ng <= g[u]`**, which cannot change a distance — only which of several equal-cost
+routes comes back. Every existing A\* test has a unique cheapest route, so both readings
+answer them identically; on a 4×4 grid of unit edges there are twenty equal-cost routes
+corner to corner, and the two readings return opposite sides of it. The contract is now
+written down: the first route to reach a vertex at the best cost keeps it.
+
+**66.7% -> 79.2%.** Of the five that survive, PageRank's convergence sum missing one node
+returns ranks **identical to seventeen significant digits** on three graphs (a mutation
+inside a criterion whose purpose is to be satisfied approximately); the planarity DFS root
+height shifts a whole tree by one, and the Left-Right criterion reads differences; a
+`right_ref` sentinel is never read before it is written; one is a read past the end that
+ASan covers; and the blossom's `allowedge` initialisation is a hint the algorithm
+re-derives, unchanged across all eight hundred exhaustively-verified graphs.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

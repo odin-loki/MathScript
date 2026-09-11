@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include "ms/graph/graph.hpp"
 #include <algorithm>
+#include <cstdint>
 #include <map>
 #include <set>
 #include <utility>
@@ -489,6 +490,151 @@ TEST(WeightedMatching, NeverBeatsBruteForceOnSmallGraphs) {
     // {(0,1) 4} + {(2,3) 7} + ... ; the optimum is (0,1)=4,(2,3)=7,(4,5)=9 = 20.
     ASSERT_EQ(m.size(), 3u);
     EXPECT_NEAR(max_weight_matching_value(G), 20.0, 1e-12);
+}
+
+// §8.4: the test above is named for a brute force it does not perform. It is one
+// hand-computed graph, and the sixteen cases around it are each one hand-computed
+// graph too -- chosen, between them, to make a blossom form, nest, be relabelled
+// and be expanded. That is a good set, and what a mutation run says about it is
+// that it is a set of POINTS: `while (j != 0)` in the blossom relabel loop became
+// `while (j == 0)`, which stops the loop from running at all, and every one of
+// those cases still passed. So did initialising every edge as allowed at the top
+// of each stage instead of none.
+//
+// A hand-picked case exercises the path its author thought of. This is the brute
+// force the name promises: every graph is compared against the true optimum found
+// by enumerating every matching, over hundreds of random graphs at the sizes where
+// enumeration is still cheap, so the blossom machinery is driven by the search
+// rather than by a case list.
+
+namespace {
+
+// The heaviest matching in `adj`, by exhaustive search over subsets of edges.
+// `adj[u][v]` is the weight of {u, v}, or -infinity where there is no edge.
+double brute_force_best(const std::vector<std::vector<double>>& adj, int n,
+                        std::vector<bool>& used, int from) {
+    while (from < n && used[static_cast<std::size_t>(from)]) ++from;
+    if (from >= n) return 0.0;
+    used[static_cast<std::size_t>(from)] = true;
+    // Leaving `from` unmatched is always allowed: this is a maximum-WEIGHT
+    // matching, not a maximum-cardinality one.
+    double best = brute_force_best(adj, n, used, from + 1);
+    for (int v = from + 1; v < n; ++v) {
+        if (used[static_cast<std::size_t>(v)]) continue;
+        const double w = adj[static_cast<std::size_t>(from)][static_cast<std::size_t>(v)];
+        if (!(w > -1e300)) continue;
+        used[static_cast<std::size_t>(v)] = true;
+        best = std::max(best, w + brute_force_best(adj, n, used, from + 1));
+        used[static_cast<std::size_t>(v)] = false;
+    }
+    used[static_cast<std::size_t>(from)] = false;
+    return best;
+}
+
+// SplitMix64, so the corpus is the same on every platform. std::mt19937's
+// distribution objects are not portable and the whole point is reproducibility.
+struct Rng {
+    std::uint64_t s;
+    std::uint64_t next() {
+        s += 0x9E3779B97F4A7C15ull;
+        std::uint64_t z = s;
+        z = (z ^ (z >> 30)) * 0xBF58476D1CE4E5B9ull;
+        z = (z ^ (z >> 27)) * 0x94D049BB133111EBull;
+        return z ^ (z >> 31);
+    }
+    int below(int m) { return static_cast<int>(next() % static_cast<std::uint64_t>(m)); }
+};
+
+} // namespace
+
+TEST(WeightedMatching, AgreesWithExhaustiveSearchOnRandomGraphs) {
+    Rng rng{20260911ull};
+    int checked = 0;
+    int nontrivial = 0;
+    for (int n = 2; n <= 9; ++n) {
+        for (int trial = 0; trial < 60; ++trial) {
+            // Densities from sparse to complete: an odd cycle is where a blossom
+            // comes from, and a dense graph is where it nests.
+            const int density = 20 + rng.below(80);
+            std::vector<std::vector<double>> adj(
+                static_cast<std::size_t>(n),
+                std::vector<double>(static_cast<std::size_t>(n), -1e308));
+            Graph G(n, false);
+            int edges = 0;
+            for (int u = 0; u < n; ++u) {
+                for (int v = u + 1; v < n; ++v) {
+                    if (rng.below(100) >= density) continue;
+                    // Small integers, and ties on purpose: equal weights are
+                    // where a tie-break decides which blossom forms.
+                    const double w = static_cast<double>(1 + rng.below(6));
+                    adj[static_cast<std::size_t>(u)][static_cast<std::size_t>(v)] = w;
+                    adj[static_cast<std::size_t>(v)][static_cast<std::size_t>(u)] = w;
+                    G.add_edge(u, v, w);
+                    ++edges;
+                }
+            }
+            if (edges == 0) continue;
+
+            std::vector<bool> used(static_cast<std::size_t>(n), false);
+            const double want = brute_force_best(adj, n, used, 0);
+            const PairVec m = max_weight_matching(G);
+            const double got = max_weight_matching_value(G);
+
+            ASSERT_TRUE(is_valid_matching(G, m))
+                << "n=" << n << " trial=" << trial << ": not a matching";
+            double from_pairs = 0.0;
+            for (const auto& [u, v] : m) {
+                from_pairs += adj[static_cast<std::size_t>(u)][static_cast<std::size_t>(v)];
+            }
+            EXPECT_NEAR(from_pairs, got, 1e-9)
+                << "n=" << n << " trial=" << trial << ": value disagrees with edges";
+            EXPECT_NEAR(got, want, 1e-9)
+                << "n=" << n << " trial=" << trial << " density=" << density
+                << ": matching weight " << got << ", optimum " << want;
+            ++checked;
+            if (m.size() >= 2u) ++nontrivial;
+        }
+    }
+    // The corpus has to be worth its runtime: most graphs must actually have a
+    // matching of more than one edge, or this is a test of the empty case.
+    EXPECT_GT(checked, 400) << "the generator produced too few usable graphs";
+    EXPECT_GT(nontrivial, checked / 2) << "most graphs had a trivial optimum";
+}
+
+TEST(WeightedMatching, AgreesWithExhaustiveSearchOnOddCyclesAndCliques) {
+    // The two shapes the blossom algorithm exists for, weighted randomly: an odd
+    // cycle is the smallest graph whose optimum a greedy alternating search gets
+    // wrong, and a clique nests them.
+    Rng rng{777ull};
+    for (int n : {3, 5, 7, 9}) {
+        for (int trial = 0; trial < 40; ++trial) {
+            for (int shape = 0; shape < 2; ++shape) {
+                std::vector<std::vector<double>> adj(
+                    static_cast<std::size_t>(n),
+                    std::vector<double>(static_cast<std::size_t>(n), -1e308));
+                Graph G(n, false);
+                auto link = [&](int u, int v) {
+                    const double w = static_cast<double>(1 + rng.below(9));
+                    adj[static_cast<std::size_t>(u)][static_cast<std::size_t>(v)] = w;
+                    adj[static_cast<std::size_t>(v)][static_cast<std::size_t>(u)] = w;
+                    G.add_edge(u, v, w);
+                };
+                if (shape == 0) {
+                    for (int i = 0; i < n; ++i) link(i, (i + 1) % n);
+                } else {
+                    for (int i = 0; i < n; ++i)
+                        for (int j = i + 1; j < n; ++j) link(i, j);
+                }
+                std::vector<bool> used(static_cast<std::size_t>(n), false);
+                const double want = brute_force_best(adj, n, used, 0);
+                const PairVec m = max_weight_matching(G);
+                ASSERT_TRUE(is_valid_matching(G, m)) << "n=" << n << " shape=" << shape;
+                EXPECT_NEAR(max_weight_matching_value(G), want, 1e-9)
+                    << (shape == 0 ? "odd cycle" : "clique") << " n=" << n
+                    << " trial=" << trial;
+            }
+        }
+    }
 }
 
 // ---- Exact planarity (Left-Right criterion) ----
