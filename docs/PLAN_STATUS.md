@@ -577,6 +577,43 @@ The number to take from this is not 62.5%. It is that the newest code in the tre
 tests were written alongside it, had its one real gap exactly where a test asserted the
 *builder* and the reader would reasonably believe the behaviour was covered.
 
+Fifth file: `src/sym2/latex_parse.cpp`, 18 mutants at seed 13 against
+`test_sym2_latex_parse`, `test_sym2_latex_roundtrip` and `test_sym2_notation_roundtrip`:
+**12 of 17 viable killed, 70.6%**. Five survivors, and unlike `expr.cpp` above, three of
+them are real gaps rather than one:
+
+  - **`:202`, the multi-character escapes.** `i += sizeof("\\textasciitilde{}") - 1`
+    widened to `- 2` leaves the closing brace unconsumed, so `\operatorname{a\textasciitilde{}b}`
+    reads as the name `a~}b` -- and all eight sym2 suites still passed, because §1.2's
+    three named escapes had **no test anywhere in the tree**. All three are asserted now,
+    not just the one a mutant happened to land on.
+  - **`:974`, the adjacency clause of the scientific numeral.** §2.4 spells the base as
+    the single terminal `"10"`, so `1 0` -- two tokens with a space between them -- is
+    not it. Rewriting one `||` of the five-way chain to `&&` regroups it so a
+    NON-adjacent `1 0^{3}` satisfies it. Measured on the mutant: `2 \times 1 0^{3}` reads
+    as 2000.
+  - **`:1984`, the derivative denominator's opening brace.** §2.6 requires the second
+    `{`; the mutant returns before reading the variable, calling `\frac{d}x` a derivative
+    of the empty name. This one took three attempts to kill, and the failures are the
+    lesson: asserting that a MALFORMED string is rejected separates nothing, because the
+    mutant rejects it too. What separates them is a **positive** case --  `\frac{d}x` is
+    legal (§2.9 lets one token stand for a group) and means the quotient `d/x`.
+
+The other two are not gaps, and each was settled by reading every path rather than by
+eye:
+
+  - `:1547`, `std::size_t bad_at = 0`. **Equivalent.** `unescape_name` has exactly two
+    `return false` statements and both are immediately preceded by `bad_at = i`, so the
+    initialiser is never the value anyone reads.
+  - `:1931`, `at_leibniz_fraction`'s own `if (!at_fraction()) return false`.
+    **Unreachable.** Its single caller sits inside `if (at_fraction())`, and the only
+    thing between them is a `while (try_derivative_operator(var))` loop that restores
+    `pos_` on failure -- and the branch is only reached when that loop matched nothing.
+
+Every one of the three new tests was checked against its mutant: apply, rebuild, and
+confirm the test fails. A test added for a survivor that does not actually kill it is
+the same silence with more lines in it.
+
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
 

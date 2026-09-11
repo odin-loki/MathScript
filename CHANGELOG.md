@@ -590,6 +590,32 @@ false` gives `x^{\frac{1}{2}}` and never `x^{1/2}`.
 worth writing, and `format_error` dropped the line and column -- the reason that type
 exists rather than `SymbolicError`. Both fixed.
 
+### §8.4 — a fifth file, and three real gaps in one parser
+
+`src/sym2/latex_parse.cpp`, 18 mutants at seed 13: **12 of 17 viable killed, 70.6%**.
+
+- **§1.2's three named escapes had no test anywhere in the tree.** Widening
+  `i += sizeof("\\textasciitilde{}") - 1` to `- 2` leaves the closing brace unconsumed,
+  so `\operatorname{a\textasciitilde{}b}` reads as `a~}b`, and every sym2 suite passed.
+  All three rows of the table are asserted now, not only the one the mutant landed on.
+- **The scientific numeral's adjacency clause was unasserted.** §2.4 spells the base as
+  the single terminal `"10"`; rewriting one `||` of the five-way chain to `&&` regroups
+  it so a spaced `1 0^{3}` satisfies it, and `2 \times 1 0^{3}` then reads as 2000.
+- **A derivative denominator could skip its opening brace.** §2.6 requires the second
+  `{`; the mutant returns before reading the variable and calls `\frac{d}x` a derivative
+  of the empty name. Killing it took three attempts, and the two failures are the useful
+  part: asserting that a MALFORMED string is rejected separates nothing, because the
+  mutant rejects it too. The discriminator is a positive case -- `\frac{d}x` is legal
+  under §2.9 and means the quotient `d/x`.
+
+The remaining two survivors are not gaps and were settled by reading every path:
+`bad_at`'s initialiser is dead because both `return false` paths in `unescape_name` set
+it first, and `at_leibniz_fraction`'s own `at_fraction()` guard is unreachable because
+its single caller is already inside one and the loop between them restores `pos_`.
+
+Each new test was checked against its mutant -- apply, rebuild, confirm it fails. A test
+added for a survivor that does not kill it is the same silence with more lines in it.
+
 ### §8.4 — mutation testing
 
 `scripts/mutation_test.py` changes one character-range of a source file, rebuilds the

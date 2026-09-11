@@ -1102,4 +1102,66 @@ TEST(Sym2LatexParse, AThousandNestedFractionsIsADiagnosticRatherThanACrash) {
     EXPECT_FALSE(error->msg.empty());
 }
 
+// --- §8.4 --------------------------------------------------------------------------
+//
+// Three lines that ran on every parse and that nothing was asserting. Each is asserted
+// against §11.2's own specification rather than against what the parser currently does,
+// because a test written from the implementation's output agrees with the bug.
+
+TEST(Sym2LatexParse, TheNamedEscapesInAFunctionNameAreUnescapedWhole) {
+    // §1.2's table has three multi-character escapes, and nothing in the tree named any
+    // of them. §8.4 widened `i += sizeof("\\textasciitilde{}") - 1` to `- 2`, which
+    // leaves the closing brace unconsumed so the name reads `a~}b`, and every one of the
+    // eight sym2 suites still passed. The other two rows are the same code shape four
+    // lines further down, so they are asserted here too rather than waiting for a
+    // mutant to land on them.
+    const ExprRef x = symbol("x");
+    expect_parses_as("\\operatorname{a\\textasciitilde{}b}(x)", function("a~b", {x}));
+    expect_parses_as("\\operatorname{a\\textasciicircum{}b}(x)", function("a^b", {x}));
+    expect_parses_as("\\operatorname{a\\textbackslash{}b}(x)", function("a\\b", {x}));
+}
+
+TEST(Sym2LatexParse, TheScientificNumeralNeedsTheDigitsOfTenAdjacent) {
+    // §2.4 spells the base as the single terminal "10", so `1 0` -- two tokens with a
+    // space between them -- is not it. The clause enforcing that was unasserted: §8.4
+    // rewrote one `||` of
+    //
+    //     !is_char(peek(),'1') || !is_char(peek(1),'0') ||
+    //     !adjacent(peek(), peek(1)) || !is_char(peek(2),'^') || ...
+    //
+    // to `&&`, which regroups the chain so a NON-adjacent `1 0^{3}` satisfies it, and
+    // nothing failed. The claim asserted here is exactly the one the clause decides:
+    // whatever a spaced `1 0^{3}` means, it is not the numeral 2000.
+    expect_parses_as("2 \\times 10^{3}", real(2000.0));
+    const Result<ExprRef> spaced = parse_latex("2 \\times 1 0^{3}");
+    if (spaced.has_value()) {
+        EXPECT_FALSE(structurally_equal(*spaced, real(2000.0)))
+            << "a spaced `1 0` was read as the scientific base, as " << to_string(*spaced);
+    }
+}
+
+TEST(Sym2LatexParse, ADerivativeDenominatorMustOpenWithABrace) {
+    // §2.6: `DerivativeOp = FracCS "{" DiffD "}" "{" DiffD Variable "}"`. The second `{`
+    // is required, and the line requiring it was unasserted -- turning its `return false`
+    // into `return true` lets the matcher walk past a denominator that never opened, and
+    // read `\frac{d}5dx}` as d/dx. As with the numeral above, the assertion is the one
+    // the line decides: whatever that string means, it is not a derivative.
+    const ExprRef d_f = derivative(symbol("f"), {symbol("x")});
+    expect_parses_as("\\frac{d}{dx} f", d_f);
+    // Asserting only "not d_f" is too weak: the mutant returns before it reads the
+    // variable, so it yields a derivative with an EMPTY variable, which is not d_f
+    // either. What separates them is that one of these strings is outside the subset
+    // and the other is a derivative that never opened its denominator.
+    // The discriminating case is a POSITIVE one. `\frac{d}x` is legal -- §2.9 lets a
+    // single token stand for a group -- and it is the quotient d/x, not a derivative,
+    // because the denominator never opened. The mutant returns from the brace check
+    // before it reads the variable, so it calls this a derivative of the empty name and
+    // consumes only `\frac{d}`. Asserting the rejection of a malformed string does not
+    // separate them: both reject it.
+    expect_parses_as("\\frac{d}x", div(symbol("d"), symbol("x")));
+    const Result<ExprRef> unopened = parse_latex("\\frac{d}5dx} f");
+    EXPECT_FALSE(unopened.has_value())
+        << "a denominator with no brace was accepted, as " << to_string(*unopened);
+}
+
 } // namespace
