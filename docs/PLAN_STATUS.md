@@ -249,6 +249,27 @@ its argument, so the guard computes `|F_n|` exactly with a totient sieve rather 
 estimating it — an estimate would have to be conservative, and a conservative estimate
 refuses an order whose sequence actually fits.
 
+**And one was in `src/compress`, found by AddressSanitizer in CI rather than by any of
+this.** `lz77_decode` reads a back-reference as a distance BACK from the end of what it
+has decoded so far:
+
+    size_t start = out.size() - t.offset;
+    for (uint16_t i = 0; i < t.length; ++i) out.push_back(out[start + i]);
+
+`t.offset` comes straight from the caller's data and the subtraction is unsigned, so an
+offset larger than the output wrapped to an index near 2^64 and read roughly four billion
+bytes past the buffer. It is reached from `lz77_decode_vec(M3)` -- a 3x3 matrix of small
+numbers, which is to say from the first malformed token stream anyone hands the REPL --
+and `test_repl_malformed_sweep` has been handing it one all along. It has failed on both
+ASan runs that finished (`7bc6e38` and `75c870f`); the runs before those were cancelled
+by the next push, so how far back it goes is not established here.
+
+A stream that back-references a byte it never emitted is not one this can decode, and no
+prefix of it is meaningful either, so the answer is nothing rather than a guess.
+`eval_lz77_decode_vec` names the offending token before it gets that far, and also stops
+truncating: `static_cast<uint16_t>(70000)` is 4464, so an offset past the type's range
+used to become a DIFFERENT, valid offset and decode silently to the wrong bytes.
+
 **Two of them were in `src/image` rather than at the REPL boundary, and a guard at the
 boundary does not reach them.** `image::impad` computes `img.rows + 2*pad` in `int`. At
 `pad >= (INT_MAX - 2) / 2` that overflows to a negative, `Image`'s constructor clamps a
@@ -261,9 +282,49 @@ elements -- and 46341 x 46341 single-channel is an image this type can legitimat
 hold. Both are settled inside the library now: a caller can be asked to keep a request
 affordable, and cannot be asked to keep a function inside its own allocation.
 
-**The 178 are not all fixed.** The list above is what was measured to end the process;
-the rest of the idiom's uses are a survey in progress, and the undefined cast is still
-there in every one that has not been rewritten.
+**The cast is gone from all 256 of them.** The list above is what was measured to end
+the process; the same conversion was in front of every other integer argument the REPL
+takes, and every one is now decided on the double. The second family needs a different
+bound, because it is not an extent:
+
+    legendre_p(1750000000, 0.5)
+
+*returns.* Nothing is allocated per unit of an order; what it does is drive a recurrence,
+one step per unit, in a REPL with no way to interrupt one -- so it takes longer than the
+twenty seconds a probe will wait for it. `checked_int_argument` bounds these at 1e7,
+which is the number `repl_engine_internal.cpp` has used for a matrix index and a matrix
+count since the accessors were added. It is a WORK bound and not an accuracy one: these
+recurrences still carry several correct digits well past it; what they do not do is
+finish. No order anyone writes down is within four orders of magnitude of it.
+
+The same helper refuses truncation, which is the half of this that has nothing to do
+with undefined behaviour. `static_cast<int>(2.5)` is perfectly well defined, and
+`bessel_j(1.5, 1)` answered as though 1 had been written, with nothing to say so.
+
+Removing the cast made 109 conditions unreachable -- `if (n < 0 || n_d != n)` cannot
+reach its second half once the double has been checked -- and those are removed with it,
+because a condition that reads as a guard and cannot fire is the thing this whole entry
+is about. 42 tests that asserted a combined message ("expected integer l and m") now
+assert the per-argument one, which names which argument.
+
+**What the bound does not cover, and why the rest needs judgement rather than a sweep.**
+
+A linear bound is the wrong shape wherever the work is quadratic in the argument.
+`finance_binomial_call(S,K,T,r,sigma,38000)` builds a binomial tree of 7e8 nodes and is
+well inside 1e7; `tensorops_decompose_nmf` and `_cp` are slower still, at a rank of 2200.
+
+The `uint64_t` conversions are a separate family of about seventy, and one blanket cap
+would be wrong for them: `numthy_is_prime(1e18)` is a legitimate question with a fast
+answer, and `numthy_prime_nth(1e18)` is the same magnitude and not. Most of those sites
+guard the double against a negative before converting, which is the half that matters for
+undefined behaviour at the bottom of the range; none guard the top, and
+`static_cast<uint64_t>(1e30)` is undefined too.
+
+`test_repl_malformed_sweep` names two of them out loud. Its oversized-argument sweep
+skips `numthy_prime_nth` and `numthy_sum_divisors` through an `is_proportional_cost`
+predicate -- an exclusion list that exists because those two do not finish, which is to
+say it is a record of an unfixed defect rather than of a test that does not apply. Both
+still run indefinitely on `3000000000`.
 
 ## §7 — Stubs and half-implementations
 

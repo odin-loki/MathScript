@@ -17580,7 +17580,7 @@ TEST(ReplCommandsTest, zeta_noassign) {
 TEST(ReplCommandsTest, sph_harm_noassign) {
     Interpreter interp;
     expect_contains(interp, "sph_harm(1, 1, 0.5, 1)", "Y =");
-    expect_error_contains(interp, "sph_harm(1.5, 1, 0.5, 1)", "integer l and m");
+    expect_error_contains(interp, "sph_harm(1.5, 1, 0.5, 1)", "expected an integer l");
 }
 
 TEST(ReplCommandsTest, hypergeo_2f1_noassign) {

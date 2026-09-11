@@ -1024,6 +1024,28 @@ TEST(CompressLZ77, EmptyEncodeDecode) {
     EXPECT_TRUE(lz77_decode(tokens).empty());
 }
 
+TEST(CompressLZ77, ABackReferenceBeforeTheStartOfTheOutputIsRefused) {
+    // An `offset` is a distance BACK from the end of what has been decoded so far, and
+    // it comes straight from the caller's data. `out.size() - t.offset` is unsigned:
+    // one byte of output and an offset of five wrapped to an index near 2^64 and read
+    // roughly four billion bytes past the buffer. AddressSanitizer reported it as a
+    // heap-buffer-overflow inside `push_back`, from `lz77_decode_vec(M3)` -- which is
+    // to say from the first malformed token stream anyone handed the REPL.
+    //
+    // There is no prefix of such a stream that is meaningful either, so the answer is
+    // nothing rather than a guess.
+    EXPECT_TRUE(lz77_decode({{5, 3, 'A'}}).empty());
+    EXPECT_TRUE(lz77_decode({{1, 1, 'A'}}).empty());
+    // One byte in, an offset of exactly one is the last byte emitted and is legal;
+    // two is not.
+    EXPECT_EQ(lz77_decode({{0, 0, 'a'}, {1, 1, 'b'}}), Bytes({'a', 'a', 'b'}));
+    EXPECT_TRUE(lz77_decode({{0, 0, 'a'}, {2, 1, 'b'}}).empty());
+
+    // The run-length overlap -- an offset SMALLER than the length, so the copy reads
+    // bytes the same loop has just written -- is legitimate LZ77 and still works.
+    EXPECT_EQ(lz77_decode({{0, 0, 'a'}, {1, 3, 'b'}}), Bytes({'a', 'a', 'a', 'a', 'b'}));
+}
+
 TEST(CompressLZ77, EmptyTokenList) {
     std::vector<LZ77Token> tokens;
     EXPECT_TRUE(lz77_decode(tokens).empty());

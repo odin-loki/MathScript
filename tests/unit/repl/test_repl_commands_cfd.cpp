@@ -3321,7 +3321,7 @@ TEST(ReplCommandsTest, cfd_advection1d_senary_noassign) {
     Interpreter interp;
     expect_contains(interp, "cfd_advection1d(8, 1, 0.5, 0.01, 0, 0)", "u =");
     expect_error_contains(interp, "cfd_advection1d(1.5, 1, 0.5, 0.01, 0, 0)",
-                          "expected non-negative integer nx");
+                          "expected an integer nx");
 }
 
 TEST(ReplCommandsTest, cfd_advection1d_senary_parse_fail_noassign) {

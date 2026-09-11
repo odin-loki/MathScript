@@ -5317,15 +5317,35 @@ Result<Matrix<double>> eval_lz77_decode_vec(const Matrix<double>& tokens_m) {
     }
     std::vector<compress::LZ77Token> tokens;
     tokens.reserve(tokens_m.rows());
+    std::size_t decoded_so_far = 0;
     for (size_t i = 0; i < tokens_m.rows(); ++i) {
         const double off = tokens_m(i, 0);
         const double len = tokens_m(i, 1);
         const double nc = tokens_m(i, 2);
+        // The range check is new and is not a nicety: `static_cast<uint16_t>(70000)` is
+        // 4464, so an offset past the type's range used to become a DIFFERENT, valid
+        // offset and decode silently to the wrong bytes.
         if (off < 0.0 || len < 0.0 || nc < 0.0 || nc > 255.0 || std::floor(off) != off ||
-            std::floor(len) != len || std::floor(nc) != nc) {
+            std::floor(len) != len || std::floor(nc) != nc || off > 65535.0 ||
+            len > 65535.0) {
             return std::unexpected(
-                DomainError{"lz77_decode_vec", "token values must be non-negative integers; next_char in [0,255]"});
+                DomainError{"lz77_decode_vec", "token values must be non-negative integers; offset and length in [0,65535]; next_char in [0,255]"});
         }
+        // An offset is a distance BACK from the end of what has been decoded so far, so
+        // one larger than the bytes emitted names a byte before the start of the output.
+        // `lz77_decode` computed `out.size() - offset` in unsigned arithmetic and read
+        // roughly four billion bytes past its buffer; it refuses such a stream now, and
+        // this says which token was wrong rather than returning an empty result.
+        if (off > 0.0 && len > 0.0 && static_cast<std::size_t>(off) > decoded_so_far) {
+            return std::unexpected(DomainError{
+                "lz77_decode_vec", "token " + format_scalar(i) + " looks back " +
+                                       format_scalar(off) + " bytes into an output of " +
+                                       format_scalar(decoded_so_far)});
+        }
+        if (off > 0.0 && len > 0.0) {
+            decoded_so_far += static_cast<std::size_t>(len);
+        }
+        ++decoded_so_far;  // the literal every token ends with
         tokens.push_back({static_cast<uint16_t>(off), static_cast<uint16_t>(len),
                           static_cast<uint8_t>(nc)});
     }

@@ -739,7 +739,7 @@ TEST(ReplCommandsTest, info_sample_entropy_errors) {
     expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], 0, 0.5)",
                           "expected positive integer m");
     expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], 1.5, 0.5)",
-                          "expected positive integer m");
+                          "expected an integer m");
     expect_error_contains(interp, "info_sample_entropy([1; 2; 3; 4; 5], notnum, 0.5)",
                           "expected info_sample_entropy(x, m, r)");
     expect_error_contains(interp, "se = info_sample_entropy()",

@@ -163,3 +163,40 @@ TEST(ReplSizeArguments, AnExtentIsRangeCheckedOnTheDoubleRatherThanAfterTheCast)
     expect_error_contains(interp, "fem_poisson1d(-1)", "expected non-negative integer n");
     expect_error_contains(interp, "C = imresize(A, 1e18, 2)", "rows");
 }
+
+TEST(ReplSizeArguments, AnOrderIsNotAnExtentAndIsBoundedByWorkRatherThanMemory) {
+    // A second family, and `ExtentBudget` is the wrong shape for it: nothing is
+    // allocated per unit of a special-function order and there is no product to charge
+    // it against. What it does is drive a recurrence, one step per unit, inside a REPL
+    // that has no way to interrupt one -- `legendre_p(1750000000, 0.5)` RETURNS, and
+    // takes longer than the twenty seconds a probe will wait for it.
+    //
+    // The bound is a work bound and not an accuracy one. These recurrences still carry
+    // several correct digits well past it; what they do not do is finish.
+    Interpreter interp;
+    for (const char* call : {"legendre_p(1750000000, 0.5)", "legendre_q(1700000000, 0.5)",
+                             "laguerre_l(1650000000, 0.5)", "bessel_zero_ynu(2000000000, 1)",
+                             "bessel_hy(1650000000, 1)"}) {
+        expect_error_contains(interp, call, "is too large");
+        expect_error_contains(interp, call, "an integer argument is bounded at 10000000");
+    }
+    // And the orders anyone actually writes still evaluate.
+    expect_ok(interp, "legendre_p(5, 0.5)");
+    expect_ok(interp, "bessel_j(2, 1)");
+    expect_ok(interp, "laguerre_l(3, 0.5)");
+}
+
+TEST(ReplSizeArguments, AnOrderIsRefusedRatherThanTruncated) {
+    // `static_cast<int>(2.5)` is well defined and was the old behaviour: the answer came
+    // back as though 2 had been written, with nothing to say so. That is the same class
+    // as every "a value silently changed on the way through" finding of the audits, and
+    // it is the half of this that is not about undefined behaviour at all.
+    Interpreter interp;
+    expect_error_contains(interp, "legendre_p(2.5, 0.5)", "expected an integer n");
+    expect_error_contains(interp, "bessel_j(1.5, 1)", "expected an integer nu");
+    expect_error_contains(interp, "sph_harm(1.5, 1, 0.5, 1)", "expected an integer l");
+    // Infinity and NaN are not integers either, and reach the same message rather than
+    // an undefined conversion.
+    expect_error_contains(interp, "legendre_p(1e9999, 0.5)", "expected an integer n");
+}
+

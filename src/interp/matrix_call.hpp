@@ -41,6 +41,16 @@ inline bool repl_dims_allowed(double m_d, double n_d, std::size_t& rows, std::si
     return repl_elems_allowed(rows, cols);
 }
 
+/// How large an integer argument may be before the REPL presumes a mistake rather than
+/// a request.
+///
+/// `repl_engine_internal.cpp` has used this number for a matrix index and a matrix count
+/// since the accessors were added, with the reasoning that any index this large is out
+/// of range for every matrix the REPL can hold and that stopping here keeps the
+/// conversion below well defined. A special-function ORDER is the third kind of argument
+/// it applies to, for the second half of that reason and not the first.
+constexpr double kMaxReplIntegerArgument = 1e7;
+
 /// An exact non-negative integral double, written the way a count is written.
 /// `format_scalar` would render 100000000 as "100000000.000000", which is not how the
 /// user typed it and not how a count reads.
@@ -52,6 +62,47 @@ inline std::string describe_count(double value) {
     std::snprintf(buffer, sizeof(buffer), "%.17g", value);
     return buffer;
 }
+
+/// An integer argument that is not an extent -- a special-function order, a
+/// combinatorial `n`, a branch index. Nothing is allocated per unit of it and there is
+/// no product to charge it against, so `ExtentBudget` is the wrong shape for it.
+///
+/// The conversion is the part that was undefined. Every one of these read
+///
+///     const int n = static_cast<int>(args[0]);
+///     if (n < 0 || ...) { /* reject */ }
+///
+/// and `static_cast<int>` of a double outside `int`'s range is undefined behaviour
+/// rather than a wrap: by the time the guard reads `n` there is no value there to test.
+/// On x86-64 the conversion happens to yield INT_MIN, so `n < 0` rejected the input by
+/// accident, in a way that reads exactly like a guard. The range is decided on the
+/// double here, before any conversion.
+///
+/// The bound is a WORK bound rather than an accuracy one. `legendre_p(n, x)` is a
+/// recurrence of one step per unit inside a REPL that has no way to interrupt one:
+/// `legendre_p(1750000000, 0.5)` returns, and takes longer than the twenty seconds a
+/// probe will wait for it. These recurrences still carry several correct digits well
+/// past 1e7; what they do not do is finish. At 1e7 a three-term recurrence is about a
+/// tenth of a second, and no order anyone writes down is within four orders of
+/// magnitude of it.
+///
+/// Truncation is refused rather than performed. `combo_nchoosek(5.5, 2)` used to answer
+/// as though 5 had been written.
+inline Result<int> checked_int_argument(const std::string& fn, const char* what,
+                                        double value) {
+    if (!std::isfinite(value) || value != std::floor(value)) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected an integer ") + what});
+    }
+    if (std::abs(value) > kMaxReplIntegerArgument) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(std::abs(value)) +
+                    " is too large; an integer argument is bounded at " +
+                    describe_count(kMaxReplIntegerArgument)});
+    }
+    return static_cast<int>(value);
+}
+
 
 /// Reads one size-like REPL argument -- a count, an order, a grid extent -- and charges
 /// it against a budget of elements.

@@ -5235,7 +5235,7 @@ TEST(ReplCommandsTest, graph_astar_execute_no_assign) {
     expect_ok(interp, "h = [3; 2; 1; 0]");
     expect_contains(interp, "graph_astar(A, 0, 3, h)", "path =");
     expect_error_contains(interp, "graph_astar(A, 0.5, 3, h)",
-                          "integer source and target");
+                          "expected an integer source");
 }
 
 TEST(ReplCommandsTest, graph_max_flow_execute_no_assign) {

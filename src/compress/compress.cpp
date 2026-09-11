@@ -523,15 +523,38 @@ std::vector<LZ77Token> lz77_encode(const Bytes& data, int window, int lookahead)
     }
     return tokens;
 }
+/// A token's `offset` is a distance BACK from the end of what has been decoded so far,
+/// so `offset > out.size()` names a byte before the start of the output. The offset
+/// comes straight from the caller's data, and `out.size() - t.offset` is unsigned
+/// arithmetic: the subtraction wrapped to an enormous index and `out[start + i]` read
+/// far outside the buffer. AddressSanitizer caught it on `lz77_decode_vec(M3)` -- a 3x3
+/// matrix of small numbers, which is to say on the first malformed stream anyone tried.
+///
+/// A stream that back-references a byte it never emitted is not one this can decode,
+/// and no prefix of it is meaningful either, so the answer is nothing rather than a
+/// guess. `eval_lz77_decode_vec` rejects such a stream by name before it gets here;
+/// this is the library's own floor, because a caller can be asked to pass a valid
+/// stream and cannot be asked to keep this function inside its buffer.
 Bytes lz77_decode(const std::vector<LZ77Token>& tokens) {
     Bytes out;
     size_t est = 0;
-    for (const auto& t : tokens) est += t.length + 1;
+    for (const auto& t : tokens) est += static_cast<size_t>(t.length) + 1;
     out.reserve(est);
     for (auto&t:tokens) {
         if (t.offset>0&&t.length>0) {
+            if (t.offset > out.size()) {
+                return {};
+            }
             size_t start=out.size()-t.offset;
-            for (uint16_t i=0;i<t.length;++i) out.push_back(out[start+i]);
+            for (uint16_t i=0;i<t.length;++i) {
+                // `out[start + i]` is a reference INTO the buffer `push_back` may
+                // reallocate. The reserve above makes a reallocation impossible here;
+                // copying the byte out first makes the loop correct without depending
+                // on that. An offset smaller than the length is the legitimate
+                // run-length overlap and reads bytes this loop has just written.
+                const std::uint8_t byte = out[start + i];
+                out.push_back(byte);
+            }
         }
         // lz77_encode guarantees next_char is always a real literal, so it is
         // always emitted. The old `if (t.next_char || t.length == 0)` guard
