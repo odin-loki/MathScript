@@ -686,3 +686,135 @@ TEST(PcgRealTest, zero_rhs_returns_zero_vector) {
     EXPECT_EQ(x->rows(), 3u);
     EXPECT_NEAR((*x)(0, 0), 0.0, 1e-15);
 }
+
+// ---------------------------------------------------------------------------
+// §8.4: four lines that ran and that nothing asserted.
+//
+// `src/linalg/iterative.cpp` scored 54.5% over viable mutants, the lowest of the
+// files measured, and the survivors below were all real gaps rather than
+// equivalent mutants. Each assertion here was checked against the mutant that
+// found it: apply, rebuild, confirm the test fails.
+// ---------------------------------------------------------------------------
+
+TEST(GmresRealTest, reaches_the_exact_solution_within_n_steps) {
+    // GMRES minimises the residual over the Krylov subspace, so with a restart
+    // wide enough to hold the whole space it terminates at the exact solution
+    // in at most n steps. That finite-termination property is what the inner
+    // least-squares solve is FOR, and nothing was checking it: flipping the
+    // sign of the Givens rotation applied to the residual vector --
+    // `g[step + 1] = -sn[step] * g0` -- left every suite green, because the
+    // outer restart loop recomputes the residual and simply iterates longer.
+    //
+    // The system is nonsymmetric and needs the full four steps: a symmetric or
+    // low-rank one would converge before the rotation chain is long enough for
+    // a sign error to show.
+    DMatrix A(4, 4, 0.0);
+    const double entries[4][4] = {{4.0, 1.0, -2.0, 0.5},
+                                  {-1.0, 5.0, 1.5, -1.0},
+                                  {2.0, -1.0, 6.0, 1.0},
+                                  {0.5, 2.0, -1.0, 7.0}};
+    for (size_t i = 0; i < 4; ++i) {
+        for (size_t j = 0; j < 4; ++j) {
+            A(i, j) = entries[i][j];
+        }
+    }
+    const DMatrix b = col({1.0, -2.0, 3.0, 0.5});
+
+    // restart == n and max_iter == n is exactly one cycle of at most n steps.
+    const auto x = gmres(A, b, size_t{4}, size_t{4}, 1e-12);
+    ASSERT_TRUE(x.has_value());
+    EXPECT_LT(residual_norm(A, *x, b), 1e-10);
+}
+
+TEST(GmresRealTest, a_restart_of_zero_is_a_restart_of_one) {
+    // `restart == 0` would step the outer loop by zero, so it is clamped. The
+    // clamp had no test, and any other positive value keeps the loop finite just
+    // as well -- so the mutant that clamped to 2 instead was indistinguishable
+    // from the real thing.
+    //
+    // What separates them is a budget where the restart width still matters.
+    // With six iterations on this system GMRES(1) has not converged and GMRES(2)
+    // has not either, but they are not equally far along: measured, GMRES(1)
+    // stops at 2.43366e-4 and GMRES(2) at 4.46026e-7. So `restart = 0` has to
+    // match the first exactly and the second not at all.
+    DMatrix A(3, 3, 0.0);
+    A(0, 0) = 4.0; A(0, 1) = 1.0; A(0, 2) = 0.0;
+    A(1, 0) = 1.0; A(1, 1) = 3.0; A(1, 2) = 1.0;
+    A(2, 0) = 0.0; A(2, 1) = 1.0; A(2, 2) = 5.0;
+    const DMatrix b = col({1.0, 2.0, 3.0});
+
+    const auto clamped = gmres(A, b, size_t{0}, size_t{6}, 1e-12);
+    const auto one = gmres(A, b, size_t{1}, size_t{6}, 1e-12);
+    const auto two = gmres(A, b, size_t{2}, size_t{6}, 1e-12);
+    ASSERT_FALSE(clamped.has_value());
+    ASSERT_FALSE(one.has_value());
+    ASSERT_FALSE(two.has_value());
+    const auto* clamped_fail = std::get_if<ConvergenceFail>(&clamped.error());
+    const auto* one_fail = std::get_if<ConvergenceFail>(&one.error());
+    const auto* two_fail = std::get_if<ConvergenceFail>(&two.error());
+    ASSERT_NE(clamped_fail, nullptr);
+    ASSERT_NE(one_fail, nullptr);
+    ASSERT_NE(two_fail, nullptr);
+    EXPECT_DOUBLE_EQ(clamped_fail->residual, one_fail->residual);
+    EXPECT_NE(clamped_fail->residual, two_fail->residual);
+}
+
+TEST(PrecondSsorTest, a_zero_diagonal_entry_contributes_nothing) {
+    // The documented contract: "A zero diagonal entry contributes nothing (its
+    // inverse is taken as 0)". Every SSOR test used a matrix with a full
+    // diagonal, so the `: S(0)` arm ran and nothing read its value -- a mutant
+    // that made it S(1), turning the singular row into an identity row,
+    // survived.
+    //
+    // M = (D/w + L) (D/w)^-1 (D/w + U) with w = 1, and row/column 1 has a zero
+    // diagonal. Its dinv is 0, so no k = 1 term enters any entry.
+    DMatrix A(3, 3, 0.0);
+    A(0, 0) = 2.0; A(0, 1) = 1.0; A(0, 2) = 0.0;
+    A(1, 0) = 1.0; A(1, 1) = 0.0; A(1, 2) = 3.0;
+    A(2, 0) = 0.0; A(2, 1) = 3.0; A(2, 2) = 4.0;
+
+    const DMatrix M = precond_ssor(A, 1.0);
+    ASSERT_EQ(M.rows(), size_t{3});
+    ASSERT_EQ(M.cols(), size_t{3});
+    // (2,2) is the entry that can see it, and finding that out was the work. The
+    // k = 1 term is lik * dinv[1] * ukj with lik = A(2,1) = 3 and ukj = A(1,2) =
+    // 3, so dinv[1] enters multiplied by 9. Every OTHER entry hides it: wherever
+    // i or j is 1 the corresponding factor is dw[1] = A(1,1)/omega, which is zero
+    // because the diagonal is -- so the term vanishes whatever dinv[1] holds, and
+    // an assertion there would have passed under the mutant too.
+    //
+    // With dinv[1] = 0: k = 0 contributes A(2,0) * dinv[0] * A(0,2) = 0, k = 1
+    // contributes 3 * 0 * 3 = 0, and k = 2 contributes dw[2] * dinv[2] * dw[2] =
+    // 4 * 0.25 * 4 = 4. Taking the inverse as 1 instead would make it 13.
+    EXPECT_DOUBLE_EQ(M(2, 2), 4.0);
+    // (0,0): only k = 0 contributes, dw[0] * dinv[0] * dw[0] = 2 * 0.5 * 2 = 2.
+    EXPECT_DOUBLE_EQ(M(0, 0), 2.0);
+    // (1,1): k = 0 gives A(1,0) * dinv[0] * A(0,1) = 1 * 0.5 * 1 = 0.5, and the
+    // k = 1 term is zero through dw[1] as described above.
+    EXPECT_DOUBLE_EQ(M(1, 1), 0.5);
+}
+
+TEST(TfqmrRealTest, the_failure_reports_the_half_step_it_reached) {
+    // TFQMR counts HALF-steps -- two per outer iteration -- and reports that
+    // count in its ConvergenceFail. Nothing read it, so the mutant that started
+    // the counter at 1 survived: an off-by-one in a diagnostic is invisible to
+    // every test that only asks whether the solve succeeded.
+    //
+    // A budget of three outer iterations on a system that needs far more
+    // exhausts cleanly without breaking down, so the count is exactly six.
+    DMatrix A(5, 5, 0.0);
+    for (size_t i = 0; i < 5; ++i) {
+        A(i, i) = 1.0 + static_cast<double>(i) * 1000.0;
+        if (i + 1 < 5) {
+            A(i, i + 1) = -0.5;
+            A(i + 1, i) = 0.25;
+        }
+    }
+    const DMatrix b = col({1.0, 1.0, 1.0, 1.0, 1.0});
+
+    const auto x = tfqmr(A, b, size_t{3}, 1e-14);
+    ASSERT_FALSE(x.has_value());
+    const auto* fail = std::get_if<ConvergenceFail>(&x.error());
+    ASSERT_NE(fail, nullptr);
+    EXPECT_EQ(fail->iterations, size_t{6});
+}

@@ -599,7 +599,7 @@ is the sieve, not the width, and it now says so.
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; six files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2% -- every survivor either killed by a new test or classified by measurement |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; seven files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5% -- every survivor either killed by a new test or classified by measurement |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -757,6 +757,35 @@ Its behaviour is pinned now -- `\operatorname{foo}(x)y` takes no thin space and
 `\mathrm{bar}\,\operatorname{foo}(x)` takes one -- and the new assertion was checked
 against a mutant that makes the arm return `true`: it fails, where every test that
 existed before passed.
+
+Seventh file: `src/linalg/iterative.cpp`, 24 mutants at seed 29 against the five suites
+that cover it. **12 of 22 viable killed, 54.5%** -- the lowest of the seven, and on the
+Krylov solvers. Ten survivors, and what makes this file different from the six before it
+is that most of them are gaps rather than equivalences. Four are fixed:
+
+| Survivor | What it was |
+|---|---|
+| `:313` the GMRES Givens rotation | **A sign error nothing could see.** `g[step + 1] = -sn[step] * g0` flipped to `+` breaks the rotation chain the inner least-squares solve depends on, and every suite stayed green -- because the outer restart loop recomputes the residual from scratch and simply iterates longer, so a wrong inner solution costs iterations rather than correctness. What pins it is the property the least-squares solve EXISTS for: GMRES with a restart wide enough to hold the whole Krylov space reaches the exact solution in at most `n` steps. **Tested now**, on a nonsymmetric 4x4 that needs all four. |
+| `:257` the restart clamp | `restart == 0` is clamped to 1, and no test distinguished that from any other positive value. The separating case is a budget where the restart width still matters: at six iterations GMRES(1) stops at 2.43366e-4 and GMRES(2) at 4.46026e-7, so `restart = 0` has to match the first exactly and the second not at all. |
+| `:1020` SSOR's zero-diagonal arm | The header documents it -- "A zero diagonal entry contributes nothing (its inverse is taken as 0)" -- and every SSOR test used a full diagonal. **Finding an assertion that could see it was the work.** Wherever `i` or `j` is the singular row, the corresponding factor is `dw[i] = A(i,i)/omega`, which is zero *because the diagonal is*, so the term vanishes whatever `dinv` holds and the obvious entries pass under the mutant too. Only `M(2,2)` sees it, where the `k = 1` term is `A(2,1) * dinv[1] * A(1,2)` and `dinv[1]` enters multiplied by 9: 4 as written, 13 under the mutant. |
+| `:917` TFQMR's half-step counter | `size_t m = 0` started at 1 and nothing noticed, because `m` is only ever READ in the `ConvergenceFail` a failed solve returns. An off-by-one in a diagnostic is invisible to every test that asks only whether the solve succeeded. Pinned at the exact count -- three outer iterations that exhaust cleanly are six half-steps. |
+
+The other six are classified rather than counted as gaps. `:920` (`|rho| < kTiny` widened
+to `<=`) and `:716` (`alpha > 1e-30` to `>=`) differ only on exact equality with a
+breakdown threshold, which no arithmetic reaches. `:1080` initialises the ILU(0) working
+matrix and every entry of it is overwritten by the copy loop two lines below. `:583`
+widens a work vector from one column to two and the extra column is never addressed.
+`:654` inverts the true-residual confirmation inside `if (norm2(r) <= tol * norm_b)`; the
+discriminating case is a recursive residual that has converged while the true one has
+not, which none of the suite's systems produces -- with the mutant, the tested systems
+simply run to the iteration limit and are returned by the same-answer fallback below.
+`:943`'s stall guard (`tau < kTiny || !isfinite(tau)` to `&&`) needs a tau that goes tiny
+but stays finite, and nothing in the suite drives one there.
+
+Every one of the four new tests was checked against its mutant. The SSOR one is the
+reason that step is not a formality: the first version of it asserted three entries, all
+of which passed under the mutant, and it took reading the summation to find the one
+entry that could tell the difference.
 
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
