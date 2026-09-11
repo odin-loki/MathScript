@@ -25,16 +25,29 @@ Result<Matrix<double>> handle_topo_persistence_landscape(Interpreter& interp, co
         if (!samples_arg) {
             return std::unexpected(samples_arg.error());
         }
-        const int n_layers = static_cast<int>(*layers_arg);
-        const int n_samples = static_cast<int>(*samples_arg);
-        if (n_layers < 1 || *layers_arg != n_layers) {
+        // The result is n_layers by n_samples, so the two have to be charged against one
+        // budget: each is unremarkable at 200000 and together they are 4e10 values,
+        // measured aborting the process. The casts also used to come BEFORE the range
+        // checks, which is undefined rather than wrapped for a double outside int.
+        if (!(*layers_arg >= 1.0) || *layers_arg != std::floor(*layers_arg)) {
             return std::unexpected(
                 DomainError{"topo_persistence_landscape", "expected integer n_layers >= 1"});
         }
-        if (n_samples < 2 || *samples_arg != n_samples) {
+        if (!(*samples_arg >= 2.0) || *samples_arg != std::floor(*samples_arg)) {
             return std::unexpected(
                 DomainError{"topo_persistence_landscape", "expected integer n_samples >= 2"});
         }
+        ExtentBudget budget("topo_persistence_landscape");
+        auto layers_bounded = budget.take("n_layers", *layers_arg);
+        if (!layers_bounded) {
+            return std::unexpected(layers_bounded.error());
+        }
+        auto samples_bounded = budget.take("n_samples", *samples_arg);
+        if (!samples_bounded) {
+            return std::unexpected(samples_bounded.error());
+        }
+        const int n_layers = static_cast<int>(*layers_bounded);
+        const int n_samples = static_cast<int>(*samples_bounded);
         double t_min = 0.0;
         double t_max = 0.0;
         if (assign.args.size() == 5) {

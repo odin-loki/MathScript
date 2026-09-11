@@ -181,6 +181,32 @@ inline Result<unsigned> checked_seed_argument(const std::string& fn, const char*
     return static_cast<unsigned>(value);
 }
 
+/// A parameter whose MAGNITUDE sizes an internal matrix.
+///
+/// `mathieu_a(n, q)` looks like it takes two ordinary numbers, and the second is a size
+/// argument wearing a parameter's clothes: the characteristic matrix is sized
+/// `max(24, index + 16 + ceil(sqrt(|q|)))`, so `mathieu_a(0, 1e18)` asks for a 1e9-entry
+/// tridiagonal and was measured aborting the process. At `q = 1e300` the
+/// `static_cast<int>` of that square root is undefined before it even gets there.
+///
+/// The bound is on the DIMENSION rather than on `q`, which is why it is written this way
+/// round: what has to fit is the matrix, and `q` is only how the command spells it.
+inline Result<double> checked_matrix_sized_parameter(const std::string& fn, const char* what,
+                                                     double value) {
+    if (!std::isfinite(value)) {
+        return std::unexpected(DomainError{fn, std::string("expected a finite ") + what});
+    }
+    const double dimension = std::sqrt(std::abs(value));
+    if (dimension > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(std::abs(value)) +
+                    " sizes an internal matrix at about " + describe_count(std::ceil(dimension)) +
+                    ", and this command is limited to " +
+                    std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
+    return value;
+}
+
 /// How long the REPL is willing to disappear for.
 ///
 /// A command runs to completion. There is no interrupt, no progress bar, and no way to
@@ -389,8 +415,8 @@ public:
         if (order > remaining_) {
             return std::unexpected(DomainError{
                 fn_, std::string(what) + " gives a dense " + std::to_string(order) +
-                         " by " + std::to_string(order) + " stiffness matrix, and this "
-                         "command is limited to " + std::to_string(kMaxReplMatrixElems) +
+                         " by " + std::to_string(order) + " matrix, and this command "
+                         "is limited to " + std::to_string(kMaxReplMatrixElems) +
                          " elements"});
         }
         remaining_ /= (order == 0 ? 1 : order);

@@ -14971,6 +14971,14 @@
         {
           "fn": "topo_persistence_landscape",
           "message": "expected integer n_samples >= 2"
+        },
+        {
+          "fn": "topo_persistence_landscape",
+          "message": "expected non-negative integer n_layers"
+        },
+        {
+          "fn": "topo_persistence_landscape",
+          "message": "expected non-negative integer n_samples"
         }
       ]
     },

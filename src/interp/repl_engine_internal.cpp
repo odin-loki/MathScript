@@ -6986,6 +6986,20 @@ Result<Matrix<double>> eval_signal_resample(const Matrix<double>& x_m, int p, in
         return std::unexpected(
             DomainError{"signal_resample", "expected q >= 1"});
     }
+    // The result is len(x) * p / q samples. `q` only ever divides, so the pair that can
+    // be asked for an output the input does not bound is the length and `p`, and
+    // signal_resample(ones(1000,1), 1000000, 1000000) is 1e9 samples before the division
+    // -- measured aborting the process. The guard is here rather than at the dispatch
+    // because three separate call paths reach this function.
+    ExtentBudget budget("signal_resample");
+    auto length = budget.take("the input length", static_cast<double>(x->size()));
+    if (!length) {
+        return std::unexpected(length.error());
+    }
+    auto p_bounded = budget.take("p", static_cast<double>(p));
+    if (!p_bounded) {
+        return std::unexpected(p_bounded.error());
+    }
     return vector_to_column(resample(*x, p, q));
 }
 
@@ -7002,6 +7016,23 @@ Result<Matrix<double>> eval_signal_integer_factor(const std::string& fn,
     auto n = require_positive_int_arg(factor, fn.c_str(), arg_name);
     if (!n) {
         return std::unexpected(n.error());
+    }
+    // `upsample` and `interpolate` MULTIPLY the length -- the result is len(x) * n
+    // samples -- while `downsample` and `decimate` divide it. Only the first two can be
+    // asked for an output the input does not bound, and
+    // `signal_upsample(ones(1000,1), 10000000)` is 1e10 samples: measured aborting the
+    // process, since under -fno-exceptions the bad_alloc reaches std::terminate.
+    if (fn == "signal_upsample" || fn == "signal_interpolate") {
+        ExtentBudget budget(fn.c_str());
+        auto length = budget.take("the input length",
+                                  static_cast<double>(x_m.rows() * x_m.cols()));
+        if (!length) {
+            return std::unexpected(length.error());
+        }
+        auto bounded = budget.take(arg_name, static_cast<double>(*n));
+        if (!bounded) {
+            return std::unexpected(bounded.error());
+        }
     }
     if (fn == "signal_upsample") {
         return eval_signal_upsample(x_m, *n);
@@ -7408,6 +7439,22 @@ Result<Matrix<double>> eval_topo_pairwise_distances(const Matrix<double>& P_m) {
     if (pts->empty()) {
         return std::unexpected(
             DomainError{"topo_pairwise_distances", "expected non-empty Nx2 point matrix"});
+    }
+    // The result is one distance per ORDERED PAIR, so it is points by points. A
+    // 131072 x 2 matrix is inside the element budget -- it IS the element budget -- and
+    // asks for 1.7e10 distances: measured aborting the process. The guard is here rather
+    // than at the dispatch because the assignment form and the bare form reach this
+    // function by different routes, and only one of them goes through the registry.
+    {
+        ExtentBudget budget("topo_pairwise_distances");
+        auto count = budget.take("the point count", static_cast<double>(pts->size()));
+        if (!count) {
+            return std::unexpected(count.error());
+        }
+        auto order = budget.charge_dense_order("the point set", pts->size());
+        if (!order) {
+            return std::unexpected(order.error());
+        }
     }
     std::vector<std::vector<double>> pts_vec;
     pts_vec.reserve(pts->size());
@@ -14712,12 +14759,24 @@ Result<Matrix<double>> eval_unary_scalar_matrix_call(const std::string& fn, doub
         return density_matrix_to_matrix(quantum::qft_gate(n_qubits));
     }
     if (fn == "quantum_identity_n") {
-        const int dim = static_cast<int>(arg);
-        if (dim < 1 || arg != dim) {
+        // The identity of dimension `dim` is a dim x dim density matrix, so what is
+        // allocated is the square: quantum_identity_n(1000000) is 1e12 entries, measured
+        // aborting the process. The cast also used to come before the check, which is
+        // undefined rather than wrapped for a double outside int.
+        if (!(arg >= 1.0) || arg != std::floor(arg)) {
             return std::unexpected(
                 DomainError{"quantum_identity_n", "expected integer dim >= 1"});
         }
-        return density_matrix_to_matrix(quantum::identity(dim));
+        ExtentBudget budget("quantum_identity_n");
+        auto dim_bounded = budget.take("dim", arg);
+        if (!dim_bounded) {
+            return std::unexpected(dim_bounded.error());
+        }
+        auto order = budget.charge_dense_order("dim", *dim_bounded);
+        if (!order) {
+            return std::unexpected(order.error());
+        }
+        return density_matrix_to_matrix(quantum::identity(static_cast<int>(*dim_bounded)));
     }
     if (fn == "quantum_ghz_state") {
         const int n_qubits = static_cast<int>(arg);
@@ -16345,14 +16404,26 @@ Result<double> parse_optional_positive_number(const std::string& text, const cha
     return value;
 }
 
+// The upper end of the range was not tested, which is both halves of the usual defect:
+// `static_cast<int>` of a double past `int` is undefined, and a value that IS an `int` is
+// not thereby affordable. `lbfgs("x0*x0", [1], 2000000000)` reserves two billion doubles
+// for its history and was measured aborting the process. `max_value` is the caller's,
+// because what these nineteen call sites bound is not one kind of thing: an iteration
+// count is bounded by work, a stored history by memory.
 Result<int> parse_optional_positive_int(const std::string& text, const char* fn, const char* label,
-                                        int default_value) {
+                                        int default_value,
+                                        double max_value = kMaxReplIntegerArgument) {
     if (text.empty()) {
         return default_value;
     }
     double value = 0.0;
     if (!parse_number(trim_copy(text), value) || value < 1.0 || std::floor(value) != value) {
         return std::unexpected(DomainError{fn, std::string("expected positive integer ") + label});
+    }
+    if (value > max_value) {
+        return std::unexpected(DomainError{
+            fn, std::string(label) + " " + describe_count(value) + " is too large; it is " +
+                    "bounded at " + describe_count(max_value)});
     }
     return static_cast<int>(value);
 }
@@ -16402,7 +16473,10 @@ Result<std::string> eval_lbfgs_call(const std::string& formula_arg, const std::s
     if (!inputs) {
         return std::unexpected(inputs.error());
     }
-    auto m = parse_optional_positive_int(m_arg, fn, "m", 5);
+    // `m` is the number of correction pairs L-BFGS KEEPS, so it is an extent rather than
+    // an iteration count and is bounded by the element budget.
+    auto m = parse_optional_positive_int(m_arg, fn, "m", 5,
+                                         static_cast<double>(kMaxReplMatrixElems));
     if (!m) {
         return std::unexpected(m.error());
     }

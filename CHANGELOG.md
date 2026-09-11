@@ -463,6 +463,33 @@ read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in
 so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
 unchanged.
 
+### Eight more commands that ended the session
+
+Found by running the probe lines an 86-finding read-only sweep proposed, across all ten
+library domains. The shapes are the four the guards already knew, in places the earlier
+sweeps had not looked: an output that is a multiple of the input (`signal_upsample`,
+`signal_interpolate`, `signal_resample`), an output that is the square of an extent
+(`quantum_identity_n`, `topo_pairwise_distances`), a product of two arguments
+(`topo_persistence_landscape`), and a parameter whose magnitude sizes a matrix.
+
+- **`mathieu_a(n, q)`'s `q` is a size argument wearing a parameter's clothes.** The
+  characteristic matrix is sized `max(24, index + 16 + ceil(sqrt(|q|)))`, so `q = 1e18`
+  asks for a 1e9-entry tridiagonal, and at `q = 1e300` the `static_cast<int>` of that
+  square root is undefined before it gets there. The new guard bounds the DIMENSION
+  rather than `q`, and covers `mathieu_b`, `_ce`, `_se` and the three spheroidal
+  commands too.
+- **`parse_optional_positive_int` bounded the bottom of the range and not the top**, at
+  nineteen call sites. `lbfgs("x0*x0", [1], 2000000000)` reserved two billion doubles for
+  its history. The maximum is the caller's now, because an iteration count is bounded by
+  work and a stored history by memory.
+- **Two fixes had to move to the funnel.** `signal_resample` and
+  `topo_pairwise_distances` are reached by more than one dispatch path -- the assignment
+  form goes through the matrix-call registry and the bare form does not -- so guarding
+  the handler left the other route intact. The probe caught it by still aborting.
+- **And one guard was wrong by a factor of 131072.** `charge_dense_order` charges the
+  order once, as the SECOND factor; the FEM sites had already charged the first with a
+  `take`, and `topo_pairwise_distances` had not. Also caught only by the probe.
+
 ### The FEM guard bounded the answer, not the matrix it was solved through
 
 `fem_poisson1d(262144)` still aborted after the extent guard was added, and at exactly

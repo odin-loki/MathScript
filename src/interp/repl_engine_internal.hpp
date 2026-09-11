@@ -2528,7 +2528,7 @@ Result<double> parse_optional_positive_number(const std::string& text, const cha
                                               const char* label, double default_value);
 
 Result<int> parse_optional_positive_int(const std::string& text, const char* fn, const char* label,
-                                        int default_value);
+                                        int default_value, double max_value);
 
 Result<std::string> eval_bfgs_call(const std::string& formula_arg, const std::string& x0_arg,
                                    const std::string& tol_arg, const std::string& max_iter_arg);

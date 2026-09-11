@@ -483,6 +483,45 @@ Both were found the same way -- by running the probes the audit proposed, agains
 guard that was supposed to have closed them. A guard is not a fix until the input that
 motivated it has been re-run against it.
 
+**Eight more that ended the session, from running the audit's own probes.** A read-only
+sweep of all ten library domains proposed 86 candidates with a probe line each; running
+them turned up eight further aborts, and their shapes are the four the guards already
+knew, arriving where the earlier sweeps had not looked:
+
+| Shape | Commands |
+|---|---|
+| an output that is a MULTIPLE of the input | `signal_upsample`, `signal_interpolate`, `signal_resample` |
+| an output that is the SQUARE of an extent | `quantum_identity_n`, `topo_pairwise_distances` |
+| a PRODUCT of two arguments | `topo_persistence_landscape` |
+| a parameter whose MAGNITUDE sizes a matrix | `mathieu_a`'s `q`, and `lbfgs`'s history `m` |
+
+The last row is the one worth naming. `mathieu_a(n, q)` looks like it takes two ordinary
+numbers, and `q` is a size argument wearing a parameter's clothes: the characteristic
+matrix is sized `max(24, index + 16 + ceil(sqrt(|q|)))`, so `q = 1e18` asks for a
+1e9-entry tridiagonal, and at `q = 1e300` the `static_cast<int>` of that square root is
+undefined before it gets there. `checked_matrix_sized_parameter` bounds the DIMENSION
+rather than `q`, because what has to fit is the matrix and `q` is only how the command
+spells it; the same guard covers `mathieu_b`, `_ce`, `_se` and the three spheroidal
+commands.
+
+`lbfgs`'s `m` came through `parse_optional_positive_int`, which bounded the bottom of the
+range and not the top across **nineteen** call sites. `max_value` is the caller's there,
+because what those nineteen bound is not one kind of thing -- an iteration count is
+bounded by work, and a stored history by memory, and `m` is the second.
+
+**Two of the fixes had to move to the funnel.** `signal_resample` and
+`topo_pairwise_distances` are each reached by more than one dispatch path -- the
+assignment form goes through the matrix-call registry and the bare form does not -- and
+guarding the handler left the other route intact, which the probe caught by still
+aborting. The guard belongs in `eval_signal_resample` and `eval_topo_pairwise_distances`,
+where every route converges.
+
+**And one was wrong in a way only the probe showed.** `charge_dense_order` charges the
+order ONCE, as the SECOND factor: at the FEM sites an earlier `take` had already charged
+the first. `topo_pairwise_distances` had no earlier take, so a 131072-point set passed a
+check it should have failed by a factor of 131072. It aborted again, which is the only
+reason it was caught.
+
 **One reported finding did not survive a probe.** The allocation audit recorded
 `graph_bipartite_match` aborting at its second argument. It does not:
 `graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and

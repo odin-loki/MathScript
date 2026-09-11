@@ -209,9 +209,9 @@ TEST(ReplSizeArguments, AFemSolveIsBoundedByItsStiffnessMatrixAndNotByItsAnswer)
     // is why it is a separate assertion from the one above rather than a second value in
     // the same loop.
     Interpreter interp;
-    expect_error_contains(interp, "fem_poisson1d(262144)", "stiffness matrix");
-    expect_error_contains(interp, "fem_poisson2d(512, 512)", "stiffness matrix");
-    expect_error_contains(interp, "fem_poisson3d(64, 64, 64)", "stiffness matrix");
+    expect_error_contains(interp, "fem_poisson1d(262144)", "gives a dense");
+    expect_error_contains(interp, "fem_poisson2d(512, 512)", "gives a dense");
+    expect_error_contains(interp, "fem_poisson3d(64, 64, 64)", "gives a dense");
     // A mesh anyone would actually solve on still solves.
     expect_contains(interp, "fem_poisson1d(16)", "_ =");
 }
@@ -226,4 +226,46 @@ TEST(ReplSizeArguments, AMeshIsBoundedOnTheProductOfItsExtents) {
     expect_error_contains(interp, "fem_mesh3d(0,0,0,1,1,1,10000,10000,10000)", "too large");
     expect_error_contains(interp, "fem_mesh3d_box(0,0,0,1,1,1,10000,10000,10000)", "too large");
     expect_ok(interp, "fem_mesh2d(0, 0, 1, 1, 8, 8)");
+}
+
+TEST(ReplSizeArguments, EightMoreCommandsThatEndedTheSession) {
+    // Each of these was measured aborting the process, under a 4 GB address-space cap,
+    // at the value below. They are grouped because the shapes are the four the guards
+    // already know, arriving in places the earlier sweeps had not looked:
+    //
+    //   an output that is a MULTIPLE of the input  -- signal_upsample, _interpolate,
+    //                                                 _resample
+    //   an output that is the SQUARE of an extent  -- quantum_identity_n,
+    //                                                 topo_pairwise_distances
+    //   a PRODUCT of two arguments                 -- topo_persistence_landscape
+    //   a parameter whose MAGNITUDE sizes a matrix -- mathieu_a's q, and lbfgs's history
+    Interpreter interp;
+    expect_ok(interp, "X = ones(1000,1)");
+    // 512 points is the honest ceiling: the RESULT is a 512 x 512 distance matrix,
+    // which is exactly kMaxReplMatrixElems, so a larger point set has nowhere to put
+    // its answer either.
+    expect_ok(interp, "P = zeros(256,2)");
+    expect_ok(interp, "D = zeros(1,3)");
+    for (const auto* call : {"signal_upsample(X, 10000000)",
+                             "signal_interpolate(X, 1000000)",
+                             "signal_resample(X, 1000000, 1000000)",
+                             "quantum_identity_n(1000000)",
+                             "topo_persistence_landscape(D, 200000, 200000)",
+                             "mathieu_a(0, 1000000000000000000)",
+                             "lbfgs(\"x0*x0\", [1], 2000000000)"}) {
+        // Any diagnostic at all beats std::terminate, so the assertion is that one
+        // comes back rather than that it says a particular thing.
+        const auto refused = interp.execute(call);
+        EXPECT_FALSE(refused.has_value()) << call;
+    }
+    // topo_pairwise_distances takes no size argument at all: the cost is its INPUT, so
+    // the guard is on the row count of the matrix it is handed.
+    expect_ok(interp, "BIG = zeros(131072,2)");
+    expect_error_contains(interp, "topo_pairwise_distances(BIG)", "gives a dense");
+    // And the ordinary uses of every one of them still work.
+    expect_ok(interp, "signal_upsample(X, 2)");
+    expect_ok(interp, "signal_resample(X, 3, 2)");
+    expect_ok(interp, "quantum_identity_n(4)");
+    expect_ok(interp, "topo_pairwise_distances(P)");
+    expect_ok(interp, "mathieu_a(0, 1.5)");
 }
