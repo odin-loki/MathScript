@@ -4187,6 +4187,13 @@ Result<Matrix<double>> eval_geo_bspline_eval(const Matrix<double>& ctrl_m,
         return std::unexpected(DomainError{
             "geo_bspline_eval", "expected knot vector length >= n+degree+2"});
     }
+    // de Boor evaluates a triangle of degree^2 affine combinations for a single point:
+    // degree 8000 took 0.4 s, so 7 ns per degree^2. The sweep asked for 131071.
+    auto bounded_degree = checked_superlinear_argument("geo_bspline_eval", "degree",
+                                                       static_cast<double>(degree), 2, 7.0);
+    if (!bounded_degree) {
+        return std::unexpected(bounded_degree.error());
+    }
     const geo::Point2D p = geo::bspline_eval(*ctrl, *knots, degree, t);
     Matrix<double> out(1, 2);
     out(0, 0) = p.x;
@@ -5456,6 +5463,18 @@ Result<Matrix<double>> eval_combo_unrank_combination(int n, int k, uint64_t rank
         return std::unexpected(
             DomainError{"combo_unrank_combination", "expected non-negative integer n and k"});
     }
+    // The answer is k numbers, but reaching it walks the candidates subtracting binomials,
+    // and a rank near the top of the range walks nearly all of them: the cost is n per
+    // position. `combo_unrank_combination(50000000, 2, C(n,2)-1)` took 1.0 s, which is 10
+    // ns a step; the sweep asked for n = 2147483647, about forty seconds of subtracting.
+    // The bound has to be the worst case, because which ranks are cheap is not something
+    // the caller can be expected to know.
+    WorkBudget budget("combo_unrank_combination", 10.0);
+    budget.charge(static_cast<std::size_t>(k));
+    auto bounded_n = budget.take("n", static_cast<double>(n));
+    if (!bounded_n) {
+        return std::unexpected(bounded_n.error());
+    }
     const auto v = combo::unrank_combination(n, k, rank);
     if (v.empty() && k != 0) {
         return std::unexpected(
@@ -6620,6 +6639,18 @@ Result<Matrix<double>> eval_hough_lines(const Matrix<double>& m, double edge_thr
             "hough_lines", "the accumulator is n_theta x n_rho cells and is limited to " +
                                format_scalar(kMaxReplMatrixElems)});
     }
+    // A cap on the accumulator is not a cap on the work. Every edge pixel votes once per
+    // ANGLE, so the cost is the image times n_theta and says nothing about n_rho:
+    // `hough_lines(ones(512,512), 0.5, 262144, 1, 1)` is a 262144 x 1 accumulator, inside
+    // the cap above, and 6.9e10 votes. Measured at 18 ns a vote (256x256 at 2000 angles
+    // took 2.3 s). Angular resolution is something a user asks for deliberately, so this
+    // is budgeted as a request rather than as a slip.
+    WorkBudget budget("hough_lines", 18.0, kMaxReplSimulationWorkNanos);
+    budget.charge(m.rows() * m.cols());
+    auto bounded_theta = budget.take("n_theta", static_cast<double>(n_theta));
+    if (!bounded_theta) {
+        return std::unexpected(bounded_theta.error());
+    }
     return hough_lines_to_matrix(
         image::hough_lines(*gray, edge_threshold, n_theta, n_rho, vote_threshold));
 }
@@ -6654,6 +6685,19 @@ Result<Matrix<double>> eval_hough_circles(const Matrix<double>& m, double edge_t
                                  " radii and the accumulator is one cell per radius per "
                                  "pixel, which is limited to " +
                                  format_scalar(kMaxReplMatrixElems) + " cells"});
+    }
+    // And the same again one level further in. Each edge pixel walks the CIRCUMFERENCE of
+    // every candidate radius -- `max(8, round(2*pi*r))` samples -- so the radius is a work
+    // factor even when there is only one of them. `hough_circles(ones(512,512), 3e8, 3e8)`
+    // is a single plane, well inside the accumulator cap just above, and 4.9e17 votes.
+    // Measured at 23 ns a vote: a 64x64 image over three radii near 2000 took 3.5 s.
+    const double samples_per_pixel =
+        std::ceil(planes * std::max(8.0, 2.0 * M_PI * std::abs(r_max)));
+    WorkBudget work("hough_circles", 23.0, kMaxReplSimulationWorkNanos);
+    work.charge(m.rows() * m.cols());
+    auto bounded_votes = work.take("the votes each edge pixel casts", samples_per_pixel);
+    if (!bounded_votes) {
+        return std::unexpected(bounded_votes.error());
     }
     return hough_circles_to_matrix(image::hough_circles(*gray, edge_threshold, r_min, r_max,
                                                         r_step, vote_threshold));
@@ -7112,6 +7156,18 @@ Result<Matrix<double>> eval_signal_savgol(const Matrix<double>& x_m, int window_
         return std::unexpected(
             DomainError{"signal_savgol", "expected signal length >= window_length"});
     }
+    // The convolution itself is `correlate`, which is FFT-based and so does not grow with
+    // the window at all -- window 11 and window 1001 over 200000 samples both take 0.3 s.
+    // What grows is the COEFFICIENT solve: the normal equations are accumulated in
+    // window * (polyorder+1)^2 and solved in (polyorder+1)^3, so the two together are
+    // (window + polyorder) * polyorder^2. Measured at 6 ns a unit -- window 999 with
+    // polyorder 600 is 2.5 s.
+    WorkBudget budget("signal_savgol", 6.0);
+    budget.charge(static_cast<std::size_t>(window_length) + static_cast<std::size_t>(polyorder));
+    auto bounded_order = budget.take_square("polyorder", static_cast<double>(polyorder));
+    if (!bounded_order) {
+        return std::unexpected(bounded_order.error());
+    }
     return vector_to_column(savgol(*x, window_length, polyorder));
 }
 
@@ -7147,6 +7203,15 @@ Result<Matrix<double>> eval_signal_median_filter(const Matrix<double>& x_m, int 
     if (x->size() < static_cast<size_t>(window_length)) {
         return std::unexpected(
             DomainError{"signal_median_filter", "expected signal length >= window_length"});
+    }
+    // One selection per sample over a window of `window_length`: 262144 samples at window
+    // 5001 is 1.3e9 and took 3.3 s, so 4 ns a unit. The sweep's
+    // `signal_median_filter(ones(262144,1), 174763)` is 4.6e10 of them.
+    WorkBudget budget("signal_median_filter", 4.0);
+    budget.charge(x->size());
+    auto bounded_window = budget.take("window_length", static_cast<double>(window_length));
+    if (!bounded_window) {
+        return std::unexpected(bounded_window.error());
     }
     return vector_to_column(median_filter(*x, window_length));
 }
@@ -7184,6 +7249,14 @@ Result<LMSResult> run_signal_lms(const Matrix<double>& x_m, const Matrix<double>
     if (x->size() < static_cast<size_t>(filter_length)) {
         return std::unexpected(
             DomainError{fn, "expected signal length >= filter_length"});
+    }
+    // Every tap is touched twice per sample, so the cost is the product: 100000 samples
+    // through 1000 taps is 1e8 and took 0.9 s.
+    WorkBudget budget(fn, 9.0);
+    budget.charge(x->size());
+    auto bounded_taps = budget.take("filter_length", static_cast<double>(filter_length));
+    if (!bounded_taps) {
+        return std::unexpected(bounded_taps.error());
     }
     auto result = lms_adaptive_filter(*x, *d, filter_length, mu);
     if (result.output.empty() || result.error.size() != result.output.size() ||
@@ -9476,6 +9549,18 @@ Result<std::string> eval_crypto_pbkdf2_sha256(const std::string& pass_arg,
     if (salt->empty()) {
         return std::unexpected(DomainError{fn, "salt must not be empty"});
     }
+    // PBKDF2 is slow on purpose, which is exactly why the iteration count needs a bound
+    // rather than being exempt from one: it is a deliberate request, so it is budgeted
+    // against the simulation policy, and every iteration of every output block is one
+    // HMAC. Measured at 7 ns an iteration (32-byte blocks, 400000 iterations).
+    // `crypto_pbkdf2_sha256(..., 4294967295, 32)` is four billion of them.
+    const double blocks = std::ceil(static_cast<double>(dklen_i) / 32.0);
+    WorkBudget budget(fn, 7000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(blocks < 1.0 ? 1.0 : blocks));
+    auto bounded_iter = budget.take("iteration count", static_cast<double>(iter_i));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
     const auto dk = crypto::pbkdf2_hmac_sha256(*password, *salt, iter_i, dklen_i);
     if (dk.size() != dklen_i) {
         return std::unexpected(DomainError{fn, "PBKDF2 derivation failed"});
@@ -9517,6 +9602,18 @@ Result<std::string> eval_crypto_pbkdf2_hmac_sha512(const std::string& pass_arg,
     }
     if (salt->empty()) {
         return std::unexpected(DomainError{fn, "salt must not be empty"});
+    }
+    // PBKDF2 is slow on purpose, which is exactly why the iteration count needs a bound
+    // rather than being exempt from one: it is a deliberate request, so it is budgeted
+    // against the simulation policy, and every iteration of every output block is one
+    // HMAC. Measured at 95 ns an iteration (64-byte blocks, 400000 iterations).
+    // `crypto_pbkdf2_hmac_sha512(..., 4294967295, 64)` is four billion of them.
+    const double blocks = std::ceil(static_cast<double>(dklen_i) / 64.0);
+    WorkBudget budget(fn, 9500.0, kMaxReplSimulationWorkNanos);
+    budget.charge(static_cast<std::size_t>(blocks < 1.0 ? 1.0 : blocks));
+    auto bounded_iter = budget.take("iteration count", static_cast<double>(iter_i));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
     }
     const auto dk = crypto::pbkdf2_hmac_sha512(*password, *salt, iter_i, dklen_i);
     if (dk.size() != dklen_i) {
@@ -12009,6 +12106,16 @@ Result<Matrix<double>> eval_poly_fit(const Matrix<double>& xs_m, const Matrix<do
     if (degree < 0) {
         return std::unexpected(DomainError{"poly_fit", "expected non-negative degree"});
     }
+    // The normal equations are accumulated in nodes * (degree+1)^2 and solved in
+    // (degree+1)^3, so (nodes + degree) * degree^2 covers both. 18 ns a unit: 700 nodes at
+    // degree 600 took 3.0 s and 1000 at degree 900 took 9.2 s. `poly_fit` over three
+    // points at degree 3000 -- what the sweep asked for -- is 2.7e10.
+    WorkBudget budget("poly_fit", 18.0);
+    budget.charge(xs->size() + static_cast<std::size_t>(degree) + 1);
+    auto bounded_degree = budget.take_square("degree", static_cast<double>(degree));
+    if (!bounded_degree) {
+        return std::unexpected(bounded_degree.error());
+    }
     const auto coeffs = poly::poly_fit(*xs, *ys, degree);
     if (coeffs.empty()) {
         return std::unexpected(DomainError{"poly_fit", "fit failed"});
@@ -12295,6 +12402,17 @@ Result<Matrix<double>> eval_poly_pow(const Matrix<double>& coeffs_m, int n) {
     if (n < 0) {
         return std::unexpected(
             DomainError{"poly_pow", "poly_pow: negative exponent unsupported"});
+    }
+    // The answer has (len-1)*n + 1 coefficients and is reached by repeated multiplication,
+    // which is quadratic in that length: 120001 coefficients took 8.5 s and 130001 took
+    // 10.0 s, both 0.6 ns per length^2. The exponent looks like an ordinary integer and
+    // `poly_pow([0;1], 1e7)` asks for ten million coefficients it could not print either.
+    const double result_length =
+        (static_cast<double>(coeffs->size()) - 1.0) * static_cast<double>(n) + 1.0;
+    WorkBudget budget("poly_pow", 0.6);
+    auto bounded_length = budget.take_square("the product's coefficient count", result_length);
+    if (!bounded_length) {
+        return std::unexpected(bounded_length.error());
     }
     auto powered = poly::poly_pow(*coeffs, n);
     if (!powered)
@@ -13047,6 +13165,14 @@ Result<Matrix<double>> eval_signal_cheby1(int order, double rp_db, double cutoff
     if (order < 1) {
         return std::unexpected(DomainError{"signal_cheby1", "expected order >= 1"});
     }
+    // Expanding the pole product into numerator and denominator coefficients is quadratic
+    // in the order: 8000 takes 1.0 s and 20000 takes 6.4 s, which is 16 ns per order^2.
+    // A realistic IIR order is under twenty; the sweep asked for a million.
+    auto bounded_order = checked_superlinear_argument("signal_cheby1", "order",
+                                                      static_cast<double>(order), 2, 16.0);
+    if (!bounded_order) {
+        return std::unexpected(bounded_order.error());
+    }
     const auto coeffs = cheby1(order, rp_db, cutoff, fs, type);
     if (coeffs.b.empty()) {
         return std::unexpected(
@@ -13305,6 +13431,16 @@ Result<Matrix<double>> eval_signal_czt_zoom(const Matrix<double>& x_m, double f_
     }
     if (m < 1) {
         return std::unexpected(DomainError{"signal_czt_zoom", "expected positive integer m"});
+    }
+    // The answer is one row of (real, imaginary) per output bin, so `m` past half the
+    // matrix cap is work for something that could never be shown: m = 1e7 spends its time
+    // in a 2^24-point Bluestein transform and is then refused for being 2e7 elements wide.
+    if (!repl_elems_allowed(static_cast<std::size_t>(m), 2)) {
+        return std::unexpected(DomainError{
+            "signal_czt_zoom", "m " + describe_count(static_cast<double>(m)) +
+                                   " is too large; the result is one (real, imaginary) row "
+                                   "per bin and is limited to " +
+                                   std::to_string(kMaxReplMatrixElems) + " elements"});
     }
     return complex_vec_to_re_im_matrix(czt_zoom_fft(*x, f_start, f_stop, m, fs),
                                        "signal_czt_zoom");
@@ -14341,9 +14477,28 @@ Result<Matrix<double>> eval_topo_betti_curve(const Matrix<double>& dist_m,
     if (!thresholds) {
         return std::unexpected(thresholds.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_betti_curve", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_betti_curve", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
+    }
+    // Unlike the two complex-building commands, this one's answer is tiny -- one row of
+    // max_dim+1 Betti numbers per threshold -- so bounding the result bounds nothing. What
+    // it costs is a complex REBUILT AND REDUCED at every threshold, and the reduction is
+    // quadratic in the simplex count: 4525 simplices took 0.17 s and 10700 took 0.87 s,
+    // both about 9 ns per simplex^2. The sweep's 60 points at max_dim 2 over 1000
+    // thresholds is 1.3e12 of those.
+    const double simplices =
+        simplex_count_upper_bound(nested->size(), max_dim,
+                                  kMaxReplSimulationWorkNanos / 9.0);
+    WorkBudget budget("topo_betti_curve", 9.0, kMaxReplSimulationWorkNanos);
+    auto bounded_count = budget.take_square("the complex's simplex count", simplices);
+    if (!bounded_count) {
+        return std::unexpected(bounded_count.error());
+    }
+    auto bounded_thresholds = budget.take("threshold count",
+                                          static_cast<double>(thresholds->size()));
+    if (!bounded_thresholds) {
+        return std::unexpected(bounded_thresholds.error());
     }
     const auto curve = topo::betti_curve(*nested, *thresholds, max_dim);
     const size_t cols = static_cast<size_t>(max_dim + 1);
@@ -14399,9 +14554,9 @@ Result<Matrix<double>> eval_topo_cech_complex(const Matrix<double>& dist_m, doub
     if (!nested) {
         return std::unexpected(nested.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_cech_complex", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_cech_complex", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
     }
     return simplicial_complex_to_matrix(topo::cech_complex(*nested, epsilon, max_dim));
 }
@@ -14412,9 +14567,9 @@ Result<Matrix<double>> eval_topo_vietoris_rips(const Matrix<double>& dist_m, dou
     if (!nested) {
         return std::unexpected(nested.error());
     }
-    if (max_dim < 0) {
-        return std::unexpected(
-            DomainError{"topo_vietoris_rips", "expected non-negative integer max_dim"});
+    auto bounded_dim = checked_simplex_dimension("topo_vietoris_rips", nested->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
     }
     return simplicial_complex_to_matrix(topo::vietoris_rips(*nested, r, max_dim));
 }
@@ -14514,6 +14669,10 @@ Result<Matrix<double>> eval_topo_alpha_complex(const Matrix<double>& P_m, double
         return std::unexpected(
             DomainError{"topo_alpha_complex", "expected non-negative integer max_dim"});
     }
+    auto bounded_dim = checked_simplex_dimension("topo_alpha_complex", pts->size(), max_dim);
+    if (!bounded_dim) {
+        return std::unexpected(bounded_dim.error());
+    }
     return simplicial_complex_to_matrix(topo::alpha_complex(*pts, alpha, max_dim));
 }
 
@@ -14526,6 +14685,15 @@ Result<Matrix<double>> eval_topo_select_landmarks(const Matrix<double>& P_m, int
     if (n_landmarks < 1) {
         return std::unexpected(
             DomainError{"topo_select_landmarks", "expected positive integer n"});
+    }
+    // maxmin rescans every point against every landmark chosen so far, so the landmark
+    // count enters the product TWICE: 2000 points and 300 landmarks took 2.7 s, and 600
+    // landmarks took 9.7 s -- four times for double, which is the signature. 15 ns a unit.
+    WorkBudget budget("topo_select_landmarks", 15.0, kMaxReplSimulationWorkNanos);
+    budget.charge(pts->size());
+    auto bounded = budget.take_square("n", static_cast<double>(n_landmarks));
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     return int_vector_to_column(topo::select_landmarks_maxmin(*pts, n_landmarks, seed_index));
 }
@@ -16120,10 +16288,11 @@ Result<Matrix<double>> eval_ode_fixed_step_matrix(const std::string& fn,
         return std::unexpected(DomainError{
             fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -16163,10 +16332,19 @@ Result<std::string> eval_ode_fixed_step_call(const std::string& fn, const std::s
         return std::unexpected(DomainError{
             fn, std::string("expected ") + fn + "(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    // Decided on the double: `static_cast<int>` of a value outside int's range is
+    // undefined behaviour, not a wrap, so the range cannot be read off the result of it.
+    //
+    // These solvers keep the WHOLE trajectory and the REPL prints it as a steps+1 by 2
+    // matrix, so a step count past half the matrix cap is work for an answer that could
+    // never be shown: `ode_backward_euler("-50*y", 0, 1, 1, 200000)` spent 0.2 s
+    // integrating and was then refused for being 400002 elements. At 1e8 steps, which the
+    // linear cap admits, that is two minutes before the same refusal.
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -16251,10 +16429,11 @@ Result<std::string> eval_ode_trapezoidal_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_trapezoidal(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -16283,10 +16462,11 @@ Result<std::string> eval_ode_rosenbrock23_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_rosenbrock23(\"formula\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc f = [expr_ptr](double t, double y) {
@@ -16319,10 +16499,11 @@ Result<std::string> eval_ode_exponential_euler_call(const std::string& formula_a
             "expected ode_exponential_euler(\"g\", lambda, t0, y0, t_end, steps) with g the "
             "nonlinear remainder in dy/dt = lambda*y + g(t,y)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeFunc g = [expr_ptr](double t, double y) {
@@ -17177,8 +17358,24 @@ Result<std::string> eval_differential_evolution_call(
     if (!seed) {
         return std::unexpected(seed.error());
     }
-    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    // Every generation evaluates the formula once per member, and each evaluation walks a
+    // vector as wide as the bounds list, so the cost is the three of them multiplied:
+    // 200 members over 2000 generations in one dimension took 0.46 s, and in four
+    // dimensions 1.57 s -- 1200 ns a unit either way. A large population or a long run is
+    // a request rather than a slip, the way a Monte Carlo path count is, so it is budgeted
+    // against the simulation policy.
     const size_t dim = bounds->size();
+    WorkBudget budget(fn, 1200.0, kMaxReplSimulationWorkNanos);
+    budget.charge(dim);
+    auto bounded_pop = budget.take("pop", static_cast<double>(*pop));
+    if (!bounded_pop) {
+        return std::unexpected(bounded_pop.error());
+    }
+    auto bounded_iter = budget.take("max_iter", static_cast<double>(*max_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
         return sym_eval(*expr_ptr, build_optim_env(x));
     };
@@ -17212,8 +17409,20 @@ Result<std::string> eval_particle_swarm_call(const std::string& formula_arg,
     if (!seed) {
         return std::unexpected(seed.error());
     }
-    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
+    // The same product, measured on the same shape: 200 particles over 2000 iterations in
+    // one dimension took 0.38 s, about 1000 ns a unit.
     const size_t dim = bounds->size();
+    WorkBudget budget(fn, 1000.0, kMaxReplSimulationWorkNanos);
+    budget.charge(dim);
+    auto bounded_particles = budget.take("n_particles", static_cast<double>(*n_particles));
+    if (!bounded_particles) {
+        return std::unexpected(bounded_particles.error());
+    }
+    auto bounded_iter = budget.take("max_iter", static_cast<double>(*max_iter));
+    if (!bounded_iter) {
+        return std::unexpected(bounded_iter.error());
+    }
+    auto expr_ptr = std::make_shared<SymExpr>(std::move(*expr));
     FuncND objective = [expr_ptr, dim](const std::vector<double>& x) {
         return sym_eval(*expr_ptr, build_optim_env(x));
     };
@@ -17386,10 +17595,11 @@ Result<std::string> eval_ode_verlet_call(const std::string& formula_arg, const s
         return std::unexpected(DomainError{
             fn, "expected ode_verlet(\"formula\", t0, q0, v0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeAccelFunc a = [expr_ptr](double t, double q) {
@@ -17507,10 +17717,11 @@ Result<std::string> eval_ode_rosenbrock23_vec_call(const std::string& formula_ar
         return std::unexpected(DomainError{
             fn, "expected ode_rosenbrock23_vec(\"f0;f1;...\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
     OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
         const auto env = build_vec_ode_env(t, y);
@@ -17553,10 +17764,11 @@ Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_verlet_vec(\"a0;a1;...\", t0, q0, v0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
     OdeAccelFuncVec a = [exprs_ptr](double t, const std::vector<double>& q) {
         const auto env = build_vec_accel_env(t, q);
@@ -17733,10 +17945,11 @@ Result<std::string> eval_ode_dae_index1_call(const std::string& diff_formula_arg
             fn,
             "expected ode_dae_index1(\"f0;f1;...\", \"g0;g1;...\", t0, y0, z0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto diff_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*diff_exprs));
     auto alg_exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*alg_exprs));
     DaeDiffFunc f = [diff_exprs_ptr](double t, const std::vector<double>& y,
@@ -17787,10 +18000,11 @@ Result<std::string> eval_ode_bvp_shooting_call(const std::string& formula_arg,
             "expected ode_bvp_shooting(\"formula\", t0, y_a, t_end, y_b, steps) "
             "with env {t, y, yp}"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
     OdeBvpFunc f = [expr_ptr](double t, double y, double yp) {
@@ -17826,10 +18040,11 @@ Result<std::string> eval_ode_dde_fixed_step_call(const std::string& formula_arg,
             "expected ode_dde_fixed_step(\"f\", \"history\", t0, t_end, tau, steps) "
             "with f env {t, y, ydelay} and history env {t}"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     SymExpr hist_parsed = std::move(*hist_expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));
@@ -17871,10 +18086,11 @@ Result<std::string> eval_ode_event_detect_call(const std::string& formula_arg,
             "expected ode_event_detect(\"f\", \"event\", t0, y0, t_end, steps) "
             "with env {t, y} for both formulas"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     SymExpr parsed = std::move(*expr);
     SymExpr event_parsed = std::move(*event_expr);
     auto expr_ptr = std::make_shared<SymExpr>(std::move(parsed));

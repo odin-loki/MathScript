@@ -5544,7 +5544,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
         }
-        auto q_sized = checked_matrix_sized_parameter(fn, "q", args[1]);
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
         if (!q_sized) {
             return std::unexpected(q_sized.error());
         }
@@ -5559,7 +5559,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
         }
-        auto q_sized = checked_matrix_sized_parameter(fn, "q", args[1]);
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
         if (!q_sized) {
             return std::unexpected(q_sized.error());
         }
@@ -5583,7 +5583,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg1_int) {
             return std::unexpected(arg1_int.error());
         }
-        auto c_sized = checked_matrix_sized_parameter(fn, "c", args[2]);
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
         if (!c_sized) {
             return std::unexpected(c_sized.error());
         }
@@ -5594,7 +5594,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
         }
-        auto q_sized = checked_matrix_sized_parameter(fn, "q", args[1]);
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
         if (!q_sized) {
             return std::unexpected(q_sized.error());
         }
@@ -5605,7 +5605,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
         }
-        auto q_sized = checked_matrix_sized_parameter(fn, "q", args[1]);
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
         if (!q_sized) {
             return std::unexpected(q_sized.error());
         }
@@ -5616,12 +5616,20 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
         }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
+        }
         return mathieu_mc(*arg0_int, args[1], args[2]);
     }
     if (args.size() == 3 && fn == "mathieu_ms") {
         auto arg0_int = checked_int_argument(fn, "argument 1", args[0]);
         if (!arg0_int) {
             return std::unexpected(arg0_int.error());
+        }
+        auto q_sized = checked_mathieu_dimension(fn, args[0], args[1]);
+        if (!q_sized) {
+            return std::unexpected(q_sized.error());
         }
         return mathieu_ms(*arg0_int, args[1], args[2]);
     }
@@ -5637,7 +5645,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg1_int) {
             return std::unexpected(arg1_int.error());
         }
-        auto c_sized = checked_matrix_sized_parameter(fn, "c", args[2]);
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
         if (!c_sized) {
             return std::unexpected(c_sized.error());
         }
@@ -5652,7 +5660,7 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
         if (!arg1_int) {
             return std::unexpected(arg1_int.error());
         }
-        auto c_sized = checked_matrix_sized_parameter(fn, "c", args[2]);
+        auto c_sized = checked_spheroidal_dimension(fn, args[0], args[1], args[2]);
         if (!c_sized) {
             return std::unexpected(c_sized.error());
         }
@@ -16349,6 +16357,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!m_checked) {
                 return std::unexpected(m_checked.error());
             }
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
+            if (!c_sized) {
+                return std::unexpected(c_sized.error());
+            }
             return format_scalar(
                        spheroidal_s1(*n_checked, *m_checked, c, x)) +
                               "\n";
@@ -16371,6 +16383,10 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             auto m_checked = checked_int_argument(fn, "m", m);
             if (!m_checked) {
                 return std::unexpected(m_checked.error());
+            }
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
+            if (!c_sized) {
+                return std::unexpected(c_sized.error());
             }
             return format_scalar(
                        spheroidal_s2(*n_checked, *m_checked, c, x)) +
@@ -17165,7 +17181,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!a_order) {
                     return std::unexpected(a_order.error());
                 }
-                auto q_sized = checked_matrix_sized_parameter(fn, "q", b);
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
                 if (!q_sized) {
                     return std::unexpected(q_sized.error());
                 }
@@ -17176,7 +17192,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!a_order) {
                     return std::unexpected(a_order.error());
                 }
-                auto q_sized = checked_matrix_sized_parameter(fn, "q", b);
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
                 if (!q_sized) {
                     return std::unexpected(q_sized.error());
                 }
@@ -17187,12 +17203,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 if (!a_order) {
                     return std::unexpected(a_order.error());
                 }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
+                }
                 return format_scalar(mathieu_mc(*a_order, b, c)) + "\n";
             }
             if (fn == "mathieu_ms") {
                 auto a_order = checked_int_argument(fn, "a", a);
                 if (!a_order) {
                     return std::unexpected(a_order.error());
+                }
+                auto q_sized = checked_mathieu_dimension(fn, a, b);
+                if (!q_sized) {
+                    return std::unexpected(q_sized.error());
                 }
                 return format_scalar(mathieu_ms(*a_order, b, c)) + "\n";
             }
@@ -17215,7 +17239,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!m_checked) {
                 return std::unexpected(m_checked.error());
             }
-            auto c_sized = checked_matrix_sized_parameter(fn, "c", c);
+            auto c_sized = checked_spheroidal_dimension(fn, n, m, c);
             if (!c_sized) {
                 return std::unexpected(c_sized.error());
             }
@@ -21092,7 +21116,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!n_order) {
                 return std::unexpected(n_order.error());
             }
-            auto q_sized = checked_matrix_sized_parameter(fn, "q", q);
+            auto q_sized = checked_mathieu_dimension(fn, n, q);
             if (!q_sized) {
                 return std::unexpected(q_sized.error());
             }
@@ -21109,7 +21133,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!n_order) {
                 return std::unexpected(n_order.error());
             }
-            auto q_sized = checked_matrix_sized_parameter(fn, "q", q);
+            auto q_sized = checked_mathieu_dimension(fn, n, q);
             if (!q_sized) {
                 return std::unexpected(q_sized.error());
             }

@@ -3283,7 +3283,14 @@ SymExpr sym_series(const SymExpr& expr, const std::string& var, double point, in
             result = sym_add(std::move(result), std::move(term));
         }
         if (n + 1 < order) {
-            deriv = sym_diff(std::move(deriv), var);
+            // Simplified in place, not just in the copy above. `sym_diff` of a product
+            // writes out the full Leibniz form, so a derivative that is never reduced
+            // carries every unsimplified term of the previous one into the next: the tree
+            // grew by about eight times an order, and sym_series("sin(x)", "x", 0, 11)
+            // took 20.2 s where order 9 took 0.3 s. Simplifying the carried derivative is
+            // the same series by a shorter route -- the coefficient is already read off
+            // the simplified form, so nothing about the answer changes.
+            deriv = sym_simplify(sym_diff(std::move(deriv), var));
             factorial *= static_cast<double>(n + 1);
         }
     }

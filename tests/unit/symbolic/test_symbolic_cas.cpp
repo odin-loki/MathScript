@@ -891,3 +891,33 @@ TEST(SymbolicTransformsTest, laplace_neg_of_power_and_ilaplace_t_fourth) {
         sym_div(sym_const(24.0), sym_pow(sym_var("s"), sym_const(5.0))), "s", "t");
     EXPECT_NEAR(sym_eval(inverse, {{"t", 2.0}}), 16.0, 1e-12);
 }
+
+// A Taylor series at an order anyone would actually want.
+//
+// `sym_series` differentiated a tree it never simplified. The coefficient was read off a
+// simplified COPY and the copy thrown away, so every unsimplified term of one derivative
+// was carried into the next and `sym_diff` of a product writes out the full Leibniz form:
+// the tree grew by about eight times an order. Measured: order 9 took 0.3 s, order 10
+// took 2.6 s, order 11 took 20.2 s. Order 25 -- twelve terms of sin -- did not finish.
+//
+// Simplifying the carried derivative is the same series by a shorter route, which is why
+// this test asserts the COEFFICIENTS rather than a duration: what it is really checking
+// is that nothing about the answer changed.
+TEST(SymbolicSeriesTest, sin_at_zero_order_twenty_five) {
+    const auto series = sym_series(sym_sin(sym_var("x")), "x", 0.0, 25);
+    // Twelve terms is far enough out that the truncation error is below 1e-12 across a
+    // radius where the individual terms are still O(1) -- which a series built from a
+    // corrupted derivative would not be.
+    for (const double x : {0.0, 0.5, 1.0, -1.25, 2.0, -3.0}) {
+        EXPECT_NEAR(std::sin(x), sym_eval(series, {{"x", x}}), 1e-12);
+    }
+}
+
+TEST(SymbolicSeriesTest, cos_and_exp_agree_far_out_too) {
+    const auto cosine = sym_series(sym_cos(sym_var("x")), "x", 0.0, 25);
+    const auto exponential = sym_series(sym_exp(sym_var("x")), "x", 0.0, 25);
+    for (const double x : {0.0, 0.5, -1.5, 2.5}) {
+        EXPECT_NEAR(std::cos(x), sym_eval(cosine, {{"x", x}}), 1e-12);
+        EXPECT_NEAR(std::exp(x), sym_eval(exponential, {{"x", x}}), 1e-12);
+    }
+}

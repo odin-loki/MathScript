@@ -181,32 +181,6 @@ inline Result<unsigned> checked_seed_argument(const std::string& fn, const char*
     return static_cast<unsigned>(value);
 }
 
-/// A parameter whose MAGNITUDE sizes an internal matrix.
-///
-/// `mathieu_a(n, q)` looks like it takes two ordinary numbers, and the second is a size
-/// argument wearing a parameter's clothes: the characteristic matrix is sized
-/// `max(24, index + 16 + ceil(sqrt(|q|)))`, so `mathieu_a(0, 1e18)` asks for a 1e9-entry
-/// tridiagonal and was measured aborting the process. At `q = 1e300` the
-/// `static_cast<int>` of that square root is undefined before it even gets there.
-///
-/// The bound is on the DIMENSION rather than on `q`, which is why it is written this way
-/// round: what has to fit is the matrix, and `q` is only how the command spells it.
-inline Result<double> checked_matrix_sized_parameter(const std::string& fn, const char* what,
-                                                     double value) {
-    if (!std::isfinite(value)) {
-        return std::unexpected(DomainError{fn, std::string("expected a finite ") + what});
-    }
-    const double dimension = std::sqrt(std::abs(value));
-    if (dimension > static_cast<double>(kMaxReplMatrixElems)) {
-        return std::unexpected(DomainError{
-            fn, std::string(what) + " " + describe_count(std::abs(value)) +
-                    " sizes an internal matrix at about " + describe_count(std::ceil(dimension)) +
-                    ", and this command is limited to " +
-                    std::to_string(kMaxReplMatrixElems) + " elements"});
-    }
-    return value;
-}
-
 /// How long the REPL is willing to disappear for.
 ///
 /// A command runs to completion. There is no interrupt, no progress bar, and no way to
@@ -275,6 +249,151 @@ inline Result<int> checked_superlinear_argument(const std::string& fn, const cha
                     describe_count(kMaxReplIntegerArgument)});
     }
     return static_cast<int>(value);
+}
+
+/// The step count of a fixed-step ODE solver, bounded by the trajectory it keeps.
+///
+/// These solvers return every step, and the REPL prints that as a `steps + 1` by (at
+/// least) two matrix. So a step count past half the matrix cap is work done for an answer
+/// that could never be shown: `ode_backward_euler("-50*y", 0, 1, 1, 200000)` integrated
+/// for 0.2 s and was then refused for being 400002 elements, and the linear cap admits
+/// 1e7 of them -- two minutes to reach the same refusal.
+///
+/// The range is decided on the double. `static_cast<int>` of a value outside int's range
+/// is undefined behaviour rather than a wrap, so a guard written on the result of the cast
+/// is reading a value the standard no longer accounts for.
+inline Result<int> checked_ode_trajectory_steps(const std::string& fn, double steps) {
+    if (!std::isfinite(steps) || steps != std::floor(steps) || steps < 0.0) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
+    }
+    if (!repl_elems_allowed(static_cast<std::size_t>(
+                                steps > 4.0e9 ? 4.0e9 : steps) + 1, 2)) {
+        return std::unexpected(DomainError{
+            fn, "steps " + describe_count(steps) +
+                    " is too large; the trajectory is one row per step and is limited to " +
+                    std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
+    return static_cast<int>(steps);
+}
+
+/// The dimension of an internal matrix that MORE THAN ONE argument sizes.
+///
+/// This replaces a guard that bounded one parameter's magnitude with Mathieu's rule --
+/// `ceil(sqrt(|q|))` -- baked in. That was the wrong shape for the three spheroidal
+/// commands it was also applied to, and wrong by a SQUARE ROOT, because their dimension
+/// is
+///
+///     spheroidal:  (n - m) / 2 + 22 + ceil(|c|)
+///     Mathieu:     max(24, n + 16 + ceil(sqrt(|q|)))
+///
+/// so the square-root reading admitted `spheroidal_lambda(0, 0, 1e10)` -- a ten-billion
+/// entry tridiagonal -- and all three of `spheroidal_lambda`, `spheroidal_s1` and
+/// `spheroidal_s2` were measured ABORTING the process on it, which is the failure the
+/// guard had been added to prevent. Neither family bounded the ORDER either, and that is
+/// a dimension too: `spheroidal_lambda(1e7, 0, 0)` was still running at 25 s.
+///
+/// So the dimension is computed by the caller, from that command's own rule, and only
+/// the bound lives here. `how` spells the rule out in the message, because a user who is
+/// told a number without being told which argument produced it cannot act on it.
+inline Result<double> checked_internal_matrix_dimension(const std::string& fn,
+                                                        double dimension,
+                                                        const std::string& how) {
+    if (!std::isfinite(dimension)) {
+        return std::unexpected(DomainError{fn, "expected finite arguments"});
+    }
+    if (dimension > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            fn, "the arguments size an internal matrix at about " +
+                    describe_count(std::ceil(dimension)) + " (" + how +
+                    "), and this command is limited to " +
+                    std::to_string(kMaxReplMatrixElems) + " elements"});
+    }
+    return dimension;
+}
+
+/// The dimension of Mathieu's characteristic matrix, spelled as `special.cpp` spells it:
+/// `max(24, n + 16 + ceil(sqrt(|q|)))`. The order is part of it, and used not to be
+/// bounded at all -- `mathieu_a(1e7, 1)` built a ten-million-entry tridiagonal and took
+/// 1.9 s to do it.
+inline Result<double> checked_mathieu_dimension(const std::string& fn, double n, double q) {
+    if (!std::isfinite(n) || !std::isfinite(q)) {
+        return std::unexpected(DomainError{fn, "expected finite n and q"});
+    }
+    const double dim = std::max(24.0, std::abs(n) + 16.0 + std::ceil(std::sqrt(std::abs(q))));
+    return checked_internal_matrix_dimension(fn, dim, "n + 16 + ceil(sqrt(|q|))");
+}
+
+/// The same for the spheroidal family, whose rule is `(n - m)/2 + 22 + ceil(|c|)` -- linear
+/// in `c` where Mathieu's is a square root of `q`, which is the whole reason these are two
+/// functions and not one.
+inline Result<double> checked_spheroidal_dimension(const std::string& fn, double n, double m,
+                                                   double c) {
+    if (!std::isfinite(n) || !std::isfinite(m) || !std::isfinite(c)) {
+        return std::unexpected(DomainError{fn, "expected finite n, m and c"});
+    }
+    const double index = std::floor((n - m) / 2.0);
+    const double dim = (index < 0.0 ? 0.0 : index) + 22.0 + std::ceil(std::abs(c));
+    return checked_internal_matrix_dimension(fn, dim, "(n - m)/2 + 22 + ceil(|c|)");
+}
+
+/// How many simplices a complex over `n_points` can hold at `max_dim`, as a double.
+///
+/// The enumerations in `topo` are written as nested loops with a distance test in each
+/// one, so the cost and the result are the same number: every tuple that passes becomes a
+/// row. When every distance is inside the radius -- `zeros(n, n)` is exactly that -- the
+/// count is the full sum of binomials, and it is the honest worst case rather than a
+/// pessimistic one.
+///
+/// Summed in a loop that stops as soon as it is past the cap, so a large `n` cannot make
+/// the product itself overflow on the way to being rejected.
+inline double simplex_count_upper_bound(std::size_t n_points, int max_dim, double give_up) {
+    const double n = static_cast<double>(n_points);
+    // Every `topo` enumeration here stops at tetrahedra; a larger max_dim adds nothing.
+    const int top = max_dim < 0 ? 0 : (max_dim > 3 ? 3 : max_dim);
+    double total = 0.0;
+    double choose = 1.0;
+    for (int j = 1; j <= top + 1; ++j) {
+        // C(n, j) = C(n, j-1) * (n - j + 1) / j
+        choose *= (n - static_cast<double>(j) + 1.0) / static_cast<double>(j);
+        if (choose < 0.0) {
+            choose = 0.0;
+        }
+        total += choose;
+        if (total > give_up) {
+            return total;
+        }
+    }
+    return total;
+}
+
+/// Bounds a simplicial enumeration by what its answer could hold.
+///
+/// `topo_vietoris_rips(zeros(200, 200), 1, 2)` spent twenty seconds building 1.3 million
+/// simplices and was then refused by the matrix cap, which is the shape the bignum
+/// commands had: work for an answer that could never be shown. The rows are simplices and
+/// each is three wide, so the count that fits is `kMaxReplMatrixElems / 3`, and moving the
+/// same verdict to the front of the command costs the twenty seconds nothing.
+///
+/// Bounding the RESULT also bounds the work, which is why there is no separate time
+/// budget here: 87381 simplices were measured at 1.4 s for max_dim 2 and 2.8 s for
+/// max_dim 3, both inside `kMaxReplSimulationWorkNanos`.
+inline Result<int> checked_simplex_dimension(const std::string& fn, std::size_t n_points,
+                                             int max_dim) {
+    if (max_dim < 0) {
+        return std::unexpected(
+            DomainError{fn, "expected non-negative integer max_dim"});
+    }
+    const double allowed = static_cast<double>(kMaxReplMatrixElems) / 3.0;
+    const double count = simplex_count_upper_bound(n_points, max_dim, allowed);
+    if (count > allowed) {
+        return std::unexpected(DomainError{
+            fn, "max_dim " + std::to_string(max_dim) + " over " +
+                    describe_count(static_cast<double>(n_points)) +
+                    " points can enumerate " + describe_count(count) +
+                    " simplices, and the result is one row of three per simplex, which is "
+                    "limited to " + describe_count(allowed) + " rows"});
+    }
+    return max_dim;
 }
 
 /// A budget for a command whose cost is a PRODUCT rather than a power of one argument: a

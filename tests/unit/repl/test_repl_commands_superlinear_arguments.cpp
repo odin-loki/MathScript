@@ -256,3 +256,218 @@ TEST(ReplSuperlinearArguments, ASchmidtDecompositionIsCubicInTheSubsystemDimensi
     expect_ok(interp, "Q = ones(1024,1)");
     expect_ok(interp, "quantum_schmidt_rank(Q, 1024, 1)");
 }
+
+TEST(ReplSuperlinearArguments, AGuardCanBeWrongByASquareRoot) {
+    // The guard that bounded `mathieu_a(0, 1e18)` was written with Mathieu's own sizing
+    // rule baked into it -- the characteristic matrix is
+    // `max(24, n + 16 + ceil(sqrt(|q|)))` -- and then applied to the spheroidal family
+    // as well, whose rule is `(n - m)/2 + 22 + ceil(|c|)`. Linear, not a square root.
+    //
+    // So `c = 1e10` read as a dimension of 1e5, passed, and asked for a ten-billion
+    // entry tridiagonal. All three spheroidal commands were measured ABORTING the
+    // process on it, which is the failure the guard existed to prevent.
+    Interpreter interp;
+    for (const auto* call : {"spheroidal_lambda(0, 0, 10000000000)",
+                             "spheroidal_s1(0, 0, 10000000000, 0.5)",
+                             "spheroidal_s2(0, 0, 10000000000, 0.5)"}) {
+        expect_error_contains(interp, call, "size an internal matrix");
+    }
+    // Neither family bounded the ORDER either, and the order is a dimension too:
+    // `spheroidal_lambda(1e7, 0, 0)` was still running at 25 s, and `mathieu_a(1e7, 1)`
+    // built a ten-million-entry tridiagonal in 1.9 s.
+    expect_error_contains(interp, "spheroidal_lambda(10000000, 0, 0)",
+                          "size an internal matrix");
+    expect_error_contains(interp, "mathieu_a(10000000, 1)", "size an internal matrix");
+    expect_error_contains(interp, "mathieu_mc(0, 1e30, 0.5)", "size an internal matrix");
+    // The values these commands are actually for are unaffected, and still right:
+    // a_1(5) = 1.858188 and lambda_{2,0}(c=1) = 6.533472.
+    expect_contains(interp, "mathieu_a(1, 5)", "1.858188");
+    expect_contains(interp, "spheroidal_lambda(2, 0, 1)", "6.533472");
+}
+
+TEST(ReplSuperlinearArguments, AFixedStepSolverIsBoundedByTheTrajectoryItKeeps) {
+    // These keep every step and the REPL prints the lot as a steps+1 by 2 matrix, so a
+    // step count past half the matrix cap is work for an answer that could never be
+    // shown: 200000 steps integrated for 0.2 s and were then refused for being 400002
+    // elements. At 1e8 -- which the linear cap admits -- that is two minutes to reach
+    // the same refusal.
+    Interpreter interp;
+    for (const auto* call : {"ode_backward_euler(\"-50*y\", 0, 1, 1, 100000000)",
+                             "ode_bdf2(\"-50*y\", 0, 1, 1, 100000000)",
+                             "ode_trapezoidal(\"-50*y\", 0, 1, 1, 100000000)",
+                             "ode_rosenbrock23(\"-50*y\", 0, 1, 1, 100000000)",
+                             "ode_euler(\"-50*y\", 0, 1, 1, 100000000)"}) {
+        expect_error_contains(interp, call, "steps 100000000 is too large");
+        expect_error_contains(interp, call, "one row per step");
+    }
+    // `ode_exponential_euler` takes the decay rate as a second argument, so its step
+    // count sits one place further along; the guard is the same one.
+    expect_error_contains(interp,
+                          "ode_exponential_euler(\"-50*y\", -50, 0, 1, 1, 100000000)",
+                          "steps 100000000 is too large");
+    // A step count whose trajectory fits still integrates.
+    expect_ok(interp, "ode_backward_euler(\"-50*y\", 0, 1, 1, 100)");
+    expect_ok(interp, "ode_rosenbrock23(\"-50*y\", 0, 1, 1, 100)");
+}
+
+TEST(ReplSuperlinearArguments, AnAccumulatorCapIsNotAWorkCap) {
+    // `hough_lines` and `hough_circles` already bounded their accumulators, and both
+    // probes below are INSIDE those bounds. What neither bounded is the voting.
+    //
+    //   - every edge pixel votes once per ANGLE, so 262144 angles over a 512x512 image
+    //     is 6.9e10 votes and a 262144 x 1 accumulator, which fits exactly;
+    //   - every edge pixel walks the CIRCUMFERENCE of each candidate radius, so a
+    //     single plane at r = 3e8 is one cell per pixel and 4.9e17 votes.
+    Interpreter interp;
+    expect_ok(interp, "A = ones(512,512)");
+    expect_error_contains(interp, "hough_lines(A, 0.5, 262144, 1, 1)",
+                          "n_theta 262144 is too large");
+    expect_error_contains(interp, "hough_circles(A, 300000000, 300000000)",
+                          "the votes each edge pixel casts");
+    // The resolutions anyone would use are unaffected: 180 angles is the textbook
+    // Hough transform, and a radius range of a few tens is what a 64x64 image holds.
+    expect_ok(interp, "B = ones(256,256)");
+    expect_ok(interp, "hough_lines(B, 0.5, 180, 180, 1)");
+    expect_ok(interp, "C = ones(64,64)");
+    expect_ok(interp, "hough_circles(C, 5, 20)");
+}
+
+TEST(ReplSuperlinearArguments, ASimplicialComplexIsBoundedByItsOwnRowCount) {
+    // `topo_vietoris_rips(zeros(200,200), 1, 2)` spent twenty seconds enumerating 1.3
+    // million simplices and was then refused by the matrix cap -- the same shape as the
+    // bignum commands, work for an answer that could never be shown. The rows ARE the
+    // simplices, so the count that fits is the bound, and moving that verdict to the
+    // front of the command costs the twenty seconds nothing.
+    Interpreter interp;
+    expect_ok(interp, "D = zeros(512,512)");
+    expect_error_contains(interp, "topo_vietoris_rips(D, 1, 3)", "can enumerate");
+    expect_error_contains(interp, "topo_cech_complex(D, 1, 2)", "can enumerate");
+    // A complex whose simplices fit is built.
+    expect_ok(interp, "E = zeros(40,40)");
+    expect_ok(interp, "topo_vietoris_rips(E, 1, 2)");
+
+    // `topo_betti_curve` is the one where bounding the result bounds nothing: its answer
+    // is one row of Betti numbers per threshold. What it costs is a complex rebuilt AND
+    // REDUCED at each of them, and the reduction is quadratic in the simplex count.
+    expect_ok(interp, "F = zeros(60,60)");
+    expect_ok(interp, "T = zeros(1000,1)");
+    expect_error_contains(interp, "C = topo_betti_curve(F, T, 2)", "is too large");
+    expect_ok(interp, "T4 = zeros(4,1)");
+    expect_ok(interp, "C = topo_betti_curve(E, T4, 1)");
+}
+
+TEST(ReplSuperlinearArguments, ASignalCommandCostsTheSignalTimesItsWindow) {
+    // Four shapes, one family. Measured on this machine:
+    //
+    //   signal_median_filter   one selection per sample per window cell   4 ns
+    //   signal_lms             every tap touched twice per sample         9 ns
+    //   signal_savgol          (window + polyorder) * polyorder^2         6 ns
+    //   signal_cheby1          the pole product expanded, order^2        16 ns
+    //
+    // `signal_savgol` is the one worth naming: its CONVOLUTION is FFT-based and does not
+    // grow with the window at all -- window 11 and window 1001 over 200000 samples both
+    // take 0.3 s -- so bounding the window would have bounded the wrong thing. What grows
+    // is the coefficient solve, and polyorder is what drives it.
+    Interpreter interp;
+    expect_ok(interp, "x = ones(262144,1)");
+    expect_error_contains(interp, "signal_median_filter(x, 174763)",
+                          "window_length 174763 is too large");
+    expect_error_contains(interp, "signal_lms(x, x, 262144, 0.001)",
+                          "filter_length 262144 is too large");
+    expect_ok(interp, "s = ones(5001,1)");
+    expect_error_contains(interp, "signal_savgol(s, 5001, 5000)",
+                          "polyorder 5000 is too large");
+    expect_error_contains(interp, "signal_cheby1(1000000, 1, 100, 1000)",
+                          "order 1000000 is too large");
+    // A Savitzky-Golay smoother is a quartic over a hundred-odd samples; an IIR filter is
+    // sixth order; an LMS filter has a few dozen taps. None of that is refused.
+    expect_ok(interp, "y = ones(20000,1)");
+    expect_ok(interp, "signal_savgol(y, 101, 4)");
+    expect_ok(interp, "signal_median_filter(y, 51)");
+    expect_ok(interp, "signal_lms(y, y, 32, 0.001)");
+    expect_ok(interp, "signal_cheby1(6, 1, 100, 1000)");
+}
+
+TEST(ReplSuperlinearArguments, AResultTooWideToShowIsStillPaidForFirst) {
+    // Two more of the shape the bignum commands had. `signal_czt_zoom` returns one
+    // (real, imaginary) row per output bin and `poly_pow` returns one row per
+    // coefficient, so in both cases an argument past half the matrix cap buys a
+    // computation whose answer the REPL will then refuse to print.
+    Interpreter interp;
+    expect_ok(interp, "x = ones(8,1)");
+    expect_error_contains(interp, "signal_czt_zoom(x, 0, 100, 10000000, 1000)",
+                          "m 10000000 is too large");
+    expect_error_contains(interp, "poly_pow([0;1], 10000000)",
+                          "coefficient count");
+    expect_ok(interp, "signal_czt_zoom(x, 0, 100, 1024, 1000)");
+    expect_ok(interp, "poly_pow([0;1;1], 100)");
+}
+
+TEST(ReplSuperlinearArguments, TheWorkIsBoundedEvenWhenTheAnswerIsSmall) {
+    // Each of these returns almost nothing and spends a great deal to get there.
+    //
+    //   - `poly_fit` returns degree+1 coefficients and accumulates normal equations in
+    //     nodes * degree^2 and solves them in degree^3: three points at degree 3000 is
+    //     2.7e10 units.
+    //   - `geo_bspline_eval` returns ONE point and evaluates a triangle of degree^2
+    //     affine combinations to find it.
+    //   - `combo_unrank_combination` returns k numbers and walks the candidates
+    //     subtracting binomials to reach them; a rank near the top of the range walks
+    //     nearly all n, and n = 2147483647 is about forty seconds of subtracting. The
+    //     bound has to be that worst case, because which ranks are cheap is not
+    //     something the caller can be expected to know.
+    //   - `crypto_pbkdf2_sha256` returns 32 bytes. It is slow on purpose, which is why
+    //     the iteration count needs a bound rather than an exemption from one.
+    Interpreter interp;
+    expect_error_contains(interp, "poly_fit([1;2;3], [1;4;9], 3000)",
+                          "degree 3000 is too large");
+    expect_ok(interp, "ctrl = ones(131072,2)");
+    expect_ok(interp, "knots = ones(262144,1)");
+    expect_error_contains(interp, "geo_bspline_eval(ctrl, knots, 131071, 0.5)",
+                          "degree 131071 is too large");
+    expect_error_contains(interp,
+                          "combo_unrank_combination(2147483647, 2, 2305843005992468480)",
+                          "n 2147483647 is too large");
+    for (const auto* call : {"crypto_pbkdf2_sha256(00112233, 44556677, 4294967295, 32)",
+                             "crypto_pbkdf2_hmac_sha512(00112233, 44556677, 4294967295, 64)"}) {
+        expect_error_contains(interp, call, "iteration count 4294967295 is too large");
+    }
+    expect_ok(interp, "poly_fit([1;2;3], [1;4;9], 2)");
+    expect_ok(interp, "c2 = ones(10,2)");
+    expect_ok(interp, "k2 = ones(20,1)");
+    expect_ok(interp, "geo_bspline_eval(c2, k2, 3, 0.5)");
+    expect_ok(interp, "combo_unrank_combination(10, 3, 5)");
+    expect_ok(interp, "crypto_pbkdf2_sha256(00112233, 44556677, 10000, 32)");
+}
+
+TEST(ReplSuperlinearArguments, APopulationTimesAGenerationCountIsAProduct) {
+    // Neither factor looks wrong on its own and the linear cap bounds each at 1e7, which
+    // says nothing about the 1e14 evaluations the two of them together ask for. The
+    // formula is evaluated once per member per generation over a vector as wide as the
+    // bounds list, so the budget charges the dimension first and the bound on the two
+    // counts shrinks as the search space grows.
+    //
+    // Both are budgeted as a REQUEST rather than a slip, the way a Monte Carlo path count
+    // is: a longer run is a better answer, and that is what the argument is for.
+    Interpreter interp;
+    expect_error_contains(interp,
+                          "differential_evolution(\"x0*x0\", [[-5, 5]], 1000000, 0.8, 0.9, 1000000)",
+                          "is too large");
+    expect_error_contains(interp,
+                          "particle_swarm(\"x0*x0\", [[-5, 5]], 1000000, 1000000)",
+                          "is too large");
+    expect_ok(interp, "differential_evolution(\"x0*x0\", [[-5, 5]], 20, 0.8, 0.9, 200)");
+    expect_ok(interp, "particle_swarm(\"x0*x0\", [[-5, 5]], 20, 200)");
+}
+
+TEST(ReplSuperlinearArguments, LandmarkSelectionRescansForEveryLandmark) {
+    // maxmin picks each landmark by rescanning every point against every landmark chosen
+    // so far, so the landmark count enters the product TWICE: 2000 points and 300
+    // landmarks took 2.7 s, and 600 took 9.7 s -- four times for double, which is the
+    // signature of a square and not of the linear argument it looks like.
+    Interpreter interp;
+    expect_ok(interp, "P = zeros(4000,2)");
+    expect_error_contains(interp, "topo_select_landmarks(P, 4000)", "n 4000 is too large");
+    expect_ok(interp, "Q = zeros(500,2)");
+    expect_ok(interp, "topo_select_landmarks(Q, 40)");
+}
