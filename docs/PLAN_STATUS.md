@@ -522,6 +522,33 @@ the first. `topo_pairwise_distances` had no earlier take, so a 131072-point set 
 check it should have failed by a factor of 131072. It aborted again, which is the only
 reason it was caught.
 
+**The image filters: twelve commands, and the no-assignment form is a second path.**
+Every one of them visits each pixel once per kernel cell, so the cost is the image times
+the kernel -- times its SQUARE for the morphology and median filters. Measured on a
+256x256: `medfilt2` at ksize 21 takes 1.73 s, so the `medfilt2(ones(512,512), 999)` the
+audit proposed is 2.6e11 pixel-cells, about four hours.
+
+| Command | ns per pixel-cell | Kernel enters as |
+|---|---|---|
+| `medfilt2` | 60 | its square |
+| `imdilate`, `imerode`, `imopen`, `imclose`, `imtophat`, `imbothat`, `imgradient_morph` | 20 | its square |
+| `bilateral` | 45 | its square, from `half = 2*sigma_s` |
+| `boxfilter` | 45 | its width (separable) |
+| `imgaussfilt`, `laplacian_of_gaussian` | 35 | its width, from `half = 3*sigma` |
+
+`sigma` is not a tuning knob on the cost: the kernel half-width is a multiple of it, so
+what sigma names IS the kernel, and the bound is stated on the kernel because the kernel
+is the thing that has to fit. There is also a shape argument available -- a kernel wider
+than the image is meaningless, every window being the whole image -- but it would not
+have been enough on its own: 512 x 512 x 512^2 is still four hours.
+
+And the trap that had already caught `signal_resample` and `topo_pairwise_distances`
+caught this family too, in its own way. Guarding the twelve handlers left
+`medfilt2(A, 999)` -- the same call with no `B =` in front of it -- running for four
+hours, because the no-assignment form does not go through the matrix-call registry. It
+was the TEST that found it: the suite went from 130 s to 1570 s and timed out, which is
+the same signal as an abort and nearly as loud.
+
 **One reported finding did not survive a probe.** The allocation audit recorded
 `graph_bipartite_match` aborting at its second argument. It does not:
 `graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and

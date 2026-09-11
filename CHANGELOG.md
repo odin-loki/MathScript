@@ -463,6 +463,25 @@ read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in
 so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
 unchanged.
 
+### Twelve image filters, and the no-assignment form as a second path
+
+Each visits every pixel once per kernel cell, so the cost is the image times the kernel
+-- times its square for the morphology and median filters. `medfilt2(ones(512,512), 999)`
+is 2.6e11 pixel-cells, about four hours; measured at 60 ns each on a 256x256. Bounded:
+`medfilt2`, `boxfilter`, `bilateral`, `imgaussfilt`, `laplacian_of_gaussian`, and the
+seven morphology commands.
+
+- **`sigma` is not a tuning knob on the cost.** The kernel half-width is a multiple of
+  it, so what sigma names IS the kernel, and the bound is stated on the kernel because
+  the kernel is the thing that has to fit.
+- **A kernel wider than the image is meaningless**, every window being the whole image --
+  but that shape bound alone would still leave 512 x 512 x 512^2 to do, so it is not the
+  guard.
+- **Guarding the handlers was not enough.** The no-assignment form does not go through
+  the matrix-call registry, so `medfilt2(A, 999)` -- the same call without `B =` -- still
+  ran for four hours. The TEST found it: the suite went from 130 s to 1570 s and timed
+  out, which is the same signal as an abort and nearly as loud.
+
 ### Eight more commands that ended the session
 
 Found by running the probe lines an 86-finding read-only sweep proposed, across all ten

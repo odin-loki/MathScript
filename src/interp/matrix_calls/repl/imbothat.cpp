@@ -31,6 +31,18 @@ Result<Matrix<double>> handle_imbothat(Interpreter& interp, const MatrixCallAssi
             }
             ksize = *parsed;
         }
+        // The filter visits every pixel once per kernel cell, so the cost is the image
+        // times the kernel AREA. Measured at 20 ns per pixel-cell on a 256x256:
+        // imbothat(ones(512,512), 4999) is 6.5e12 of them, about a day.
+        // A kernel wider than the image is also meaningless -- every window is then
+        // the whole image -- but that shape bound alone would still leave
+        // 512 x 512 x 512^2 to do.
+        WorkBudget budget(assign.callee, 20.0, kMaxReplSimulationWorkNanos);
+        budget.charge(matrix->rows() * matrix->cols());
+        auto kernel = budget.take_square("ksize", static_cast<double>(ksize));
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {
             return std::unexpected(gray.error());

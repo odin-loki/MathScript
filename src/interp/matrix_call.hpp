@@ -322,6 +322,28 @@ public:
         remaining_ /= (units == 0 ? 1.0 : static_cast<double>(units));
     }
 
+    /// An argument that enters the product TWICE, because what it names is square: a
+    /// `value` by `value` filter kernel visits `value^2` cells at every pixel.
+    ///
+    /// It cannot be spelled as two `take` calls. The first would compare `value` against
+    /// a budget that has not yet been charged for the second, so a kernel whose SQUARE is
+    /// past the budget passes the only check that looks at it.
+    Result<int> take_square(const char* what, double value) {
+        if (!std::isfinite(value) || value != std::floor(value) || value < 0.0) {
+            return std::unexpected(
+                DomainError{fn_, std::string("expected non-negative integer ") + what});
+        }
+        if (value * value > remaining_) {
+            return std::unexpected(DomainError{
+                fn_, std::string(what) + " " + describe_count(value) +
+                         " is too large; this command does work proportional to " + what +
+                         "^2 times the size of what it is given, and for this input it is "
+                         "bounded at " + describe_count(std::floor(std::sqrt(remaining_)))});
+        }
+        remaining_ /= (value == 0.0 ? 1.0 : value * value);
+        return static_cast<int>(value);
+    }
+
     Result<int> take(const char* what, double value) {
         if (!std::isfinite(value) || value != std::floor(value)) {
             return std::unexpected(

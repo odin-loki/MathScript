@@ -16699,7 +16699,30 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!gray) {
                 return std::unexpected(gray.error());
             }
+            // The no-assignment form does NOT go through the matrix-call registry, so
+            // the budget in the handlers does not cover it. `medfilt2(A, 999)` on a
+            // 512x512 -- with no `B =` in front of it -- was still four hours of work.
             Matrix<double> filtered_m;
+            WorkBudget budget(fn, fn == "medfilt2" ? 60.0 : 45.0,
+                              kMaxReplSimulationWorkNanos);
+            budget.charge(gray_m->rows() * gray_m->cols());
+            if (fn == "imgaussfilt") {
+                // The kernel half-width is 3*sigma, so what sigma names is the kernel.
+                if (!std::isfinite(param_d) || param_d < 0.0) {
+                    return std::unexpected(
+                        DomainError{fn, "expected a finite non-negative sigma"});
+                }
+                auto kernel = budget.take("the kernel sigma implies", 6.0 * param_d + 1.0);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            } else {
+                auto kernel = fn == "medfilt2" ? budget.take_square("ksize", param_d)
+                                               : budget.take("ksize", param_d);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            }
             if (fn == "boxfilter") {
                 auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
                 if (!ksize_checked) {
@@ -22008,7 +22031,30 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             if (!gray) {
                 return std::unexpected(gray.error());
             }
+            // The no-assignment form does NOT go through the matrix-call registry, so
+            // the budget in the handlers does not cover it. `medfilt2(A, 999)` on a
+            // 512x512 -- with no `B =` in front of it -- was still four hours of work.
             Matrix<double> filtered_m;
+            WorkBudget budget(fn, fn == "medfilt2" ? 60.0 : 45.0,
+                              kMaxReplSimulationWorkNanos);
+            budget.charge(gray_m->rows() * gray_m->cols());
+            if (fn == "imgaussfilt") {
+                // The kernel half-width is 3*sigma, so what sigma names is the kernel.
+                if (!std::isfinite(param_d) || param_d < 0.0) {
+                    return std::unexpected(
+                        DomainError{fn, "expected a finite non-negative sigma"});
+                }
+                auto kernel = budget.take("the kernel sigma implies", 6.0 * param_d + 1.0);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            } else {
+                auto kernel = fn == "medfilt2" ? budget.take_square("ksize", param_d)
+                                               : budget.take("ksize", param_d);
+                if (!kernel) {
+                    return std::unexpected(kernel.error());
+                }
+            }
             if (fn == "boxfilter") {
                 auto ksize_checked = checked_int_argument(fn, "ksize", param_d);
                 if (!ksize_checked) {

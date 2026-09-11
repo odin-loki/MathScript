@@ -35,6 +35,22 @@ Result<Matrix<double>> handle_laplacian_of_gaussian(Interpreter& interp, const M
         if (!sigma) {
             return std::unexpected(sigma.error());
         }
+        // `sigma` is not a tuning knob on the cost: the kernel half-width is 3*sigma,
+        // so what sigma really names is the kernel width, and the filter is separable, so the cost is the image times the width.
+        // Measured at 35 ns per pixel-cell on a 256x256; laplacian_of_gaussian(ones(512,512), 100000)
+        // is past anything that finishes. The bound is stated on the KERNEL rather than
+        // on sigma, because the kernel is the thing that has to fit.
+        if (!std::isfinite(*sigma) || *sigma < 0.0) {
+            return std::unexpected(
+                DomainError{"laplacian_of_gaussian", "expected a finite non-negative sigma"});
+        }
+        const double kernel_width = 6 * *sigma + 1.0;
+        WorkBudget budget(assign.callee, 35.0, kMaxReplSimulationWorkNanos);
+        budget.charge(matrix->rows() * matrix->cols());
+        auto kernel = budget.take("the kernel sigma implies", kernel_width);
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
         result = gray_image_to_matrix(
             image::laplacian_of_gaussian(*gray, static_cast<float>(*sigma)));
     }

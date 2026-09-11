@@ -301,6 +301,10 @@
         },
         {
           "fn": "bilateral",
+          "message": "expected a finite non-negative sigma"
+        },
+        {
+          "fn": "bilateral",
           "message": "expected bilateral(M, sigma_s, sigma_r)"
         }
       ]
@@ -336,7 +340,15 @@
         },
         {
           "fn": "boxfilter",
+          "message": "expected an integer ksize"
+        },
+        {
+          "fn": "boxfilter",
           "message": "expected boxfilter(M[, ksize])"
+        },
+        {
+          "fn": "boxfilter",
+          "message": "expected non-negative integer ksize"
         },
         {
           "fn": "boxfilter",
@@ -6959,7 +6971,19 @@
         },
         {
           "fn": "imgaussfilt",
+          "message": "expected a finite non-negative sigma"
+        },
+        {
+          "fn": "imgaussfilt",
+          "message": "expected an integer the kernel sigma implies"
+        },
+        {
+          "fn": "imgaussfilt",
           "message": "expected imgaussfilt(M, sigma)"
+        },
+        {
+          "fn": "imgaussfilt",
+          "message": "expected non-negative integer the kernel sigma implies"
         },
         {
           "fn": "imgaussfilt",
@@ -7700,6 +7724,18 @@
         {
           "fn": "assign",
           "message": "unsupported matrix call"
+        },
+        {
+          "fn": "laplacian_of_gaussian",
+          "message": "expected a finite non-negative sigma"
+        },
+        {
+          "fn": "laplacian_of_gaussian",
+          "message": "expected an integer the kernel sigma implies"
+        },
+        {
+          "fn": "laplacian_of_gaussian",
+          "message": "expected non-negative integer the kernel sigma implies"
         },
         {
           "fn": "laplacian_of_gaussian",

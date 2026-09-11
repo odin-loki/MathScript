@@ -35,6 +35,17 @@ Result<Matrix<double>> handle_boxfilter(Interpreter& interp, const MatrixCallAss
             }
             ksize = static_cast<int>(ksize_d);
         }
+        // The filter visits every pixel once per kernel cell, so the cost is the image
+        // times the kernel. Measured at 45 ns per pixel-cell on a 256x256; the audit's
+        // probe asks for boxfilter(ones(512,512), 999999), which is three hours. A kernel wider than the image is also
+        // meaningless -- every window is then the whole image -- but that shape bound
+        // alone would still leave 512 x 512 x 512^2 to do.
+        WorkBudget budget(assign.callee, 45.0, kMaxReplSimulationWorkNanos);
+        budget.charge(matrix->rows() * matrix->cols());
+        auto kernel = budget.take("ksize", static_cast<double>(ksize));
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {
             return std::unexpected(gray.error());

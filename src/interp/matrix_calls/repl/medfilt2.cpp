@@ -38,6 +38,17 @@ Result<Matrix<double>> handle_medfilt2(Interpreter& interp, const MatrixCallAssi
             }
             ksize = static_cast<int>(ksize_d);
         }
+        // The filter visits every pixel once per kernel cell, so the cost is the image
+        // times the kernel. Measured at 6 ns per pixel-cell on a 256x256; the audit's
+        // probe asks for medfilt2(ones(512,512), 999), which is four hours. A kernel wider than the image is also
+        // meaningless -- every window is then the whole image -- but that shape bound
+        // alone would still leave 512 x 512 x 512^2 to do.
+        WorkBudget budget(assign.callee, 60.0, kMaxReplSimulationWorkNanos);
+        budget.charge(matrix->rows() * matrix->cols());
+        auto kernel = budget.take_square("ksize", static_cast<double>(ksize));
+        if (!kernel) {
+            return std::unexpected(kernel.error());
+        }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {
             return std::unexpected(gray.error());

@@ -154,3 +154,36 @@ TEST(ReplSuperlinearArguments, AFactorisationRankIsBoundedByCostAndNotOnlyByShap
     expect_contains(interp, "tensorops_decompose_tucker(tk_ok,S,[4,4],10000000,1e-30)",
                     "created TuckerDecomposition");
 }
+
+TEST(ReplSuperlinearArguments, AnImageFilterIsBoundedOnItsKernelTimesTheImage) {
+    // Every one of these visits each pixel once per kernel cell, so the cost is the
+    // image times the kernel -- and for the morphology and median filters, times its
+    // SQUARE. Measured on a 256x256: medfilt2 at ksize 21 takes 1.73 s, so the
+    // medfilt2(ones(512,512), 999) the audit proposed is 2.6e11 pixel-cells, about four
+    // hours. None of them was reachable by the oversized-argument sweep, whose values
+    // the argument guard rejects before any of this.
+    Interpreter interp;
+    expect_ok(interp, "A = ones(512,512)");
+    for (const auto* call : {"medfilt2(A, 999)", "boxfilter(A, 999999)",
+                             "imdilate(A, 4999)", "imerode(A, 4999)", "imopen(A, 4999)",
+                             "imclose(A, 4999)", "imtophat(A, 4999)", "imbothat(A, 4999)",
+                             "imgradient_morph(A, 4999)"}) {
+        expect_error_contains(interp, call, "is too large");
+    }
+    // sigma is not a tuning knob on the cost: the kernel half-width is a multiple of it,
+    // so what sigma names is the kernel. The bound is stated on the kernel, because the
+    // kernel is the thing that has to fit.
+    for (const auto* call : {"imgaussfilt(A, 100000)", "laplacian_of_gaussian(A, 100000)",
+                             "bilateral(A, 1000, 1)"}) {
+        expect_error_contains(interp, call, "the kernel sigma implies");
+    }
+    // And every one of them still filters at a width anyone would use.
+    expect_ok(interp, "S = ones(64,64)");
+    expect_ok(interp, "medfilt2(S, 5)");
+    expect_ok(interp, "boxfilter(S, 5)");
+    expect_ok(interp, "imdilate(S, 3)");
+    expect_ok(interp, "imopen(S, 3)");
+    expect_ok(interp, "imgaussfilt(S, 2)");
+    expect_ok(interp, "laplacian_of_gaussian(S, 2)");
+    expect_ok(interp, "bilateral(S, 3, 1)");
+}
