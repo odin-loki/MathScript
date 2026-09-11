@@ -999,14 +999,22 @@ TEST(CompressHuffman, EmptyEncodeDecode) {
     EXPECT_TRUE(huffman_decode(hr, 0).empty());
 }
 
+// This test used to skip itself whenever the thing it checks was wrong:
+//
+//     if (!dec.empty()) GTEST_SKIP() << "huffman_decode orig_size=0 still emits symbols";
+//
+// which is a test that cannot fail, and so asserts nothing. It was right about the
+// behaviour -- the length check sat after the push, so a decoder asked for zero symbols
+// returned one -- and the fix belonged in the decoder.
 TEST(CompressHuffman, DecodeZeroOrigSize) {
     Bytes data = {'a', 'b'};
     auto hr = huffman_encode(data);
-    auto dec = huffman_decode(hr, 0);
-    if (!dec.empty()) {
-        GTEST_SKIP() << "huffman_decode orig_size=0 still emits symbols";
-    }
-    EXPECT_TRUE(dec.empty());
+    EXPECT_TRUE(huffman_decode(hr, 0).empty());
+    // And the boundary either side of it, so the fix is pinned as a shift of the check
+    // rather than as a special case for zero.
+    EXPECT_EQ(huffman_decode(hr, 1).size(), 1u);
+    EXPECT_EQ(huffman_decode(hr, 2), data);
+    EXPECT_EQ(huffman_decode(hr, 99), data) << "asking for more than there is";
 }
 
 TEST(CompressLZ77, EmptyEncodeDecode) {

@@ -99,10 +99,15 @@ Bytes huffman_decode(const HuffmanResult& hr, size_t orig_size) {
     std::string cur;
     cur.reserve(256);
     for (char b:bits) {
+        // Checked before the symbol rather than after it. Everywhere else the two are
+        // the same -- both stop with exactly `orig_size` symbols and differ only in how
+        // many trailing bits go unread -- but at zero they are not: checking afterwards
+        // pushed one symbol before noticing that none had been asked for, so a decoder
+        // handed a length of 0 returned a byte.
+        if (out.size()>=orig_size) break;
         cur+=b;
         auto it=decode_map.find(cur);
         if (it!=decode_map.end()){out.push_back(it->second);cur="";}
-        if (out.size()>=orig_size) break;
     }
     return out;
 }
@@ -590,13 +595,13 @@ BWTResult bwt(const Bytes& data) {
     Bytes L(m);
     int primary = -1;
     for (int i = 0; i < m; i++) {
-        int last = (idx[i] + m - 1) % m;
-        uint16_t cv = ch(idx[i], m - 1);  // last character of sorted rotation i
-        // ch(idx[i], m-1) == ch at position (idx[i]+m-1)%m = (idx[i]-1+m)%m
-        // Recompute via direct access
+        // The last character of sorted rotation i, which `ch(idx[i], m - 1)` also gives
+        // -- it is the same position, (idx[i] + m - 1) % m. Reading `data` directly is
+        // the one that says so; the two lines that computed it the other way and threw
+        // the answer away, one of them silenced with a cast to void, said only that
+        // somebody had checked they agree.
         int lpos = (idx[i] + m - 1) % m;
         L[i] = (lpos == n) ? (uint8_t)0 : data[lpos];
-        (void)cv;
         if (idx[i] == 0) primary = i;
     }
     return {L, primary};
