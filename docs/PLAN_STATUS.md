@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; ten files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eleven files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1%, lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -971,6 +971,69 @@ re-scored -- the site list is derived from the file and the file changed -- so 6
 95.5% are two measurements, not a ratchet. What is firmer than either: every survivor of
 the first run is now either killed by a named test, deleted as uncalled, or classified by
 an instrumented measurement.
+
+Eleventh file: `src/linalg/decompositions.cpp`, 24 mutants at seed 41 against the eight
+suites that cover it. **12 of 24 viable killed, 50.0%**, and not one mutant failed to
+compile -- the lowest score of the eleven with the cleanest sample. The reason is visible
+without reading a single survivor. Here are the unit tests for the four decompositions in
+that file, in full:
+
+| Test | What it asserts |
+|---|---|
+| `schur_factorization` | `T.rows() == 3` and `Q.cols() == 3` |
+| `bidiagonal_reduction` | `B.rows() == 3` and `B.cols() == 2` |
+| `hessenberg_form` | `H.rows() == 3`, and `H(2, 0)` is about zero |
+| `ldl_3x3` | `L.rows() == 3` |
+
+**An implementation that returned the right-sized matrices of zeros passes all four.**
+The numerical reference suite is better -- `SchurDecomp.T_Is_Upper_Triangular_Or_Quasi`
+asserts `A = Q T Q**T` and `Q**T Q = I` -- but for exactly one 3x3 SYMMETRIC matrix,
+whose eigenvalues are all real. The Francis double shift exists for the case that matrix
+does not have: a complex conjugate pair, which leaves a real 2x2 block on T's diagonal
+and is the entire reason the shift is a quadratic in H rather than a scalar.
+
+`tests/unit/linalg/test_linalg_decomp_properties.cpp` asserts the defining identity of
+each, on inputs that reach those paths -- rotation blocks with purely complex spectra, a
+companion matrix of `(x^2+1)(x^2+4)(x-3)` whose T must carry two 2x2 blocks and one 1x1,
+repeated eigenvalues, already-triangular, identity and zero, over sizes to 12. `hess`
+returns H alone, with no Q to check it against, so similarity is asserted through the
+power sums tr(A), tr(A^2), tr(A^3), which determine the characteristic polynomial: a
+reduction that zeroed the lower triangle and stopped passes the zero-pattern check and
+fails every one of those.
+
+**Everything passed on the first run.** Unlike the SVD, this file was right; what was
+missing was anything saying so. The score went **50.0% -> 62.5%**, and this one IS a
+before-and-after rather than two samples: the source did not change, so seed 41 selects
+the same twenty-four mutants and they are re-scored, not re-drawn.
+
+Two of the kills came from a distinction reconstruction cannot make, and they are the
+useful half of the exercise. LDL's threshold rule is "keep the natural pivot unless it
+has lost roughly half the available precision relative to the best remaining diagonal",
+and **a factorisation of the permuted matrix is still a factorisation**, so `P**T A P =
+L D L**T` holds whether the interchange fires or not. Both halves of the rule need
+asserting directly, and each needs its own matrix:
+
+- `{{1e-14, 1, 0}, {1, 4, 1}, {0, 1, 3}}` -- the natural pivot is unusable, so the
+  interchange MUST fire. Kills `best_i != j` becoming `best_i == j`, which turns every
+  swap into a swap with itself.
+- `{{1, 0, 0}, {0, 9, 0}, {0, 0, 5}}` -- the natural pivot is nine times smaller than
+  the best and perfectly healthy, so it must NOT. Kills `&&` becoming `||`. A diagonally
+  dominant matrix cannot: there the best pivot already IS the natural one, so the second
+  half of the condition never differs and both readings agree.
+
+The nine remaining survivors are classified, each by a measurement rather than by the
+argument for it:
+
+| Survivor | Why nothing can see it |
+|---|---|
+| `:167` the double-shift polynomial | The shift is a convergence accelerator, not a correctness input: the sweep is built from Householder reflectors, so H stays orthogonally similar to A whatever shift is chosen, and a wrong shift converges more slowly to an equally correct answer. Measured: the property test -- A = Q T Q**T and Q**T Q = I over twenty-odd matrices including purely complex spectra -- passes under the mutant. |
+| `:214` the per-sweep round-off cleanup | `schur_iterate` repeats the same cleanup over the whole matrix once the iteration finishes, so the output's zero pattern is identical either way and only intermediate round-off differs -- below any tolerance an assertion on the answer can use. |
+| `:278` `schur_iterate`'s sweep count | `real_schur` is its only caller and reads only whether it succeeded. The number is never observed by anything. |
+| `:284` the sweep budget, `:324` the ConvergenceFail payload | Instrumented across all eight suites: the worst case uses **20 sweeps of 260, 7.7% of the budget** (n = 4). The failure branch is never reached by any input in the tree, and the mutation reduces the budget by 100, which nothing comes close to. |
+| `:183` `if (vtv > 0.0)` | `v[0] = x + sign*sqrt(x^2 + tail_sq)` with `sign` matching `x`, so `|v[0]| >= sqrt(tail_sq) > 0` whenever the enclosing `tail_sq != 0.0` holds. The guard is never false. Instrumented: not once, across every call in the eight suites. |
+| `:396` LDL's `amax` scan | It sets `zero_tol = amax * n * eps`. Skipping row 0 changes that tolerance only if row 0 held the largest entry, and the change is only observable for a pivot lying between the two tolerances -- within about 1e-15 relative. Killing it would test the tolerance rather than the code. |
+| `:433` `D(t, 0)` becoming `D(t, 1)` | D is n x 1, so that is a read one past the end. The harness rebuilds without sanitizers, and **mutation testing under a plain build is blind to memory errors** -- already recorded as a limitation of the method. The new tests do reach that branch with a non-trivial correction (`{{1,1,1},{1,1,3},{1,3,1}}`, whose first column eliminates to `L(1,0) = L(2,0) = 1`), which the pre-existing inputs did not: in all of them the L entries multiplying it were zero, so the subtraction was a no-op whatever it subtracted. |
+
 
 ### What the corpus found on its first run
 

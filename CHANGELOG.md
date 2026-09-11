@@ -792,6 +792,47 @@ V-related bug would fix it there and see no change. The one path where the accum
 now pinned by the property that survives the missing U: **V**T diagonalises B**T B, with
 the squared singular values on the diagonal.**
 
+### §8.4 — four decompositions whose tests asserted only their shapes
+
+`src/linalg/decompositions.cpp` scored **50.0%** over viable mutants with not one mutant
+failing to compile — the lowest score of the eleven files measured, on the cleanest
+sample. The unit tests for the four decompositions in it assert, in full: `T.rows() == 3`
+and `Q.cols() == 3` for Schur; `B.rows() == 3` and `B.cols() == 2` for the bidiagonal
+reduction; `H.rows() == 3` with `H(2, 0)` about zero for Hessenberg; and `L.rows() == 3`
+for LDL. **An implementation that returned the right-sized matrices of zeros passes all
+four.** The numerical reference suite does assert `A = Q T Q**T` with `Q**T Q = I`, but
+for one 3x3 symmetric matrix, whose eigenvalues are all real — and the Francis double
+shift exists for the case that matrix does not have.
+
+`test_linalg_decomp_properties.cpp` asserts the defining identity of each on inputs that
+reach those paths: rotation blocks with purely complex spectra, a companion matrix of
+`(x^2+1)(x^2+4)(x-3)` whose Schur form must carry two 2x2 blocks and one 1x1, repeated
+eigenvalues, and sizes to 12. `hess` returns H alone, with no Q to check it against, so
+similarity is asserted through the power sums tr(A), tr(A^2), tr(A^3) — a reduction that
+zeroed the lower triangle and stopped passes the zero-pattern check and fails every one
+of those. Everything passed: unlike the SVD, this file was right, and what was missing
+was anything saying so. **50.0% -> 62.5%**, a genuine before-and-after since the source
+did not change and seed 41 re-scores the same twenty-four mutants.
+
+The useful half was a distinction reconstruction cannot make. LDL keeps the natural pivot
+unless it has lost roughly half the available precision relative to the best remaining
+diagonal, and a factorisation of the permuted matrix is still a factorisation, so
+`P**T A P = L D L**T` holds whether the interchange fires or not. Each half of the rule
+needs its own matrix: `{{1e-14, 1, 0}, {1, 4, 1}, {0, 1, 3}}`, where the pivot is
+unusable and the interchange must fire, and `{{1, 0, 0}, {0, 9, 0}, {0, 0, 5}}`, where it
+is nine times smaller than the best and perfectly healthy so it must not. A diagonally
+dominant matrix cannot tell the second from a rule that permutes whenever a larger
+diagonal exists anywhere, because there the best pivot already is the natural one.
+
+The nine remaining survivors are classified, each by measurement: the double-shift
+polynomial is a convergence accelerator rather than a correctness input (the sweep is
+built from Householder reflectors, so the answer stays orthogonally similar to A whatever
+shift is chosen); the per-sweep round-off cleanup is repeated over the whole matrix when
+the iteration finishes; `schur_iterate`'s sweep count is read by nothing; the iteration
+uses at most **20 sweeps of 260, 7.7% of its budget**, so the non-convergence branch is
+unreachable from any input in the tree; and `if (vtv > 0.0)` is never false, not once
+across every call in the eight suites, because the enclosing condition already forces it.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under
