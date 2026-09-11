@@ -36,14 +36,16 @@ Result<Matrix<double>> handle_cfd_advection2d(Interpreter& interp, const MatrixC
         if (!dt_val) {
             return std::unexpected(dt_val.error());
         }
-        const int nx_i = static_cast<int>(*nx_val);
-        const int ny_i = static_cast<int>(*ny_val);
-        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+        ExtentBudget budget("cfd_advection2d");
+        auto nx = budget.take("nx", *nx_val);
+        if (!nx) {
+            return std::unexpected(nx.error());
         }
-        result = eval_cfd_advection2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                      *vx_val, *vy_val, *t_end_val, *dt_val);
+        auto ny = budget.take("ny", *ny_val);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        result = eval_cfd_advection2d(*nx, *ny, *vx_val, *vy_val, *t_end_val, *dt_val);
     }
 
     return result;

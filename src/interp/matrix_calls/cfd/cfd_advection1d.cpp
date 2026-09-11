@@ -28,13 +28,12 @@ Result<Matrix<double>> handle_cfd_advection1d(Interpreter& interp, const MatrixC
         if (!dt_val) {
             return std::unexpected(dt_val.error());
         }
-        const int nx_i = static_cast<int>(*nx_val);
-        if (nx_i < 0 || *nx_val != nx_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection1d", "expected non-negative integer nx"});
+        ExtentBudget budget("cfd_advection1d");
+        auto nx = budget.take("nx", *nx_val);
+        if (!nx) {
+            return std::unexpected(nx.error());
         }
-        result = eval_cfd_advection1d(static_cast<std::size_t>(nx_i), *vx_val, *t_end_val,
-                                      *dt_val);
+        result = eval_cfd_advection1d(*nx, *vx_val, *t_end_val, *dt_val);
     }
 
     return result;

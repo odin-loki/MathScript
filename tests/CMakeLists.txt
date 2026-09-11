@@ -48,6 +48,7 @@ add_executable(test_repl_commands
     unit/repl/test_repl_commands_prob.cpp
     unit/repl/test_repl_commands_quantum.cpp
     unit/repl/test_repl_commands_signal.cpp
+    unit/repl/test_repl_commands_size_arguments.cpp
     unit/repl/test_repl_commands_special.cpp
     unit/repl/test_repl_commands_stats.cpp
     unit/repl/test_repl_commands_tensorops.cpp

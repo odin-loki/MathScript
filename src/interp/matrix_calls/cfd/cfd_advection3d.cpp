@@ -27,15 +27,20 @@ Result<Matrix<double>> handle_cfd_advection3d(Interpreter& /*interp*/, const Mat
                 "cfd_advection3d",
                 "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
         }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+        ExtentBudget budget("cfd_advection3d");
+        auto nx = budget.take("nx", nx_d);
+        if (!nx) {
+            return std::unexpected(nx.error());
         }
-        result = eval_cfd_advection3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                        static_cast<std::size_t>(nz_i), vx, vy, vz, t_end, dt);
+        auto ny = budget.take("ny", ny_d);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        auto nz = budget.take("nz", nz_d);
+        if (!nz) {
+            return std::unexpected(nz.error());
+        }
+        result = eval_cfd_advection3d(*nx, *ny, *nz, vx, vy, vz, t_end, dt);
     }
 
     return result;

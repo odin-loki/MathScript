@@ -3314,7 +3314,7 @@ TEST(ReplCommandsTest, cfd_advection2d_noassign) {
     Interpreter interp;
     expect_contains(interp, "cfd_advection2d(8, 8, 1, 0, 0.1, 0.01)", "u =");
     expect_error_contains(interp, "cfd_advection2d(1.5, 8, 1, 0, 0.1, 0.01)",
-                          "non-negative integer nx and ny");
+                          "non-negative integer nx");
 }
 
 TEST(ReplCommandsTest, cfd_advection1d_senary_noassign) {

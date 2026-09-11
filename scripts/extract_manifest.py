@@ -23,7 +23,8 @@ What is extracted, per handler:
     resolves_first  arg[0] goes through ctx.resolve_operand, so an undefined name
                     must surface as an error rather than a crash
     helpers         which MatrixCallCtx helpers the body uses
-    domain_errors   every DomainError reachable in the file
+    domain_errors   every DomainError reachable in the file, including the ones
+                    `ExtentBudget::take` raises on the handler's behalf
 
 The guard is read, not assumed. A handler whose top-level condition mentions
 anything other than the callee and the argument count is an anomaly by
@@ -179,6 +180,26 @@ def solve_arities(cond: str, callee: str, rejects: bool) -> tuple[list[int], boo
     return accepted, MAX_ARITY in accepted
 
 
+
+# `ExtentBudget::take` (src/interp/matrix_call.hpp) rejects a size argument on the
+# handler's behalf, so the DomainError it raises is reachable in the handler and is
+# not a literal anywhere in the handler's file. Deriving it keeps `domain_errors`
+# meaning what its name says.
+#
+# Only the integrality message is derived. The other one -- "<what> <n> is too large;
+# the result is limited to N elements" -- interpolates the value the user passed, so
+# there is no fixed string to record, and recording a prefix would put something in
+# this field that does not match what the handler prints.
+_BUDGET_DECL = re.compile(r'ExtentBudget\s+(\w+)\s*\(\s*"([^"]*)"\s*\)')
+
+def extent_budget_errors(body: str) -> set[tuple[str, str]]:
+    out: set[tuple[str, str]] = set()
+    for decl in _BUDGET_DECL.finditer(body):
+        var, fn = decl.group(1), decl.group(2)
+        for take in re.finditer(rf'\b{re.escape(var)}\.take\(\s*"([^"]*)"', body):
+            out.add((fn, f"expected non-negative integer {take.group(1)}"))
+    return out
+
 def parse_handler(path: pathlib.Path) -> dict:
     text = strip_comments(path.read_text(encoding="utf-8", errors="replace"))
 
@@ -218,7 +239,7 @@ def parse_handler(path: pathlib.Path) -> dict:
     errors = sorted({
         (m.group(1), m.group(2))
         for m in re.finditer(r'DomainError\s*\{\s*"([^"]*)"\s*,\s*"((?:[^"\\]|\\.)*)"', body)
-    })
+    } | extent_budget_errors(body))
 
     return {
         "file": path.relative_to(ROOT).as_posix(),

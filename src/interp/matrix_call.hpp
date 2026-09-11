@@ -5,6 +5,7 @@
 #include "ms/interp/repl_engine.hpp"
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <string>
 #include <string_view>
 
@@ -39,6 +40,73 @@ inline bool repl_dims_allowed(double m_d, double n_d, std::size_t& rows, std::si
     cols = static_cast<std::size_t>(n_d);
     return repl_elems_allowed(rows, cols);
 }
+
+/// An exact non-negative integral double, written the way a count is written.
+/// `format_scalar` would render 100000000 as "100000000.000000", which is not how the
+/// user typed it and not how a count reads.
+inline std::string describe_count(double value) {
+    if (value < 18446744073709551616.0) {  // 2^64, exact as a double
+        return std::to_string(static_cast<unsigned long long>(value));
+    }
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%.17g", value);
+    return buffer;
+}
+
+/// Reads one size-like REPL argument -- a count, an order, a grid extent -- and charges
+/// it against a budget of elements.
+///
+/// Three things go wrong with such an argument before any work starts, and the idiom
+/// this replaces caught none of them:
+///
+///     const int n_i = static_cast<int>(n_d);
+///     if (n_i < 0 || n_d != n_i) { ... }
+///
+///   - **The cast IS the check.** `static_cast<int>` of a double outside `int`'s range
+///     is undefined behaviour, not a wrap, so by the time the guard reads `n_i` the
+///     program has already left the standard behind. The range has to be decided on the
+///     double.
+///   - **A count that fits is not a count that is affordable.** `fem_poisson1d(1e8)` is
+///     a perfectly good `int` and asks for 800 MB.
+///   - **A cap on each extent alone is not a cap on the allocation.** `impad(A, 1e6)`
+///     passes any per-dimension bound and then asks for four trillion elements, because
+///     what gets allocated is the PRODUCT. So extents are multiplied as they are read.
+///
+/// The budget is `kMaxReplMatrixElems`, which is not a new number: it is the limit the
+/// REPL already enforces on any matrix it stores. All this moves is *when* -- from after
+/// the allocation, where the answer is a diagnostic about a matrix that has already been
+/// built, to before it, where it is a diagnostic about the argument that asked for it.
+///
+/// It has to be before, because the library is built with `-fno-exceptions`: a
+/// `std::bad_alloc` out of `std::vector` reaches `std::terminate` and the process is
+/// gone without printing anything. There is no catching it afterwards.
+class ExtentBudget {
+public:
+    explicit ExtentBudget(const char* fn) : fn_(fn) {}
+
+    /// `what` names the argument the way the handler's own signature does, so that the
+    /// message points at something the user can see in what they typed.
+    Result<std::size_t> take(const char* what, double value) {
+        if (!std::isfinite(value) || value != std::floor(value) || value < 0.0) {
+            return std::unexpected(
+                DomainError{fn_, std::string("expected non-negative integer ") + what});
+        }
+        if (value > static_cast<double>(remaining_)) {
+            return std::unexpected(DomainError{
+                fn_, std::string(what) + " " + describe_count(value) +
+                         " is too large; the result is limited to " +
+                         std::to_string(kMaxReplMatrixElems) + " elements"});
+        }
+        const auto taken = static_cast<std::size_t>(value);
+        // A zero extent buys an empty result and costs nothing, so it must not divide.
+        remaining_ /= (taken == 0 ? 1 : taken);
+        return taken;
+    }
+
+private:
+    const char* fn_;
+    std::size_t remaining_ = kMaxReplMatrixElems;
+};
 
 struct MatrixCallCtx {
     Interpreter& interp;

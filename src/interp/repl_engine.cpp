@@ -13927,14 +13927,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cfd_advection2d",
                     "expected cfd_advection2d(nx, ny, vx, vy, t_end, dt)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-                return std::unexpected(
-                    DomainError{"cfd_advection2d", "expected non-negative integer nx and ny"});
+            ExtentBudget budget("cfd_advection2d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_cfd_advection2d(static_cast<std::size_t>(nx_i),
-                                              static_cast<std::size_t>(ny_i), vx, vy, t_end, dt);
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto value = eval_cfd_advection2d(*nx, *ny, vx, vy, t_end, dt);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -13964,17 +13966,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                     "cfd_advection3d",
                     "expected cfd_advection3d(nx, ny, nz, vx, vy, vz, t_end, dt)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"cfd_advection3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("cfd_advection3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_cfd_advection3d(static_cast<std::size_t>(nx_i),
-                                              static_cast<std::size_t>(ny_i),
-                                              static_cast<std::size_t>(nz_i), vx, vy, vz, t_end,
-                                              dt);
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            auto value = eval_cfd_advection3d(*nx, *ny, *nz, vx, vy, vz, t_end, dt);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -13993,16 +13998,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("fem_poisson3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i),
-                                            static_cast<std::size_t>(nz_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -15555,16 +15564,20 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            const int nz_i = static_cast<int>(nz_d);
-            if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+            ExtentBudget budget("fem_poisson3d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson3d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i),
-                                            static_cast<std::size_t>(nz_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto nz = budget.take("nz", nz_d);
+            if (!nz) {
+                return std::unexpected(nz.error());
+            }
+            auto value = eval_fem_poisson3d(*nx, *ny, *nz);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -19361,12 +19374,12 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson1d", "expected fem_poisson1d(n)"});
             }
-            const int n_i = static_cast<int>(n_d);
-            if (n_i < 0 || n_d != n_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson1d", "expected non-negative integer n"});
+            ExtentBudget budget("fem_poisson1d");
+            auto n = budget.take("n", n_d);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            auto value = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
+            auto value = eval_fem_poisson1d(*n);
             if (!value) {
                 return std::unexpected(value.error());
             }
@@ -19383,14 +19396,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(
                     DomainError{"fem_poisson2d", "expected fem_poisson2d(nx, ny)"});
             }
-            const int nx_i = static_cast<int>(nx_d);
-            const int ny_i = static_cast<int>(ny_d);
-            if (nx_i < 0 || ny_i < 0 || nx_d != nx_i || ny_d != ny_i) {
-                return std::unexpected(
-                    DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+            ExtentBudget budget("fem_poisson2d");
+            auto nx = budget.take("nx", nx_d);
+            if (!nx) {
+                return std::unexpected(nx.error());
             }
-            auto value = eval_fem_poisson2d(static_cast<std::size_t>(nx_i),
-                                            static_cast<std::size_t>(ny_i));
+            auto ny = budget.take("ny", ny_d);
+            if (!ny) {
+                return std::unexpected(ny.error());
+            }
+            auto value = eval_fem_poisson2d(*nx, *ny);
             if (!value) {
                 return std::unexpected(value.error());
             }

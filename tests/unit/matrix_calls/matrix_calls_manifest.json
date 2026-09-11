@@ -723,7 +723,11 @@
         },
         {
           "fn": "cfd_advection2d",
-          "message": "expected non-negative integer nx and ny"
+          "message": "expected non-negative integer nx"
+        },
+        {
+          "fn": "cfd_advection2d",
+          "message": "expected non-negative integer ny"
         }
       ]
     },
@@ -758,7 +762,15 @@
         },
         {
           "fn": "cfd_advection3d",
-          "message": "expected non-negative integer nx, ny, and nz"
+          "message": "expected non-negative integer nx"
+        },
+        {
+          "fn": "cfd_advection3d",
+          "message": "expected non-negative integer ny"
+        },
+        {
+          "fn": "cfd_advection3d",
+          "message": "expected non-negative integer nz"
         }
       ]
     },
@@ -3710,7 +3722,11 @@
         },
         {
           "fn": "fem_poisson2d",
-          "message": "expected non-negative integer nx and ny"
+          "message": "expected non-negative integer nx"
+        },
+        {
+          "fn": "fem_poisson2d",
+          "message": "expected non-negative integer ny"
         }
       ]
     },
@@ -3745,7 +3761,15 @@
         },
         {
           "fn": "fem_poisson3d",
-          "message": "expected non-negative integer nx, ny, and nz"
+          "message": "expected non-negative integer nx"
+        },
+        {
+          "fn": "fem_poisson3d",
+          "message": "expected non-negative integer ny"
+        },
+        {
+          "fn": "fem_poisson3d",
+          "message": "expected non-negative integer nz"
         }
       ]
     },
@@ -6441,6 +6465,14 @@
         {
           "fn": "hough_lines",
           "message": "expected integer n_theta, n_rho, vote"
+        },
+        {
+          "fn": "hough_lines",
+          "message": "expected non-negative integer n_rho"
+        },
+        {
+          "fn": "hough_lines",
+          "message": "expected non-negative integer n_theta"
         }
       ]
     },
@@ -7111,6 +7143,14 @@
         {
           "fn": "imresize",
           "message": "expected imresize(M, rows, cols)"
+        },
+        {
+          "fn": "imresize",
+          "message": "expected non-negative integer cols"
+        },
+        {
+          "fn": "imresize",
+          "message": "expected non-negative integer rows"
         }
       ]
     },

@@ -21,9 +21,18 @@ Result<Matrix<double>> handle_impad(Interpreter& interp, const MatrixCallAssign&
         if (!parse_number(assign.args[1], pad_d)) {
             return std::unexpected(DomainError{"impad", "expected impad(M, pad[, val])"});
         }
-        const int pad = static_cast<int>(pad_d);
-        if (pad < 0 || pad_d != pad) {
-            return std::unexpected(DomainError{"impad", "expected non-negative integer pad"});
+        ExtentBudget budget("impad");
+        auto pad_extent = budget.take("pad", pad_d);
+        if (!pad_extent) {
+            return std::unexpected(pad_extent.error());
+        }
+        const std::size_t pad = *pad_extent;
+        // A bound on `pad` alone is not a bound on what gets allocated. The result is
+        // the source grown by `pad` on all FOUR sides, so the element count goes as the
+        // square: `impad(A, 1000000)` is a padding well inside any per-extent cap and
+        // four trillion elements of result, and the allocation ended the process.
+        if (!repl_elems_allowed(matrix->rows() + 2 * pad, matrix->cols() + 2 * pad)) {
+            return std::unexpected(DomainError{"impad", kReplMatrixTooLarge});
         }
         double val_d = 0.0;
         if (assign.args.size() == 3 && !parse_number(assign.args[2], val_d)) {
@@ -34,7 +43,7 @@ Result<Matrix<double>> handle_impad(Interpreter& interp, const MatrixCallAssign&
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(
-            image::impad(*gray, pad, static_cast<float>(val_d)));
+            image::impad(*gray, static_cast<int>(pad), static_cast<float>(val_d)));
     }
 
     return result;

@@ -21,12 +21,26 @@ Result<Matrix<double>> handle_imresize(Interpreter& interp, const MatrixCallAssi
         if (!parse_number(assign.args[1], rows_d) || !parse_number(assign.args[2], cols_d)) {
             return std::unexpected(DomainError{"imresize", "expected imresize(M, rows, cols)"});
         }
+        // Both extents at once, so that the cap is on the product: 100000 rows is not a
+        // large number and 100000 columns is not either, and together they are ten
+        // billion elements. Neither was checked for integrality or for range before --
+        // `static_cast<int>` of a double outside int's range is undefined behaviour, not
+        // a wrap, so the check has to happen on the double.
+        ExtentBudget budget("imresize");
+        auto rows = budget.take("rows", rows_d);
+        if (!rows) {
+            return std::unexpected(rows.error());
+        }
+        auto cols = budget.take("cols", cols_d);
+        if (!cols) {
+            return std::unexpected(cols.error());
+        }
         auto gray = matrix_to_gray_image(*matrix);
         if (!gray) {
             return std::unexpected(gray.error());
         }
         result = gray_image_to_matrix(
-            image::imresize(*gray, static_cast<int>(rows_d), static_cast<int>(cols_d)));
+            image::imresize(*gray, static_cast<int>(*rows), static_cast<int>(*cols)));
     }
 
     return result;

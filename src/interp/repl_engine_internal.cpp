@@ -13,6 +13,7 @@
 #include "ms/frameworks/gria/gria.hpp"
 #include "ms/frameworks/izaac/izaac.hpp"
 #include "ms/interp/repl_engine.hpp"
+#include "matrix_call.hpp"
 #include "ms/version.hpp"
 #include "ms/interp/plot_console.hpp"
 #include "ms/core/operations.hpp"
@@ -1125,8 +1126,17 @@ Result<Matrix<double>> eval_ml_pca_fit(const Matrix<double>& X_m, int n_componen
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_pca_fit", "expected n_components >= 1"});
+    // A principal component is a direction in feature space, and there are only
+    // min(samples, features) independent ones: asking for more is not an expensive
+    // request, it is a request with no answer. It used to be treated as the former --
+    // `ml_pca_fit(A, 100000000)` sized a component matrix from the count alone and the
+    // allocation ended the process, with no diagnostic, before anything noticed that a
+    // 2x2 matrix has two components in it.
+    const auto rank = static_cast<int>(std::min(X->size(), X->front().size()));
+    if (n_components < 1 || n_components > rank) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit", "expected 1 <= n_components <= " + format_scalar(rank) +
+                              ", the number of components this matrix has"});
     }
     ml::PCA pca(n_components);
     pca.fit(*X);
@@ -1151,8 +1161,11 @@ Result<Matrix<double>> eval_ml_pca_fit_transform(const Matrix<double>& X_m, int 
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (n_components < 1) {
-        return std::unexpected(DomainError{"ml_pca_fit_transform", "expected n_components >= 1"});
+    const auto rank = static_cast<int>(std::min(X->size(), X->front().size()));
+    if (n_components < 1 || n_components > rank) {
+        return std::unexpected(DomainError{
+            "ml_pca_fit_transform", "expected 1 <= n_components <= " + format_scalar(rank) +
+                                        ", the number of components this matrix has"});
     }
     ml::PCA pca(n_components);
     return grid_to_matrix(pca.fit_transform(*X));
@@ -1163,8 +1176,14 @@ Result<Matrix<double>> eval_ml_kmeans_fit(const Matrix<double>& X_m, int k) {
     if (!X) {
         return std::unexpected(X.error());
     }
-    if (k < 1) {
-        return std::unexpected(DomainError{"ml_kmeans_fit", "expected k >= 1"});
+    // k clusters need k points to put in them. The upper bound is what was missing:
+    // `ml_kmeans_fit(A, 100000000)` allocated a centroid per cluster and ended the
+    // process, for a matrix with two rows in it.
+    const auto samples = static_cast<int>(X->size());
+    if (k < 1 || k > samples) {
+        return std::unexpected(DomainError{
+            "ml_kmeans_fit", "expected 1 <= k <= " + format_scalar(samples) +
+                                 ", the number of rows"});
     }
     ml::KMeans km(k);
     km.fit(*X);
@@ -4525,10 +4544,49 @@ Result<Matrix<double>> eval_numthy_factor_exp(int n) {
     return out;
 }
 
+/// `F_n` holds `1 + sum_{k=1..n} phi(k)` fractions, which is about `0.304 n^2`. The
+/// length is QUADRATIC in an argument the REPL reads as an ordinary count, so
+/// `numthy_farey(1000000)` asks for three hundred billion rows -- and `numthy::farey`
+/// builds the whole sequence before it returns, so with `-fno-exceptions` that
+/// allocation ended the process without printing anything at all.
+///
+/// The length is COMPUTED rather than estimated. An estimate would have to be
+/// conservative, and a conservative estimate refuses an `n` whose sequence actually
+/// fits. Computing it needs a totient sieve of size `n`, so the trivial `|F_n| >= n`
+/// goes first: it bounds the sieve by the same budget as the result.
 Result<Matrix<double>> eval_numthy_farey(int n) {
     if (n < 1) {
         return std::unexpected(
             DomainError{"numthy_farey", "expected positive integer n"});
+    }
+    constexpr std::size_t kMaxRows = kMaxReplMatrixElems / 2;  // a numerator and a denominator
+    const auto order = static_cast<std::size_t>(n);
+    const bool counted = order <= kMaxRows;
+    std::size_t terms = kMaxRows + 1;
+    if (counted) {
+        std::vector<std::uint32_t> phi(order + 1);
+        for (std::uint32_t i = 0; i <= order; ++i) {
+            phi[i] = i;
+        }
+        for (std::uint32_t i = 2; i <= order; ++i) {
+            if (phi[i] == i) {  // i is prime, so it has not been touched yet
+                for (std::uint32_t j = i; j <= order; j += i) {
+                    phi[j] -= phi[j] / i;
+                }
+            }
+        }
+        terms = 1;
+        for (std::uint32_t k = 1; k <= order; ++k) {
+            terms += phi[k];
+        }
+    }
+    if (terms > kMaxRows) {
+        return std::unexpected(DomainError{
+            "numthy_farey",
+            "the Farey sequence of order " + format_scalar(n) + " has " +
+                (counted ? format_scalar(terms) : "more than " + format_scalar(kMaxRows)) +
+                " fractions in it; the result is limited to " + format_scalar(kMaxRows) +
+                " rows"});
     }
     const auto fr = numthy::farey(static_cast<uint32_t>(n));
     Matrix<double> out(fr.size(), 2);
@@ -6467,6 +6525,20 @@ Result<Matrix<double>> eval_hough_lines(const Matrix<double>& m, double edge_thr
     if (!gray) {
         return std::unexpected(gray.error());
     }
+    // The accumulator holds one cell per (theta, rho) pair, so what it costs is the
+    // PRODUCT of the two resolutions. Each on its own reads as an ordinary count --
+    // `hough_lines(A, 0.5, 100000000, 100000000, 1)` names two of them and asks for ten
+    // quadrillion cells, and the allocation ended the process.
+    if (n_theta < 1 || n_rho < 1) {
+        return std::unexpected(
+            DomainError{"hough_lines", "expected n_theta >= 1 and n_rho >= 1"});
+    }
+    if (!repl_elems_allowed(static_cast<std::size_t>(n_theta),
+                            static_cast<std::size_t>(n_rho))) {
+        return std::unexpected(DomainError{
+            "hough_lines", "the accumulator is n_theta x n_rho cells and is limited to " +
+                               format_scalar(kMaxReplMatrixElems)});
+    }
     return hough_lines_to_matrix(
         image::hough_lines(*gray, edge_threshold, n_theta, n_rho, vote_threshold));
 }
@@ -6477,6 +6549,30 @@ Result<Matrix<double>> eval_hough_circles(const Matrix<double>& m, double edge_t
     auto gray = matrix_to_gray_image(m);
     if (!gray) {
         return std::unexpected(gray.error());
+    }
+    // The accumulator is one cell per (radius, row, column): the radius count MULTIPLIES
+    // the image rather than adding to it, so `hough_circles(A, 1, 100000000)` names a
+    // radius that looks like any other number and asks for a hundred million planes of
+    // a bounded image. `image::hough_circles` also builds its radius list with
+    // `(int)std::ceil(r_min)`, and that cast of a double outside int's range is
+    // undefined behaviour rather than a wrap, so the range is settled here on the double.
+    if (!std::isfinite(r_min) || !std::isfinite(r_max)) {
+        return std::unexpected(
+            DomainError{"hough_circles", "expected finite r_min and r_max"});
+    }
+    if (r_step < 1) {
+        return std::unexpected(DomainError{"hough_circles", "expected r_step >= 1"});
+    }
+    const double span = std::floor(r_max) - std::ceil(r_min);
+    const double planes = span < 0.0 ? 0.0 : std::floor(span / r_step) + 1.0;
+    const double cells =
+        planes * static_cast<double>(m.rows()) * static_cast<double>(m.cols());
+    if (cells > static_cast<double>(kMaxReplMatrixElems)) {
+        return std::unexpected(DomainError{
+            "hough_circles", "r_min to r_max spans " + describe_count(planes) +
+                                 " radii and the accumulator is one cell per radius per "
+                                 "pixel, which is limited to " +
+                                 format_scalar(kMaxReplMatrixElems) + " cells"});
     }
     return hough_circles_to_matrix(image::hough_circles(*gray, edge_threshold, r_min, r_max,
                                                         r_step, vote_threshold));

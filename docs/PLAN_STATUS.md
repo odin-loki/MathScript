@@ -186,6 +186,73 @@ count", dropped out of the manifest, and would have dropped out of the generated
 tests, with nothing failing. The parser found it independently, which is the
 strongest evidence available that the parser is reading the guards correctly.
 
+### A size argument sized an allocation, and the guard in front of it was not one
+
+One idiom, in 178 REPL commands:
+
+    const int n_i = static_cast<int>(n_d);
+    if (n_i < 0 || n_d != n_i) { /* reject */ }
+    ... eval_something(static_cast<std::size_t>(n_i)) ...
+
+Three things go wrong with a size argument before any work starts. It catches none of
+them.
+
+**The cast IS the check.** `static_cast<int>` of a double outside `int`'s range is
+undefined behaviour, not a wrap, so by the time the guard reads `n_i` there is no value
+there to test. On x86-64 the conversion happens to produce `INT_MIN`, so `n_i < 0`
+rejected `fem_poisson1d(1e18)` — by accident, in a way that reads exactly like a guard
+and is not one. The range has to be decided on the double.
+
+**A count that fits is not a count that is affordable.** `fem_poisson1d(100000000)` is a
+perfectly ordinary `int` and asks for 800 MB.
+
+**A cap on each extent alone is not a cap on the allocation**, because what is allocated
+is the *product*. `imresize(A, 100000, 100000)` names two extents that each look like a
+resolution and together are ten billion elements — which is why a per-dimension bound,
+the obvious fix, would not have been one.
+
+With `-fno-exceptions` none of this produces a diagnostic. The `std::bad_alloc` out of
+`std::vector` reaches `std::terminate` and the process is gone, with nothing written to
+either stream. Every case below was reproduced under a 2 GB address-space cap and came
+back `rc=134`:
+
+| Command | The argument | What it asked for |
+|---|---|---|
+| `fem_poisson1d(100000000)` | `n` | 1e8 elements |
+| `fem_poisson2d(100000, 100000)` | `nx`, `ny` | the product, 1e10 |
+| `fem_poisson3d(5000, 5000, 5000)` | `nx`, `ny`, `nz` | the product, 1.25e11 |
+| `cfd_advection1d(100000000, ...)` | `nx` | 1e8 elements |
+| `cfd_advection2d(100000, 100000, ...)` | `nx`, `ny` | the product |
+| `cfd_advection3d(2000, 2000, 2000, ...)` | `nx`, `ny`, `nz` | the product, 8e9 |
+| `numthy_farey(1000000)` | `n` | about 3e11 rows -- the length of F_n is *quadratic* in n |
+| `impad(A, 1000000)` | `pad` | 4e12, because the padding grows all four sides |
+| `imresize(A, 100000, 100000)` | `rows`, `cols` | the product |
+| `hough_lines(A, 0.5, 1e8, 1e8, 1)` | `n_theta`, `n_rho` | the accumulator, one cell per pair |
+| `hough_circles(A, 1, 100000000)` | `r_max` | one plane of the image per radius |
+| `ml_pca_fit(A, 100000000)` | `n_components` | a component matrix, for a 2x2 input |
+| `ml_pca_fit_transform(A, 100000000)` | `n_components` | the same, plus the transform |
+| `ml_kmeans_fit(A, 100000000)` | `k` | a centroid per cluster, for two rows |
+
+**The budget is not a new number.** `kMaxReplMatrixElems` is 262144, and the REPL
+already refused to *store* a larger matrix — in `assign_matrix_call`, after the
+allocation. All the guard moves is when: from a diagnostic about a matrix that has
+already been built, to one about the argument that asked for it. `ExtentBudget` in
+`src/interp/matrix_call.hpp` reads extents one at a time and divides the budget down as
+it goes, so the bound lands on the product without any handler having to multiply.
+
+**Two of them are shape relationships rather than sizes, and capping them would have
+been wrong.** A principal component is a direction in feature space and there are only
+`min(samples, features)` of them; k clusters need k points to put in them.
+`ml_pca_fit(A, 100000000)` on a 2x2 is not an expensive request, it is a request with no
+answer, and it now says so. `numthy_farey` is a third kind: its length is quadratic in
+its argument, so the guard computes `|F_n|` exactly with a totient sieve rather than
+estimating it — an estimate would have to be conservative, and a conservative estimate
+refuses an order whose sequence actually fits.
+
+**The 178 are not all fixed.** The list above is what was measured to end the process;
+the rest of the idiom's uses are a survey in progress, and the undefined cast is still
+there in every one that has not been rewritten.
+
 ## §7 — Stubs and half-implementations
 
 **Open.** Ship-or-cut decisions, tracked in

@@ -16,12 +16,12 @@ Result<Matrix<double>> handle_fem_poisson1d(Interpreter& interp, const MatrixCal
         if (!n_val) {
             return std::unexpected(n_val.error());
         }
-        const int n_i = static_cast<int>(*n_val);
-        if (n_i < 0 || *n_val != n_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson1d", "expected non-negative integer n"});
+        ExtentBudget budget("fem_poisson1d");
+        auto n = budget.take("n", *n_val);
+        if (!n) {
+            return std::unexpected(n.error());
         }
-        result = eval_fem_poisson1d(static_cast<std::size_t>(n_i));
+        result = eval_fem_poisson1d(*n);
     }
 
     return result;

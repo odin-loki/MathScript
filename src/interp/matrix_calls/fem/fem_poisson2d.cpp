@@ -20,13 +20,16 @@ Result<Matrix<double>> handle_fem_poisson2d(Interpreter& interp, const MatrixCal
         if (!ny_val) {
             return std::unexpected(ny_val.error());
         }
-        const int nx_i = static_cast<int>(*nx_val);
-        const int ny_i = static_cast<int>(*ny_val);
-        if (nx_i < 0 || ny_i < 0 || *nx_val != nx_i || *ny_val != ny_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson2d", "expected non-negative integer nx and ny"});
+        ExtentBudget budget("fem_poisson2d");
+        auto nx = budget.take("nx", *nx_val);
+        if (!nx) {
+            return std::unexpected(nx.error());
         }
-        result = eval_fem_poisson2d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i));
+        auto ny = budget.take("ny", *ny_val);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        result = eval_fem_poisson2d(*nx, *ny);
     }
 
     return result;

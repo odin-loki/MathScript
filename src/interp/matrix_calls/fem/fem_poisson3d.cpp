@@ -19,15 +19,20 @@ Result<Matrix<double>> handle_fem_poisson3d(Interpreter& /*interp*/, const Matri
             return std::unexpected(
                 DomainError{"fem_poisson3d", "expected fem_poisson3d(nx, ny, nz)"});
         }
-        const int nx_i = static_cast<int>(nx_d);
-        const int ny_i = static_cast<int>(ny_d);
-        const int nz_i = static_cast<int>(nz_d);
-        if (nx_i < 0 || ny_i < 0 || nz_i < 0 || nx_d != nx_i || ny_d != ny_i || nz_d != nz_i) {
-            return std::unexpected(
-                DomainError{"fem_poisson3d", "expected non-negative integer nx, ny, and nz"});
+        ExtentBudget budget("fem_poisson3d");
+        auto nx = budget.take("nx", nx_d);
+        if (!nx) {
+            return std::unexpected(nx.error());
         }
-        result = eval_fem_poisson3d(static_cast<std::size_t>(nx_i), static_cast<std::size_t>(ny_i),
-                                    static_cast<std::size_t>(nz_i));
+        auto ny = budget.take("ny", ny_d);
+        if (!ny) {
+            return std::unexpected(ny.error());
+        }
+        auto nz = budget.take("nz", nz_d);
+        if (!nz) {
+            return std::unexpected(nz.error());
+        }
+        result = eval_fem_poisson3d(*nx, *ny, *nz);
     }
 
     return result;

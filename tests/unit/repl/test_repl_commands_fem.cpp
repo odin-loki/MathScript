@@ -5090,7 +5090,7 @@ TEST(ReplCommandsTest, fem_poisson3d_senary_noassign) {
     Interpreter interp;
     expect_contains(interp, "fem_poisson3d(2, 2, 2, 0, 0, 0)", "u =");
     expect_error_contains(interp, "fem_poisson3d(1.5, 2, 2, 0, 0, 0)",
-                          "expected non-negative integer nx, ny, and nz");
+                          "expected non-negative integer nx");
 }
 
 TEST(ReplCommandsTest, fem_poisson3d_senary_parse_fail_noassign) {
