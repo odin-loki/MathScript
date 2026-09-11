@@ -10304,6 +10304,19 @@ Result<Matrix<double>> eval_cfd_advection1d(std::size_t nx, double vx, double t_
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
     }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection1d(1000, 1.0, 1.0, 1e-9)` asks for 1e9
+    // sweeps of the grid, with one whole grid retained per step. Measured at 70.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because three paths
+    // reach this function.
+    WorkBudget budget("cfd_advection1d", 70.0);
+    budget.charge(nx);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const cfd::Grid1D grid = cfd::grid1d(0.0, 1.0, nx);
     if (grid.n == 0) {
         return std::unexpected(DomainError{fn, "invalid grid dimensions"});
@@ -10327,6 +10340,19 @@ Result<Matrix<double>> eval_cfd_advection2d(std::size_t nx, std::size_t ny, doub
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection2d(100, 100, 1, 0, 1.0, 1e-7)` asks for 1e7
+    // sweeps of the grid, with one whole grid retained per step. Measured at 200.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because three paths
+    // reach this function.
+    WorkBudget budget("cfd_advection2d", 200.0);
+    budget.charge(nx * ny);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const cfd::Grid2D grid = cfd::grid2d(0.0, 1.0, 0.0, 1.0, nx, ny);
     if (grid.nx == 0 || grid.ny == 0) {
@@ -10354,6 +10380,19 @@ Result<Matrix<double>> eval_cfd_advection3d(std::size_t nx, std::size_t ny, std:
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_advection3d(30, 30, 30, 1, 0, 0, 1.0, 1e-6)` asks for 1e6
+    // sweeps of the grid, with one whole grid retained per step. Measured at 370.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because two paths
+    // reach this function.
+    WorkBudget budget("cfd_advection3d", 370.0);
+    budget.charge(nx * ny * nz);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const cfd::Grid3D grid = cfd::grid3d(0.0, 1.0, 0.0, 1.0, 0.0, 1.0, nx, ny, nz);
     if (grid.nx == 0 || grid.ny == 0 || grid.nz == 0) {
@@ -10460,6 +10499,19 @@ Result<Matrix<double>> eval_cfd_run_advection(const Matrix<double>& grid_m,
     }
     if (t_end <= 0.0 || dt <= 0.0) {
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
+    }
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection(g, u0, 1.0, 1.0, 1e-9)` asks for 1e9
+    // sweeps of the grid, with one whole grid retained per step. Measured at 70.0 ns per
+    // cell-step. So the guard is on the quotient, which is the only place the size
+    // actually appears, and it is here rather than at the dispatch because two paths
+    // reach this function.
+    WorkBudget budget("cfd_run_advection", 70.0);
+    budget.charge(u0->size());
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
     }
     const auto vx = cfd::constant_velocity(u0->size(), v);
     const auto result = cfd::run_advection(*u0, vx, t_end, dt, grid->dx);
@@ -10737,6 +10789,17 @@ Result<Matrix<double>> eval_cfd_run_advection_2d(const Matrix<double>& grid_m,
     const std::size_t n_cells = grid->nx * grid->ny;
     const auto vx_field = cfd::constant_velocity(n_cells, vx);
     const auto vy_field = cfd::constant_velocity(n_cells, vy);
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection_2d(g, u0, 1, 0, 1.0, 1e-7)` asks for 1e7 sweeps of the
+    // grid, with one whole grid retained per step. Measured at 200.0 ns per cell-step. The
+    // guard is on the quotient, which is the only place the size actually appears.
+    WorkBudget budget("cfd_run_advection_2d", 200.0);
+    budget.charge(grid->nx * grid->ny);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const auto result = cfd::run_advection_2d(
         *u0, vx_field, vy_field, t_end, dt, grid->dx, grid->dy);
     if (result.u.empty()) {
@@ -11607,6 +11670,17 @@ Result<Matrix<double>> eval_cfd_run_advection_3d(const Matrix<double>& grid_m,
         return std::unexpected(DomainError{fn, "expected positive t_end and dt"});
     }
     const std::size_t n_cells = grid->nx * grid->ny * grid->nz;
+    // The step count is not an argument. It is the RATIO ceil(t_end/dt), and neither
+    // number looks like a size: `cfd_run_advection_3d(g, u0, 1, 0, 0, 1.0, 1e-6)` asks for 1e6 sweeps of the
+    // grid, with one whole grid retained per step. Measured at 370.0 ns per cell-step. The
+    // guard is on the quotient, which is the only place the size actually appears.
+    WorkBudget budget("cfd_run_advection_3d", 370.0);
+    budget.charge(n_cells);
+    auto sweeps = budget.take("the step count t_end/dt implies",
+                              std::ceil(t_end / dt));
+    if (!sweeps) {
+        return std::unexpected(sweeps.error());
+    }
     const auto vx_field = cfd::constant_velocity(n_cells, vx);
     const auto vy_field = cfd::constant_velocity(n_cells, vy);
     const auto vz_field = cfd::constant_velocity(n_cells, vz);

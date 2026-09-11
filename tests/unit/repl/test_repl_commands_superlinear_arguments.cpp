@@ -187,3 +187,34 @@ TEST(ReplSuperlinearArguments, AnImageFilterIsBoundedOnItsKernelTimesTheImage) {
     expect_ok(interp, "laplacian_of_gaussian(S, 2)");
     expect_ok(interp, "bilateral(S, 3, 1)");
 }
+
+TEST(ReplSuperlinearArguments, AStepCountCanBeARatioRatherThanAnArgument) {
+    // The CFD advection family takes no step count at all. It takes `t_end` and `dt`,
+    // and the number of sweeps is ceil(t_end/dt) -- so neither argument looks like a
+    // size and their QUOTIENT is one. `cfd_advection1d(1000, 1.0, 1.0, 1e-9)` is a
+    // billion sweeps of a thousand cells, with one whole grid retained per step.
+    //
+    // No per-argument guard can see this: 1.0 and 1e-9 are both unremarkable. The bound
+    // is on the quotient, which is the only place the size actually appears.
+    Interpreter interp;
+    for (const auto* call : {"cfd_advection1d(1000, 1.0, 1.0, 1e-9)",
+                             "cfd_advection2d(100, 100, 1.0, 0.0, 1.0, 1e-7)",
+                             // The 3-D form is written with a target because at eight
+                             // arguments it has no no-target spelling -- the same gap the
+                             // "ninety-eight callees had no no-target form" entry covers,
+                             // and not something this guard introduced.
+                             "u = cfd_advection3d(30, 30, 30, 1.0, 0.0, 0.0, 1.0, 1e-6)"}) {
+        expect_error_contains(interp, call, "the step count t_end/dt implies");
+    }
+    // The same three with a step size anyone would integrate at still run.
+    expect_ok(interp, "cfd_advection1d(100, 1.0, 0.1, 0.001)");
+    expect_ok(interp, "cfd_advection2d(20, 20, 1.0, 0.0, 0.1, 0.001)");
+    expect_ok(interp, "u = cfd_advection3d(8, 8, 8, 1.0, 0.0, 0.0, 0.1, 0.005)");
+    // And the grid-taking forms, whose cell count comes from the grid rather than from
+    // an argument, are bounded by the same quotient.
+    expect_ok(interp, "G = cfd_grid1d(0, 1, 100)");
+    expect_ok(interp, "U = cfd_square_pulse(G, 0.35, 0.1)");
+    expect_error_contains(interp, "cfd_run_advection(G, U, 1.0, 1.0, 1e-9)",
+                          "the step count t_end/dt implies");
+    expect_ok(interp, "cfd_run_advection(G, U, 1.0, 0.1, 0.001)");
+}

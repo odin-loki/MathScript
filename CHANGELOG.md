@@ -463,6 +463,15 @@ read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in
 so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
 unchanged.
 
+### A step count that is not an argument at all
+
+The six CFD advection commands take `t_end` and `dt` and no step count: the number of
+sweeps is `ceil(t_end/dt)`. Neither number looks like a size and their quotient is one,
+so no per-argument guard can see it -- 1.0 and 1e-9 are both unremarkable, and together
+they are a billion sweeps of a thousand cells with one whole grid retained per step.
+Measured at 70 ns per cell-step in 1-D, 200 in 2-D, 370 in 3-D. The bound is on the
+quotient, in the six `eval_cfd_*` functions where every dispatch path converges.
+
 ### Twelve image filters, and the no-assignment form as a second path
 
 Each visits every pixel once per kernel cell, so the cost is the image times the kernel

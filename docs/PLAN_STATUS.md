@@ -549,6 +549,16 @@ hours, because the no-assignment form does not go through the matrix-call regist
 was the TEST that found it: the suite went from 130 s to 1570 s and timed out, which is
 the same signal as an abort and nearly as loud.
 
+**A step count that is not an argument at all.** The six CFD advection commands take
+`t_end` and `dt` and no step count: the number of sweeps is `ceil(t_end/dt)`. Neither
+number looks like a size and their QUOTIENT is one, so no per-argument guard can see it --
+1.0 and 1e-9 are both unremarkable, and together they are a billion sweeps of the grid
+with one whole grid retained per step. Measured at 70 ns per cell-step in 1-D, 200 in 2-D
+and 370 in 3-D. The bound is on the quotient, which is the only place the size actually
+appears, and it sits in the six `eval_cfd_*` functions because that is where every
+dispatch path converges -- applying the lesson from `signal_resample` rather than
+relearning it.
+
 **One reported finding did not survive a probe.** The allocation audit recorded
 `graph_bipartite_match` aborting at its second argument. It does not:
 `graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and
