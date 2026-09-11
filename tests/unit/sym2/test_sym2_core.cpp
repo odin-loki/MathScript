@@ -273,4 +273,29 @@ TEST(Sym2Core, InterningSurvivesChurn) {
     EXPECT_EQ(to_string(kept), "kept + 1");
 }
 
+// Every constructor here takes an `ExprRef`, which is a `shared_ptr` and so can be
+// null, and `make` hashes what it is given by dereferencing it. `add`, `mul`, `pow` and
+// `function` all refuse a null already. `derivative`, `integral` and `limit` did not,
+// which is the shape of gap worth a test rather than a comment: a caller who checked
+// one of them and found it safe has no reason to check the rest.
+TEST(Sym2Core, EveryConstructorRefusesANullArgument) {
+    const ExprRef nothing;
+    ASSERT_FALSE(static_cast<bool>(nothing));
+    const ExprRef x = symbol("x");
+
+    EXPECT_TRUE(is_undefined(add({x, nothing})));
+    EXPECT_TRUE(is_undefined(mul({nothing, x})));
+    EXPECT_TRUE(is_undefined(pow(nothing, x)));
+    EXPECT_TRUE(is_undefined(pow(x, nothing)));
+    EXPECT_TRUE(is_undefined(function("f", {nothing})));
+
+    EXPECT_TRUE(is_undefined(derivative(nothing, {x})));
+    EXPECT_TRUE(is_undefined(derivative(x, {nothing})));
+    EXPECT_TRUE(is_undefined(integral(nothing, {x})));
+    EXPECT_TRUE(is_undefined(integral(x, {nothing})));
+    EXPECT_TRUE(is_undefined(limit(nothing, x, integer(0))));
+    EXPECT_TRUE(is_undefined(limit(x, nothing, integer(0))));
+    EXPECT_TRUE(is_undefined(limit(x, x, nothing)));
+}
+
 } // namespace

@@ -465,7 +465,6 @@ A round-trip test should be written directly from this table; each row is a case
 Everything not in this table round-trips. In particular these do **not** belong on it, contrary to the surveys: negative Integer and negative Rational atoms; the display reordering of `Add` and `Mul`; `\frac{}{}` of every provenance; `x - 7`; `-2 \cdot x`; `\frac{2 \cdot x}{3}`; `\dfrac` vs `\frac`; `\left(` vs `(`; `x^{\frac{1}{2}}` under `roots_as_radicals = false`; `\int f` with no differential.
 
 ---
----
 
 ## 5. The error model
 

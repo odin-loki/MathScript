@@ -663,11 +663,33 @@ ExprRef function(const std::string& name, std::vector<ExprRef> args) {
     return make(Head::Function, name, std::move(args));
 }
 
+namespace {
+
+/// A null `ExprRef` among the arguments, in any of the three below.
+///
+/// `add`, `mul`, `pow` and `function` all refuse one already; these three did not, and
+/// a null reaches `compute_hash`, which dereferences it. One guard here and none there
+/// is how a caller comes to believe the whole namespace is safe against a value that
+/// only most of it is safe against.
+bool any_null(const std::vector<ExprRef>& args) {
+    for (const ExprRef& arg : args) {
+        if (!arg) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
 ExprRef derivative(ExprRef expr, std::vector<ExprRef> vars) {
     std::vector<ExprRef> args;
     args.push_back(std::move(expr));
     for (ExprRef& var : vars) {
         args.push_back(std::move(var));
+    }
+    if (any_null(args)) {
+        return undefined();
     }
     return make(Head::Derivative, std::monostate{}, std::move(args));
 }
@@ -678,10 +700,16 @@ ExprRef integral(ExprRef expr, std::vector<ExprRef> vars) {
     for (ExprRef& var : vars) {
         args.push_back(std::move(var));
     }
+    if (any_null(args)) {
+        return undefined();
+    }
     return make(Head::Integral, std::monostate{}, std::move(args));
 }
 
 ExprRef limit(ExprRef expr, ExprRef var, ExprRef point) {
+    if (!expr || !var || !point) {
+        return undefined();
+    }
     return make(Head::Limit, std::monostate{},
                 {std::move(expr), std::move(var), std::move(point)});
 }
