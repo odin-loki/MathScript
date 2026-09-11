@@ -181,6 +181,18 @@ TEST(Sym2NotationLatex, JuxtapositionSeparatesWhatWouldRunTogether) {
     // takes each as its own variable, so nothing is inserted.
     EXPECT_EQ(to_latex(mul({symbol("x"), symbol("y")}), juxtaposed), "xy");
     EXPECT_EQ(to_latex(mul({integer(12), symbol("x")}), juxtaposed), "12x");
+
+    // The other upright spelling, and the one §8.4 found nothing pinning. A function
+    // whose name is not in the operator table is set with `\operatorname`, and
+    // `is_upright_word` has an arm for that prefix -- reached 80 times across the
+    // roundtrip suite, and measured never to return true from any of them, because
+    // every string that carries the prefix also carries the argument list after it.
+    // So an `\operatorname` factor takes NO thin space, and that is correct: the
+    // closing parenthesis is already a separator no reader will run together.
+    EXPECT_EQ(to_latex(mul({function("foo", {symbol("x")}), symbol("y")}), juxtaposed),
+              "\\operatorname{foo}(x)y");
+    EXPECT_EQ(to_latex(mul({function("foo", {symbol("x")}), symbol("bar")}), juxtaposed),
+              "\\mathrm{bar}\\,\\operatorname{foo}(x)");
 }
 
 TEST(Sym2NotationLatex, QuotientsAreFractions) {

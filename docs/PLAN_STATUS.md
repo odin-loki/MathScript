@@ -599,7 +599,7 @@ is the sieve, not the width, and it now says so.
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; run over `src/compress/compress.cpp`, 66.7% -> 80.0% over viable mutants, three remaining classified rather than counted as gaps |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; six files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2% -- every survivor either killed by a new test or classified by measurement |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -728,6 +728,35 @@ eye:
 Every one of the three new tests was checked against its mutant: apply, rebuild, and
 confirm the test fails. A test added for a survivor that does not actually kill it is
 the same silence with more lines in it.
+
+Sixth file: `src/sym2/notation_latex.cpp`, two runs against all four suites that cover
+it -- 18 mutants at seed 17 and 26 at seed 23. **31 of 44 not viable**, which is what a
+printer looks like to this harness: almost every `+` in it concatenates strings, and
+`-` on two `std::string`s does not compile. Of the 24 viable, **19 killed, 79.2%**, and
+all five survivors are equivalent. Two of them are the more interesting kind, because
+both are *equivalent only by something outside the line they sit on*:
+
+| Survivor | What it was |
+|---|---|
+| `:250` `value < 0.0 ? "-inf" : "inf"` widened to `<=` | **Equivalent by the guards above it.** The line is reached only when `!isfinite(value)` and `!isnan(value)`, so `value` is exactly one of the two infinities and is never `0.0`. Both spellings are asserted already: `real(inf)` is `\infty` and `real(-inf)` is `-\infty`. |
+| `:257` `at + 1 >= text.size()` with the `1` changed to `2` | **Equivalent by `format_exact`'s output shape.** It formats with `%g`, which always writes the exponent with a sign and at least two digits, so when `e` is found there are at least three characters after it. Measured over **2,002,815 doubles** -- every power of ten a double can hold and its neighbours, the denormal minimum, both extremes, and two million uniformly random bit patterns -- the shortest tail after `e` was 3, and neither `at + 1 >= size()` nor `at + 2 >= size()` was ever true. The guard is unreachable defensive code. |
+| `:164` `open = sizeof("\mathrm{") - 2` changed to `- 3` | **Equivalent.** Both indices land on or before the `{`, and the characters between are ordinary letters that the scan ignores. |
+| `:165` and `:166`, the `\operatorname{` arm of `is_upright_word` | **Equivalent on every reachable input, and that is the finding.** |
+
+The last row is worth the space. `is_upright_word` asks whether a fragment is one upright
+multi-letter name *and nothing else*, because such a fragment is a word on the page and
+juxtaposing two of them gives the reader one longer word. It has an arm for
+`\operatorname{`, and instrumenting it showed the arm is **reached 80 times** across the
+roundtrip suite -- and returns `false` every single time. Every string that carries the
+prefix is a function CALL, because `operator_name` is only ever used immediately before
+`group(arguments)`, so the matching `}` is never the last character. Two mutants of that
+arm therefore cannot change an answer: a live branch, not equivalent as written, that
+nothing it is given can distinguish.
+
+Its behaviour is pinned now -- `\operatorname{foo}(x)y` takes no thin space and
+`\mathrm{bar}\,\operatorname{foo}(x)` takes one -- and the new assertion was checked
+against a mutant that makes the arm return `true`: it fails, where every test that
+existed before passed.
 
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
