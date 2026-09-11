@@ -378,6 +378,27 @@ save and read back in a later build.
 Score after: **80.0%**, with the three remaining classified above rather than counted as
 gaps.
 
+Second file: `src/combo/combo.cpp`, 14 mutants at seed 5 against all three targets that
+cover it. **13 of 14 killed, 92.9%**, one survivor: `combo.cpp:144`, `if (i < 0) return
+false;` -- a line that ran and that nothing asserted.
+
+Third file: `src/numthy/numthy.cpp`, 16 mutants at seed 7 against `test_numthy` and
+`test_numthy_overflow`. **12 of 15 viable killed, 80.0%** -- and all three survivors are
+classified, none of them a gap. Each was settled by MEASUREMENT and not only by the
+argument for it, because an equivalence that is merely argued is how an untested line
+gets written off:
+
+| Survivor | What it was |
+|---|---|
+| `:312` `if (e > 1)` in `pow_u64` | **Not compiled.** It sits inside the `#else` of `#if defined(__SIZEOF_INT128__)`, and `__int128` is available on every platform CI builds, so the mutant produced a byte-identical program. Traced by hand, the mutant *would* be wrong if that branch were ever taken -- `pow_u64(3, 2)` would return 3 -- so the fallback is correct and simply has no coverage anywhere. |
+| `:479` `M > UINT64_MAX / t` in `crt` | **Equivalent.** `t` is a residue mod `m[i]`, so `t < m[i]`, so `UINT64_MAX / t > UINT64_MAX / m[i]`: the boundary `M == UINT64_MAX / t` that `>=` would newly reject always trips the modulus guard four lines below, which returns the identical message. Confirmed over 400,000 random systems weighted towards moduli large enough to reach the overflow guards -- byte-identical output. |
+| `:180` `(c % (n - 1)) + 1` in `pollard_rho` | **Equivalent through the only caller.** `pollard_rho` is `static` and `factor_recursive` is its sole caller; that caller trial-divides by 2, 3, 5, 7, 11 and 13 first and passes `c` from 1 to 20, and `c % (n-1) == c == c % (n+1)` whenever `c < n - 1`. The two differ only for `n <= 21`, where the result is unchanged anyway. Confirmed by running `factor(n)` for every `n` from 2 to 300,000 under both -- identical. |
+
+The first row is the one worth keeping. A mutation score cannot see a branch the
+preprocessor removed, so a fallback implementation behind a `#if` is invisible to this
+technique *and* to the test suite at the same time -- and the two silences look exactly
+alike from the outside.
+
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
 
