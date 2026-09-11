@@ -324,8 +324,8 @@ Nothing structural — the grammar above accepts every setting simultaneously. T
 | # | Accepted | Meaning |
 |---|---|---|
 | H1 | `\tfrac` | ≡ `\frac` (`\dfrac` is printer output, not a concession) |
-| H2 | `\bigl \bigr \Bigl \Bigr \biggl \biggr \Biggl \Biggr \big \Big \bigg \Bigg` before `(` `)` `\|` | pure delimiter spelling, no meaning |
-| H3 | `\lvert X \rvert`, `\|X\|` | ≡ `\left\| X \right\|` = `function("abs",{X})` |
+| H2 | `\bigl \bigr \Bigl \Bigr \biggl \biggr \Biggl \Biggr \big \Big \bigg \Bigg` before `(`, `)` or a vertical bar `&#124;` | pure delimiter spelling, no meaning |
+| H3 | `\lvert X \rvert`, `&#124;X&#124;` | ≡ `\left&#124; X \right&#124;` = `function("abs",{X})` |
 | H4 | braceless single-token argument: `x^2`, `\frac12`, `\sqrt2`, `x_1`, `\frac\alpha\beta` | TeX's one-token rule |
 | H5 | `\;` `\:` `\!` `\quad` `\qquad` `\thinspace` `\ ` `~` | whitespace (never emitted, so no conflict with `\,`) |
 | H6 | `\rightarrow` `\longrightarrow`; `\lim\limits` | ≡ `\to`; ≡ `\lim` |
@@ -339,6 +339,19 @@ Nothing structural — the grammar above accepts every setting simultaneously. T
 ---
 
 ## 3. The ambiguity table
+
+**A note on one character, because it cost three disagreements.** A markdown table cell
+separates on `|`, so a literal vertical bar in a cell has to be escaped as `\|` -- which
+is also, in LaTeX, the control symbol for the *norm* delimiter. The two are then
+indistinguishable, and the rows below meant different things by the same two characters:
+`\|` in A34 was the norm, and `\|` in A36 was an escaped pipe. Three tests written from
+this document disagreed with a parser written from the same document for exactly that
+reason.
+
+So, throughout §2.9 and §3: a literal vertical bar is written `&#124;`, and `\|` means
+the LaTeX norm delimiter and nothing else. §2.4's grammar was never ambiguous -- it is
+in a code block, where the character survives -- and says the operative thing:
+`AbsOpen = "\left" "|" | "\lvert" | "|"`. The norm is not an absolute value here.
 
 Diagnostics are quoted verbatim; `L:C` is the line and column of the offending token.
 
@@ -384,9 +397,9 @@ Diagnostics are quoted verbatim; `L:C` is the line and column of the offending t
 | A31 | `\int_{a}^{b}`, `\oint` | `[E-LATEX-0023] Head::Integral records no bounds (expr.hpp:62), so limits would be silently discarded; write \int f \, dx` |
 | A32 | `\lim_{x \to 0^{+}}`, `\limsup`, `\liminf` | `[E-LATEX-0024] Head::Limit records no direction (expr.hpp:63), so a one-sided limit would be read as a two-sided one` |
 | A33 | `\frac{\partial}{\partial x}` | `[E-LATEX-0025] Head::Derivative records no distinction between a partial and a total derivative (notation_latex.cpp:414); write \frac{d}{dx}. \partial alone is the symbol named partial` |
-| A34 | `\{ … \}`, `[a, b]`, `[ … ]`, `\langle` `\lfloor` `\lceil` `\lVert` `\|` | `[E-LATEX-0026] \{ \} is a set or a case split, [a, b] is an interval, a list or a matrix row, and \lfloor x \rfloor is a floor; none has an expression head. Use ( ) for grouping and \operatorname{floor}(x) for a floor` |
-| A35 | a `\|` carrying a script (`f\big\|_{0}^{1}`), `\left.`, `\right.` | `[E-LATEX-0027] an evaluation bar (a null delimiter with limits) has no expression head` |
-| A36 | nested bare `\|` (`\|\|x\|\|` or `\|a\|b\|`) | `[E-LATEX-0028] a bare \| cannot be paired: the open and close delimiter are the same character. Write \left\| … \right\| or \lvert … \rvert` |
+| A34 | `\{ … \}`, `[a, b]`, `[ … ]`, `\langle` `\lfloor` `\lceil`, and the NORM delimiters `\lVert` and `\|` | `[E-LATEX-0026] \{ \} is a set or a case split, [a, b] is an interval, a list or a matrix row, and \lfloor x \rfloor is a floor; none has an expression head. Use ( ) for grouping and \operatorname{floor}(x) for a floor` |
+| A35 | a vertical bar `&#124;` carrying a script (`f\big&#124;_{0}^{1}`), `\left.`, `\right.` | `[E-LATEX-0027] an evaluation bar (a null delimiter with limits) has no expression head` |
+| A36 | nested bare vertical bars (`&#124;&#124;x&#124;&#124;` or `&#124;a&#124;b&#124;`) | `[E-LATEX-0028] a bare vertical bar cannot be paired: the open and close delimiter are the same character. Write \left&#124; … \right&#124; or \lvert … \rvert` |
 | A37 | `\text{}` `\mathbf` `\mathbb` `\mathcal` `\mathfrak` `\mathsf` `\boldsymbol` `\vec` `\hat` `\bar` `\overline` `\tilde` `\underline` `\mathit` `\bm` | `[E-LATEX-0029] decoration is not part of a name in this subset: \hat{x} and x are different symbols to a reader and the same name to the parser. Write x_{hat} or another name` |
 | A38 | `\varGamma`, `\upalpha` | `[E-LATEX-0030] \varGamma is a font variant of \Gamma, not a distinct symbol; write \Gamma` |
 | A39 | differential/sign count mismatch | `[E-LATEX-0031] N integral signs but M differentials; write one \, dx per \int` |
@@ -457,7 +470,7 @@ A round-trip test should be written directly from this table; each row is a case
 | N21 | `Matrix<double>` with zero cells — 0×0, m×0, 0×n | `\begin{pmatrix}\end{pmatrix}` | 0×0 | The row separator is appended only when the body is non-empty (:462), so empty rows collapse. All three verified identical. |
 | N22 | `Multiplication::Cross` + an exact factor `c · 10^k · …` with `\|k\| > 4096` | `2 \times 10^{5000} \times x` | `mul(real(inf), x)` | Verified emitted. Below the `kMaxExactPowerExponent = 4096` cap (expr.cpp:173) the power folds to digits, so this is only reachable past it. Rule A11 claims the `\times 10^{}`. |
 | N23 | `Multiplication::Juxtaposition` + an integrand ending in an upright-word factor, then a factor named `d`, then one more factor | `\int \mathrm{aa}\,dx` | `integral(symbol("aa"), {x})` instead of `integral(aa·d·x, {})` | Verified emitted. The factor sort (notation.cpp:166-176) puts `d` early, so this needs a name sorting before `d`; the thin space then makes it look like a differential. |
-| N24 | `Head::Constant` outside the seven, e.g. `constant("gamma_E")` | `\mathrm{gamma\_E}` | `symbol("gamma_E")` | :315 is byte-identical to the multi-letter Symbol spelling (:155). Verified. Excluded by §0. |
+| N24 | `Head::Constant` outside the seven, e.g. `constant("gamma_E")` | `\mathrm{gamma\_E}` | `symbol("gamma_E")` | :315 spells an unknown constant exactly as `spell_name` spells a multi-letter Symbol *that has no subscript and is not Greek* (:155), and that is the collision. They are NOT byte-identical in general: a Constant does not go through `split_subscript`, so `constant("gamma_E")` is `\mathrm{gamma\_E}` while `symbol("gamma_E")` splits to base `gamma` plus subscript `E` and, `gamma` being Greek, prints `\gamma_{E}`. This row said "byte-identical"; it is not, and the exception it names is real anyway -- what the Constant prints reads back as a Symbol. Excluded by §0. |
 | N25 | a Derivative/Integral/Limit variable that is not a Symbol | `\frac{d}{dx + y} x`, `\int x \, dx + y` | parse error / wrong tree | Variables are placed at `kPrecOpen` (notation.cpp:326, :336, :342) so they are never fenced. Both verified emitted. Excluded by §0. |
 | N26 | `matrix_environment` outside the allow-list, e.g. `"array}{cc"` | `\begin{array}{cc} … \end{array}{cc}` | parse error `E-LATEX-0036` | Interpolated with no validation (:456-459). Excluded by §0. |
 | N27 | a null `ExprRef`, or a head `walk` does not recognise | `\mathrm{undefined}` | `constant("undefined")` | notation.cpp:346 and :418-422 emit the same string as the value itself. Right for `undefined()`, a fabrication for the other two. |
