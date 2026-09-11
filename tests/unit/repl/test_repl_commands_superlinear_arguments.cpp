@@ -595,3 +595,55 @@ TEST(ReplSuperlinearArguments, ASolverWhoseProbeConvergedWasMissedByTheLastPass)
     expect_ok(interp, "pde_poisson_2d(P, 0.01, 0.01, 5000, 1e-8)");
     expect_ok(interp, "poly_cheb_expand([1;2;3], 40)");
 }
+
+TEST(ReplSuperlinearArguments, SomeCommandsHaveNoArgumentToBoundAtAll) {
+    // The last shape in the sweep, and the awkward one: three commands whose cost is set
+    // entirely by the size of the data handed to them, with nothing in the call that
+    // could be called a size argument.
+    //
+    //   - `ml_svm_fit` evaluates the kernel between every pair on every SMO pass: 400
+    //     rows took 3.5 s and 800 took 13.9 s.
+    //   - `ml_agglomerative_fit` rescans the whole distance table at every merge: 300
+    //     rows took 0.7 s, 600 took 5.9 s, 900 took 21.3 s -- 8x and 27x, a cube.
+    //   - `stats_multiple_regression` forms X^T X, which is columns by columns and is
+    //     then copied for the elimination. `ones(1, 262144)` is a design matrix of
+    //     exactly the element cap -- inside every bound the REPL has -- and asks for 1.1
+    //     TB. Measured ABORTING the process at 2.6 s.
+    //
+    // A matrix that fits is not a normal-equations system that fits.
+    Interpreter interp;
+    expect_ok(interp, "X = ones(2000,2)");
+    expect_ok(interp, "y = ones(2000,1)");
+    expect_error_contains(interp, "ml_svm_fit(X, y)", "the row count 2000 is too large");
+    expect_error_contains(interp, "ml_agglomerative_fit(X, 3)",
+                          "the row count 2000 is too large");
+    expect_ok(interp, "W = ones(1,262144)");
+    expect_ok(interp, "z = ones(1,1)");
+    expect_error_contains(interp, "stats_multiple_regression(W, z)", "dense");
+    // The sizes these are used at are unaffected, including a square design matrix at
+    // the widest the normal equations allow.
+    expect_ok(interp, "S = ones(300,2)");
+    expect_ok(interp, "t = ones(300,1)");
+    expect_ok(interp, "ml_svm_fit(S, t)");
+    expect_ok(interp, "ml_agglomerative_fit(S, 3)");
+    expect_ok(interp, "D = ones(512,512)");
+    expect_ok(interp, "d = ones(512,1)");
+    expect_ok(interp, "stats_multiple_regression(D, d)");
+}
+
+TEST(ReplSuperlinearArguments, AndOneOfThemWasFixedRatherThanBounded) {
+    // `stats_kendall` was the fourth of that set and it did not get a bound. Its pair
+    // loop is 5e9 comparisons at 100000 observations -- 3.5 s at n = 20000 and 13.9 s at
+    // n = 40000 -- and Kendall's tau-b is an identity away from an inversion count, so
+    // Knight's O(n log n) form reaches the same number in 0.2 s. Refusing an ordinary
+    // statistic on an ordinary dataset would have been the wrong answer to it.
+    //
+    // `test_stats_timeseries` checks the new form against the old one exactly, over four
+    // tie regimes. This asserts the thing the REPL user sees: it comes back, and it is
+    // right. tau of a strictly increasing pair is 1.
+    Interpreter interp;
+    expect_ok(interp, "n = 100000");
+    expect_ok(interp, "a = ones(100000,1)");
+    expect_contains(interp, "stats_kendall([1; 2; 3; 4; 5], [2; 4; 6; 8; 10])", "1");
+    expect_ok(interp, "stats_kendall(a, a)");
+}

@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: 2026 Odin Loch
 // Wave 56: Stats time-series, bootstrap, new descriptive tests
 #include "ms/stats/stats.hpp"
+#include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <gtest/gtest.h>
 #include <vector>
 
@@ -148,6 +150,110 @@ TEST(StatsKendall, RangeCheck) {
     double k = ms::kendall(x, y);
     EXPECT_GE(k, -1.0);
     EXPECT_LE(k,  1.0);
+}
+
+namespace {
+
+// The definition, written out: every pair against every other, tau-b's denominator.
+//
+// This is what `ms::kendall` used to BE, kept here as the reference it is now checked
+// against. It was replaced because it is quadratic -- 3.5 s at n = 20000, 13.9 s at
+// n = 40000, and the REPL's `stats_kendall` did not finish on 100000 observations --
+// by Knight's O(n log n) formulation, which reaches the same number through an
+// inversion count. The point of this test is that "the same number" is exact and not
+// approximate.
+double kendall_by_definition(const std::vector<double>& x, const std::vector<double>& y) {
+    const std::size_t n = x.size();
+    if (n != y.size() || n == 0) {
+        return 0.0;
+    }
+    long long concordant = 0;
+    long long discordant = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        for (std::size_t j = i + 1; j < n; ++j) {
+            const double product = (x[i] - x[j]) * (y[i] - y[j]);
+            if (product > 0.0) {
+                ++concordant;
+            } else if (product < 0.0) {
+                --discordant;  // accumulated negative, added below
+            }
+        }
+    }
+    const auto tie_pairs = [](std::vector<double> v) {
+        std::sort(v.begin(), v.end());
+        double total = 0.0;
+        std::size_t i = 0;
+        while (i < v.size()) {
+            std::size_t j = i + 1;
+            while (j < v.size() && v[j] == v[i]) {
+                ++j;
+            }
+            const double t = static_cast<double>(j - i);
+            total += t * (t - 1.0) / 2.0;
+            i = j;
+        }
+        return total;
+    };
+    const double nd = static_cast<double>(n);
+    const double n0 = nd * (nd - 1.0) / 2.0;
+    const double denom = std::sqrt((n0 - tie_pairs(x)) * (n0 - tie_pairs(y)));
+    return (denom > 0.0) ? static_cast<double>(concordant + discordant) / denom : 0.0;
+}
+
+} // namespace
+
+TEST(StatsKendall, MatchesTheQuadraticDefinitionExactly) {
+    // A deterministic linear congruential sequence rather than <random>, so the cases
+    // are the same on every platform and a failure is reproducible from the test alone.
+    std::uint64_t state = 20260911u;
+    const auto next = [&state]() {
+        state = state * 6364136223846793005ull + 1442695040888963407ull;
+        return static_cast<double>((state >> 33) % 1000u);
+    };
+    // Four regimes, because ties are where the two formulations could diverge:
+    // continuous, ties in x only, ties in y only, and heavy ties in both.
+    for (int regime = 0; regime < 4; ++regime) {
+        for (const std::size_t n : {std::size_t{2}, std::size_t{3}, std::size_t{7},
+                                    std::size_t{16}, std::size_t{41}, std::size_t{90}}) {
+            std::vector<double> x(n);
+            std::vector<double> y(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                const double a = next();
+                const double b = next();
+                x[i] = (regime == 1 || regime == 3) ? std::floor(a / 400.0) : a;
+                y[i] = (regime == 2 || regime == 3) ? std::floor(b / 400.0) : b;
+            }
+            EXPECT_NEAR(ms::kendall(x, y), kendall_by_definition(x, y), 1e-12)
+                << "regime " << regime << ", n = " << n;
+        }
+    }
+}
+
+TEST(StatsKendall, TiesInEveryValueGiveZeroRatherThanNaN) {
+    // Every pair is tied, so the tau-b denominator is zero. The identity the fast form
+    // uses reaches that case by a different route -- n1 and n2 both equal n0 -- and it
+    // has to land on the same answer.
+    const std::vector<double> x(20, 7.0);
+    const std::vector<double> y(20, 3.0);
+    EXPECT_DOUBLE_EQ(ms::kendall(x, y), 0.0);
+    EXPECT_DOUBLE_EQ(ms::kendall(x, y), kendall_by_definition(x, y));
+}
+
+TEST(StatsKendall, AHundredThousandObservationsIsAnOrdinaryRequest) {
+    // The quadratic form was 5e9 comparisons here and did not return. This asserts the
+    // ANSWER rather than a duration: a strictly increasing pair is tau = 1 exactly, and
+    // an exactly reversed one is -1, which no partial or truncated computation produces.
+    const std::size_t n = 100000;
+    std::vector<double> x(n);
+    std::vector<double> y(n);
+    std::vector<double> reversed(n);
+    for (std::size_t i = 0; i < n; ++i) {
+        x[i] = static_cast<double>(i);
+        y[i] = 2.0 * static_cast<double>(i) + 1.0;
+        reversed[i] = -static_cast<double>(i);
+    }
+    EXPECT_NEAR(ms::kendall(x, y), 1.0, 1e-12);
+    EXPECT_NEAR(ms::kendall(x, reversed), -1.0, 1e-12);
 }
 
 // -----------------------------------------------------------------------

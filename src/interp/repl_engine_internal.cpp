@@ -1574,6 +1574,15 @@ Result<Matrix<double>> eval_ml_agglomerative_fit(const Matrix<double>& X_m, int 
     if (n_clusters < 1) {
         return std::unexpected(DomainError{"ml_agglomerative_fit", "expected n_clusters >= 1"});
     }
+    // The same, one power further up: each of the n merges rescans the whole pairwise
+    // distance table, so the row count is cubed. 300 rows took 0.7 s, 600 took 5.9 s and
+    // 900 took 21.3 s -- 30 ns per row^3, and 8x and 27x are what a cube looks like.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_agglomerative_fit", "the row count", static_cast<double>(X->size()), 3, 30.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
+    }
     ml::AgglomerativeClustering ac(n_clusters, linkage);
     ac.fit(*X);
     return vector_to_column(ac.labels_);
@@ -2310,6 +2319,16 @@ Result<Matrix<double>> eval_ml_svm_fit(const Matrix<double>& X_m, const Matrix<d
     }
     if (y->size() != X->size()) {
         return std::unexpected(DimensionMismatch{y->size(), X->size()});
+    }
+    // Nothing in this call is a size argument. The SMO loop evaluates the kernel between
+    // every pair on every pass, so the row count alone decides what it costs: 400 rows
+    // took 3.5 s and 800 took 13.9 s, four times for double. 21700 ns per row^2 -- a
+    // large constant because a pass is many sweeps, not one.
+    auto bounded_rows = checked_superlinear_argument(
+        "ml_svm_fit", "the row count", static_cast<double>(X->size()), 2, 21700.0,
+        kMaxReplSimulationWorkNanos);
+    if (!bounded_rows) {
+        return std::unexpected(bounded_rows.error());
     }
     ml::SVM svm;
     svm.config.C = C;
@@ -12874,6 +12893,16 @@ Result<Matrix<double>> eval_stats_multiple_regression(const Matrix<double>& X_m,
         return std::unexpected(DomainError{
             "stats_multiple_regression",
             "y length must equal number of rows in X"});
+    }
+    // A design matrix that fits is not a normal-equations system that fits. X^T X is
+    // columns by columns and is then COPIED for the elimination, so `ones(1, 262144)` --
+    // a design matrix of exactly kMaxReplMatrixElems, inside every bound the REPL has --
+    // asks for 1.1 TB and ABORTED the process in 2.6 s.
+    auto bounded_cols = checked_dense_system_side(
+        "stats_multiple_regression", static_cast<double>(X_m.cols()),
+        "the design matrix's column count");
+    if (!bounded_cols) {
+        return std::unexpected(bounded_cols.error());
     }
     std::vector<std::vector<double>> X(X_m.rows(), std::vector<double>(X_m.cols()));
     for (size_t i = 0; i < X_m.rows(); ++i) {
