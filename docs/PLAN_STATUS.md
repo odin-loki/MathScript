@@ -599,7 +599,7 @@ is the sieve, not the width, and it now says so.
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; seven files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5% -- every survivor either killed by a new test or classified by measurement |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eight files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0% -- every survivor either killed by a new test or classified by measurement |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -786,6 +786,16 @@ Every one of the four new tests was checked against its mutant. The SSOR one is 
 reason that step is not a formality: the first version of it asserted three entries, all
 of which passed under the mutant, and it took reading the summation to find the one
 entry that could tell the difference.
+
+Eighth file: `src/crypto/crypto.cpp`, 20 mutants at seed 31 against `test_crypto` and
+`test_crypto_random`. **17 of 20 viable killed, 85.0%** -- the highest of the eight, on
+a file where none of the 20 mutants failed to compile. Three survivors:
+
+| Survivor | What it was |
+|---|---|
+| `:1359` the PBKDF2 degenerate guard | **A gap, and a subtle one.** `if (dklen == 0 \|\| iterations == 0) return {};` survived the zero becoming a one -- because `dklen = 0` takes the same path either way (the block count rounds to zero and the loop does not run) and every other test asks for 16, 20, 25 or 64 bytes. Nothing asked for ONE, so nothing could tell the guard from a guard that also refuses a one-byte key. **Tested now**, by PBKDF2's own property: a shorter derived key is a PREFIX of a longer one, which pins every short length at once rather than pinning one more vector. |
+| `:43` `#    define O_CLOEXEC 0` | **Not compiled.** It is inside `#ifndef O_CLOEXEC`, and Linux defines it, so the mutant produced a byte-identical program -- the same class as `numthy.cpp:312` above. |
+| `:722` `for (int i = 0; i < 16; ++i)` in `aes_sub_bytes` | **A memory error that a plain build cannot see.** Widened to `<=` the loop writes `state[16]`, one byte past the AES block: undefined behaviour rather than a wrong answer, and the byte it corrupts is not one any assertion reads, so all of `test_crypto` passed. This is a limit of the technique rather than of the suite -- the mutant would die under the AddressSanitizer job, and mutation testing run against a non-sanitised build is blind to exactly this class. Recorded rather than "fixed": there is no test-level assertion that can see a stray write into a buffer the tests cannot reach. |
 
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
