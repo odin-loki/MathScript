@@ -475,6 +475,8 @@ A round-trip test should be written directly from this table; each row is a case
 | N26 | `matrix_environment` outside the allow-list, e.g. `"array}{cc"` | `\begin{array}{cc} … \end{array}{cc}` | parse error `E-LATEX-0036` | Interpolated with no validation (:456-459). Excluded by §0. |
 | N27 | a null `ExprRef`, or a head `walk` does not recognise | `\mathrm{undefined}` | `constant("undefined")` | notation.cpp:346 and :418-422 emit the same string as the value itself. Right for `undefined()`, a fabrication for the other two. |
 
+| N28 | `div(a, mul(b, c))` -- a quotient whose denominator is one product node, e.g. `div(symbol("d"), mul({symbol("d"), symbol("x")}))` | `\frac{d}{d \cdot x}` | `mul({a, pow(b,-1), pow(c,-1)})`, and then whatever that reduces to -- here `pow(x,-1)`, because `mul` collects `d^1 * d^-1` at construction | The printer's denominator is the list of factors with negative exponents, so `mul({a, b^-1, c^-1})` and `mul({a, (b c)^-1})` print the SAME string and one of them cannot read back as itself. `parse_fraction` distributes, which keeps the first -- the shape a canonical node actually has, since `div(div(a,b),c)` flattens to it -- and gives up the second. Consequence worth stating plainly: `\frac{d}{d \cdot x}` reads as `1/x`. A core whose constructors reduce `x/3*3` to `x` was never going to hand it back unreduced. |
+
 Everything not in this table round-trips. In particular these do **not** belong on it, contrary to the surveys: negative Integer and negative Rational atoms; the display reordering of `Add` and `Mul`; `\frac{}{}` of every provenance; `x - 7`; `-2 \cdot x`; `\frac{2 \cdot x}{3}`; `\dfrac` vs `\frac`; `\left(` vs `(`; `x^{\frac{1}{2}}` under `roots_as_radicals = false`; `\int f` with no differential.
 
 ---
