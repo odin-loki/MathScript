@@ -218,7 +218,30 @@ def main() -> int:
         print("--target named nothing", file=sys.stderr)
         return 1
     build = ["ninja", "-C", args.build_dir, *targets]
-    tests = [[str(Path(args.build_dir) / "tests" / name)] for name in targets]
+
+    # Test binaries are not all directly under <build>/tests: §8.8 grouped the
+    # integration and numerical suites into per-domain executables that land in
+    # subdirectories, so `numerical_linalg_svd_adv` is at tests/numerical/. Assuming
+    # the flat layout made the harness die with a FileNotFoundError from deep inside
+    # subprocess -- after the baseline build, which on a cold tree is several
+    # minutes -- and said nothing about which target it could not find.
+    def locate(name: str) -> str:
+        flat = Path(args.build_dir) / "tests" / name
+        if flat.is_file():
+            return str(flat)
+        found = sorted(Path(args.build_dir).glob(f"tests/**/{name}"))
+        found = [path for path in found if path.is_file()]
+        if len(found) == 1:
+            return str(found[0])
+        if not found:
+            print(f"no test binary named {name} under {args.build_dir}/tests -- "
+                  f"build it first, or check the name", file=sys.stderr)
+            sys.exit(1)
+        print(f"{name} is ambiguous: {', '.join(str(p) for p in found)}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    tests = [[locate(name)] for name in targets]
 
     def run_tests() -> tuple[str, int]:
         """The first target that fails, and its code. ("", 0) when they all pass.
