@@ -261,6 +261,65 @@ TEST(SymbolicSolveLinearTest, singular_system_fails) {
     ASSERT_FALSE(result.has_value());
 }
 
+// §8.4: `extract_linear_term` recognises `x^1` as the unknown x, and the check that
+// the exponent is 1 became a check that it is NOT 1 without a single test noticing.
+// Under that reading `x^2` is linear in x, and a quadratic is "solved" as though its
+// squared term were a plain one -- which is the same silent-wrong-answer shape as the
+// defect this function was already fixed for once, when it discarded terms it could
+// not read instead of refusing them. The six tests above all pass a system that IS
+// linear, so nothing exercised the refusal at all.
+TEST(SymbolicSolveLinearTest, refuses_a_system_that_is_not_linear) {
+    // x^2 + x - 1: linear in appearance if the exponent goes unchecked.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_pow(sym_var("x"), sym_const(2.0)), sym_var("x")),
+            sym_const(1.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "a quadratic was solved as a linear equation";
+    }
+    // x^3, so it is not only the exponent 2 that is caught.
+    {
+        auto eq = sym_sub(sym_pow(sym_var("x"), sym_const(3.0)), sym_const(8.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "a cubic was solved as a linear equation";
+    }
+    // A product of two unknowns is non-linear even though each factor is degree 1.
+    {
+        auto eq1 = sym_sub(sym_mul(sym_var("x"), sym_var("y")), sym_const(1.0));
+        auto eq2 = sym_sub(sym_add(sym_var("x"), sym_var("y")), sym_const(3.0));
+        const auto result =
+            sym_solve_linear(make_equations(std::move(eq1), std::move(eq2)), {"x", "y"});
+        EXPECT_FALSE(result.has_value()) << "x*y was solved as a linear term";
+    }
+    // An unknown inside a function.
+    {
+        auto eq = sym_sub(sym_sin(sym_var("x")), sym_const(0.5));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        EXPECT_FALSE(result.has_value()) << "sin(x) was solved as a linear term";
+    }
+    // And `x^1` written out longhand IS linear, which is the other half of the rule:
+    // refusing everything would pass all four cases above and be useless.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_mul(sym_const(3.0), sym_pow(sym_var("x"), sym_const(1.0))),
+                    sym_const(6.0)),
+            sym_const(0.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        ASSERT_TRUE(result.has_value()) << "x^1 was not recognised as linear in x";
+        EXPECT_NEAR(sym_eval(result->at("x"), {}), -2.0, 1e-12);
+    }
+    // A non-linear term in a variable that is NOT being solved for is a constant as
+    // far as this system is concerned, and must still be accepted.
+    {
+        auto eq = sym_sub(
+            sym_add(sym_var("x"), sym_pow(sym_var("k"), sym_const(2.0))),
+            sym_const(0.0));
+        const auto result = sym_solve_linear(make_equations(std::move(eq)), {"x"});
+        ASSERT_TRUE(result.has_value()) << "k^2 was treated as non-linear in x";
+        EXPECT_NEAR(sym_eval(result->at("x"), {{"k", 3.0}}), -9.0, 1e-12);
+    }
+}
+
 TEST(SymbolicLimitTest, one_minus_cos_over_x_squared) {
     const auto expr = sym_div(
         sym_sub(sym_const(1.0), sym_cos(sym_var("x"))),

@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; fourteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; fifteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1220,6 +1220,44 @@ classified:
 | `:1328` `right_ref.assign(n, -1)` -> `-2` | A sentinel that is never read before it is written: `half_edge_cw` assigns every entry it later reads. |
 | `:38` the Jacobi sweep's `<` -> `<=` | Reads one past the end. The plain build cannot see it, and unlike the blossom case above there is no corpus large enough here to turn it into a crash. ASan in CI is what covers it. |
 | `:2288` the blossom's `allowedge` initialisation | Marking every edge allowed at the top of each stage instead of none. It is a starting hint the algorithm re-derives from slack, and the answer is unchanged over the **eight hundred graphs** above, every one verified against exhaustive search. Not proved equivalent -- stated as measured: if it is a defect, no graph of nine vertices or fewer exhibits it. |
+
+
+Fifteenth file: `src/symbolic/symbolic.cpp`, 24 mutants at seed 67 against the twelve
+suites that cover it -- the largest source file measured at 5,992 lines. **13 of 22 viable
+killed, 59.1%.** A sample of twenty-four over six thousand lines is thin by construction,
+and the honest reading is that it locates gaps rather than scoring the file; the nine
+survivors are recorded here with what each one is, and one of them is closed.
+
+**`sym_solve_linear` had no test that gives it something non-linear.** Its six tests all
+pass a system that IS linear, so the refusal path -- the one the function was already
+fixed for once, when it discarded terms it could not read instead of refusing them -- was
+never exercised at all. `SymbolicSolveLinearTest.refuses_a_system_that_is_not_linear`
+covers six cases: `x^2 + x - 1`, `x^3 - 8`, `x*y = 1` beside `x + y = 3` (non-linear
+though each factor is degree 1), `sin(x) = 0.5`, and two that must still be ACCEPTED --
+`3*x^1 + 6`, since refusing everything would pass the first four and be useless, and
+`x + k^2`, where the non-linearity is in a variable the system is not solving for and is
+therefore a constant.
+
+What that test did NOT do is kill the survivor that prompted it, and checking rather than
+assuming is what turned that into a finding. `extract_linear_term`'s `x^1` branch had its
+`value == 1.0` become `value != 1.0` and the quadratic was still refused. **The branch is
+unreachable for the input it was written for**: `extract_linear_row` normalises with
+`sym_simplify(sym_expand(...))` first, and that rewrites `x^1` to a bare `x` -- measured,
+`simplify(expand(x^1))` prints `x` -- so no `Pow` with exponent 1 ever reaches the matcher.
+It is redundant code rather than an untested branch, and the test stays because the
+contract it asserts was genuinely unasserted whatever kills that particular mutant.
+
+The remaining eight are located and left open, which is the useful state to leave them in:
+
+| Survivor | What it is |
+|---|---|
+| `:4248` `degree = a.size() + b.size() - 2` -> `+ 2` in `ode_poly_mul` | The degree is used to size the output and to compare against `kOdeMaxPolyDegree` (8). The output is trimmed of trailing zeros afterwards, so the product is unchanged; only the cap moves, four degrees early. Visible only for a product of true degree 5 to 8. |
+| `:675`, `:693` the `(1 +/- t)^m` expansion guards | A null check turned into a disjunction, and `m < 1` into `m < 2`. |
+| `:1479` the integration heuristic's factor-count test | |
+| `:3405` the `x^1` matcher | Unreachable, as above. |
+| `:4885` `ode_integrate(..., depth + 1)` -> `depth + 2` | A recursion-depth budget, the same family as the other iteration budgets classified in this section. |
+| `:5034`, `:5093` the ODE identity and zero tolerances | Comparisons against `kOdeZeroTol` and `kOdeIdentityTol`: knife-edge tolerances, the same shape as LDL's `amax` scan. |
+| `:5277` the `Add`/`Sub`/`Neg` test in an ODE rewrite | |
 
 
 ### What the corpus found on its first run

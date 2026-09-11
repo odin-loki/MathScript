@@ -967,6 +967,28 @@ height shifts a whole tree by one, and the Left-Right criterion reads difference
 ASan covers; and the blossom's `allowedge` initialisation is a hint the algorithm
 re-derives, unchanged across all eight hundred exhaustively-verified graphs.
 
+### §8.4 — sym_solve_linear had no test that gives it something non-linear
+
+`src/symbolic/symbolic.cpp` is the largest source file in the tree at 5,992 lines, and a
+sample of 24 mutants scored **59.1%**. A sample that size over a file that size locates
+gaps rather than scoring it, and the nine survivors are recorded with what each one is.
+
+One is closed. **`sym_solve_linear`'s six tests all pass a system that IS linear**, so the
+refusal path — the one the function was already fixed for once, when it discarded terms it
+could not read instead of refusing them — was never exercised. Six cases cover it now:
+`x^2 + x - 1`, `x^3 - 8`, `x*y = 1` beside `x + y = 3` (non-linear though each factor is
+degree 1), `sin(x) = 0.5`, and two that must still be **accepted** — `3*x^1 + 6`, since
+refusing everything would pass the first four and be useless, and `x + k^2`, where the
+non-linearity is in a variable the system is not solving for and is therefore a constant.
+
+What that test did not do is kill the survivor that prompted it, and checking rather than
+assuming turned that into its own finding: `extract_linear_term`'s `x^1` branch had its
+`value == 1.0` become `!= 1.0` and the quadratic was still refused, because
+`extract_linear_row` normalises with `sym_simplify(sym_expand(...))` first and that
+rewrites `x^1` to a bare `x`. **The branch is unreachable for the input it was written
+for** — redundant code rather than an untested one. The test stays, because the contract it
+asserts was genuinely unasserted whatever kills that mutant.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under
