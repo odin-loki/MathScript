@@ -899,6 +899,38 @@ fifteen image sizes from 16 to 512) — two are reads one past the end, which a 
 without sanitizers cannot see and the ASan job covers, one turns on a single neighbour of
 twenty-six in the extremum test, and one is in `radon`, which this pass was not aimed at.
 
+### §8.4 — six formulas in ml.cpp that 214 tests could not see
+
+`src/ml/ml.cpp` scored **65.2%** over viable mutants on a file with 214 unit tests, and
+every survivor was a formula rather than a control-flow branch. None of the reasons is
+"nobody tested this function":
+
+- **`r2_score`**: `1 - ss_res/ss_tot` becoming `1 + ss_res/ss_tot`. On a perfect fit the
+  residual share is zero and both give 1 — the only case the suite scored. Now asserted
+  across the range: exactly 0 for predicting the mean, 0.9 for a residual share of one
+  tenth, and **-3 for a prediction worse than the mean**, which is the half of R²'s range
+  a "close to 1" assertion never reaches and the half where that sign is decided.
+- **`StandardScaler`'s spread**: nothing asserted that a scaled column comes out with
+  standard deviation 1. A `fit` / `inverse_transform` round trip holds for any non-zero
+  divisor, so it cannot say which divisor was chosen. Also nothing scaled a **constant
+  column**, which is what the epsilon inside the square root exists for — without it that
+  is a square root of a negative, and the NaN propagates into every downstream fit.
+- **`var_tanh`'s derivative** `1 - t²`: nothing differentiated a tanh and checked the
+  number. Now compared against central differences, along with exp, sigmoid, sqrt and log.
+- **`GaussianMixture`'s fitted variances**: the GMM tests check means, weights, cluster
+  assignment and log-likelihood finiteness, and never a variance. Two perfectly separated
+  components with known and different per-feature variances recover them exactly, asserted
+  at 1e-6 — the accumulator this pins is off by about 0.05, and a tolerance wide enough to
+  feel comfortable is wide enough to miss it.
+
+**65.2% -> 91.3%**, 21 of 23, the same twenty-four mutants re-scored. Both remaining
+survivors are equivalent and measured. `(x-m)*(x-m)` becoming `(x+m)*(x-m)` is the same
+number — `sum (x+m)(x-m) = sum x² - n·m² = sum (x-m)²` — precisely because the value
+subtracted is the mean. And t-SNE's "fewer than two points" guard becoming "fewer than
+three" changes nothing, because the divergence of a two-point embedding is identically
+zero however the points are placed: P has one pair and puts all its mass there, Q has the
+same one pair and does the same, so KL is `1·log(1/1)` whatever the distance between them.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

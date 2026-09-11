@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twelve files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; thirteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1127,6 +1127,50 @@ Score after: **52.2% -> 73.9%**, the same twenty-four mutants re-scored. Six sur
 | `:2547`, `:3825` loop bounds becoming `<=` | Reads one past the end. **Mutation testing under a build without sanitizers is blind to memory errors**, which is a limitation of the method, already recorded. The ASan job in CI is what covers this class. |
 | `:3870` SIFT's skip-the-centre test | `dl == 0 && dr == 0 && dc2 == 0` becoming `dl == 1 && ...` skips the neighbour at (layer+1, r, c) instead of the centre -- and comparing the centre with itself is a no-op, so the only effect is that one of twenty-six neighbours goes unchecked. It shows only on a candidate that exactly that neighbour rejects, and the golden's 160 keypoints contain none. |
 | `:2749` radon's sampling bound | The line range overshot into `radon`, which was not one of the three regions. `x >= 0` becoming `x >= 1` drops the first column from a projection's average. A real gap, in a function this pass was not aimed at, and recorded as such. |
+
+
+Thirteenth file: `src/ml/ml.cpp`, 24 mutants at seed 59 against the three suites that
+cover it. **15 of 23 viable killed, 65.2%** -- on a file with 214 unit tests. Every
+survivor was a FORMULA rather than a control-flow branch, and each was invisible for its
+own specific reason. The reasons are the point, because none of them is "nobody tested
+this function":
+
+| Survivor | Why the tests that exist cannot see it |
+|---|---|
+| `r2_score`: `1 - ss_res/ss_tot` -> `1 + ...` | On a perfect fit the residual share is zero and both give 1. That is the only case the suite scores. |
+| `StandardScaler`: `(x-m)*(x-m)` -> `(x+m)*(x-m)` | Algebraically the same number: `sum (x+m)(x-m) = sum x^2 - n*m^2 = sum (x-m)^2`, precisely because the value subtracted is the mean. **Equivalent**, and measured -- the recovered `std_` agrees with an independently computed standard deviation to 1e-9 under both. |
+| `StandardScaler`: `sqrt(s/n + 1e-12)` -> `- 1e-12` | The epsilon that keeps a zero-variance column out of a square root of a negative. Nothing scaled a constant column, so nothing produced the NaN. |
+| `var_tanh`: `1 - t^2` -> `1 + t^2` | Nothing differentiated a tanh and checked the number. |
+| `TSNE::kl_divergence`: `size() < 2` -> `<= 2` | **Equivalent**, and the reason is worth writing down: the divergence of a TWO-point embedding is identically zero however the points are placed -- P has one pair and puts all its mass there, Q has the same one pair and does the same, so KL is `1*log(1/1)` whatever the distance. Refusing at two and computing at two return the same 0.0. Measured at two different embeddings, one near and one far. |
+| `GaussianMixture`: `double v=0` -> `v=1`, and the variance loop starting at feature 1 | Nothing asserted a fitted VARIANCE -- the GMM tests check means, weights, cluster assignment and log-likelihood finiteness. |
+
+`tests/unit/ml/test_ml_properties.cpp` asserts the six:
+
+- **R^2 across its whole range**: 1 for a perfect fit, exactly 0 for predicting the mean,
+  0.9 for a residual share of one tenth, and **-3 for a prediction worse than the mean** --
+  the half of the range a "close to 1" assertion never reaches, and the half where the
+  sign in front of the share is decided.
+- **The scaler's columns come out with mean 0 and standard deviation 1**, compared against
+  a standard deviation computed independently in the test. A `fit` / `inverse_transform`
+  round trip holds for ANY non-zero divisor, so it says nothing about which divisor was
+  chosen; this does.
+- **A constant column stays finite**, which is what the epsilon is for.
+- **Reverse-mode derivatives against central differences**, for tanh, exp, sigmoid, sqrt
+  and log at four points each, plus `d/dx tanh(3x) = 3(1 - tanh^2 3x)` so the derivative is
+  multiplied by something rather than returned alone.
+- **The two-point KL is zero at two different embeddings**, which states the property
+  rather than observing it once.
+- **A GMM recovers the variances it was given.** Two perfectly separated components with
+  known and different per-feature variances -- feature 0 tight in one and wide in the
+  other, feature 1 the other way about -- so each feature discriminates. EM's
+  responsibilities are 0 and 1, so it recovers 0.5 and 32.0 EXACTLY, asserted at 1e-6:
+  the accumulator this pins is off by about 0.05, and a tolerance wide enough to feel
+  comfortable is wide enough to miss it. A second case gives two components differing
+  only in feature 0, so a density that skipped that feature would have nothing left to
+  tell them apart.
+
+Score after: **65.2% -> 91.3%** -- 21 of 23, the same twenty-four mutants re-scored, with
+both remaining survivors measured equivalent. The highest of the thirteen files.
 
 
 ### What the corpus found on its first run
