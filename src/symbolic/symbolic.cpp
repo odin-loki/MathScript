@@ -13,6 +13,8 @@
 #include <algorithm>
 #include <vector>
 #include <numbers>
+#include <string>
+#include <unordered_map>
 
 namespace ms {
 
@@ -924,6 +926,158 @@ SymExpr sym_diff(SymExpr expr, const std::string& var) {
     return sym_const(0.0);
 }
 
+namespace {
+
+/// One addend of a flattened sum, split into the numeric multiple and the thing it
+/// multiplies: `3*x` is (3, x), `x` is (1, x), `-x` is (-1, x), `7` is (7, nothing).
+///
+/// The key is `sym_to_string` of the kernel, and it is a BUCKET key only -- two addends
+/// that share it are then compared with `sym_equal_impl` before being added together.
+/// The printer renders a constant with six decimals, so `sin(1.0000001*x)` and
+/// `sin(1.0000002*x)` print identically; treating that text as equality would collapse
+/// their difference to exactly zero. `test_symbolic_tables` asserts that expansion does
+/// not do this, and caught the first version of this code doing it.
+struct Addend {
+    double coefficient = 1.0;
+    std::optional<SymExpr> kernel; ///< absent for a pure constant
+    std::string key;               ///< empty for a pure constant
+};
+
+Addend split_addend(const SymExpr& term, double sign);
+
+void flatten_sum(const SymExpr& expr, double sign, std::vector<Addend>& out) {
+    if (expr.op == SymOp::Add && expr.left && expr.right) {
+        flatten_sum(*expr.left, sign, out);
+        flatten_sum(*expr.right, sign, out);
+        return;
+    }
+    if (expr.op == SymOp::Sub && expr.left && expr.right) {
+        flatten_sum(*expr.left, sign, out);
+        flatten_sum(*expr.right, -sign, out);
+        return;
+    }
+    out.push_back(split_addend(expr, sign));
+}
+
+Addend split_addend(const SymExpr& term, double sign) {
+    if (term.op == SymOp::Neg && term.left) {
+        return split_addend(*term.left, -sign);
+    }
+    if (term.op == SymOp::Const) {
+        return Addend{sign * term.value, std::nullopt, std::string()};
+    }
+    // Only a constant factor at the top of a product is peeled. `2*x` and `x*2` are the
+    // shapes the parser and the differentiator produce; going deeper would mean
+    // reassociating the product, which is expansion's job and not this one's.
+    const SymExpr* body = &term;
+    double factor = 1.0;
+    if (term.op == SymOp::Mul && term.left && term.right) {
+        if (term.left->op == SymOp::Const) {
+            factor = term.left->value;
+            body = term.right.get();
+        } else if (term.right->op == SymOp::Const) {
+            factor = term.right->value;
+            body = term.left.get();
+        }
+    }
+    return Addend{sign * factor, clone_expr(*body), sym_to_string(*body)};
+}
+
+SymExpr scaled_addend(const SymExpr& kernel, double coefficient) {
+    if (coefficient == 1.0) {
+        return clone_expr(kernel);
+    }
+    if (coefficient == -1.0) {
+        return sym_neg(clone_expr(kernel));
+    }
+    return sym_mul(sym_const(coefficient), clone_expr(kernel));
+}
+
+/// `x + x` as `2*x`, and nothing else.
+///
+/// The Add and Sub cases of `sym_simplify` fold a constant into a constant and drop a
+/// zero, and stop there, so a sum of like terms came back as written:
+/// `sym_simplify("2*x + 3*x")` returned `((2.000000 * x) + (3.000000 * x))`, which is
+/// the input with the spaces moved.
+///
+/// The narrow form is deliberate. Expansion already has a polynomial normal form, and
+/// routing simplify through it would multiply products out -- `x*x` becoming
+/// `(x ^ 2.000000)` -- in every one of simplify's callers, including the ODE solvers
+/// that dispatch on the *op* of what it hands back. This flattens the sum, adds the
+/// coefficients of terms that are the same term, and changes nothing else.
+///
+/// `std::nullopt` means nothing merged, and then the caller returns the expression it
+/// already had rather than a rebuilt copy of it: a sum with no like terms in it comes
+/// out exactly as it went in, which is what keeps this out of the way of the 180-odd
+/// callers that are not asking for it.
+std::optional<SymExpr> collect_sum_terms(const SymExpr& expr) {
+    std::vector<Addend> addends;
+    flatten_sum(expr, 1.0, addends);
+    if (addends.size() < 2) {
+        return std::nullopt;
+    }
+
+    std::vector<Addend> merged;
+    std::unordered_map<std::string, std::vector<std::size_t>> buckets;
+    bool collected = false;
+    for (Addend& addend : addends) {
+        if (!std::isfinite(addend.coefficient)) {
+            // An infinity or a NaN among the coefficients is a value this has no
+            // business adding up: 'inf*x - inf*x' is not 0 and saying so would be
+            // inventing an answer.
+            return std::nullopt;
+        }
+        std::vector<std::size_t>& bucket = buckets[addend.key];
+        std::size_t target = merged.size();
+        for (const std::size_t index : bucket) {
+            const Addend& candidate = merged[index];
+            const bool both_constant = !candidate.kernel && !addend.kernel;
+            if (both_constant || (candidate.kernel && addend.kernel &&
+                                  sym_equal_impl(*candidate.kernel, *addend.kernel))) {
+                target = index;
+                break;
+            }
+        }
+        if (target == merged.size()) {
+            bucket.push_back(merged.size());
+            merged.push_back(std::move(addend));
+            continue;
+        }
+        merged[target].coefficient += addend.coefficient;
+        collected = true;
+    }
+    if (!collected) {
+        return std::nullopt;
+    }
+
+    // First-appearance order, so a sum a user wrote comes back in the order they wrote
+    // it. A canonical order would be defensible and would also rewrite every sum that
+    // reaches here, which is a larger change than the one being made.
+    std::optional<SymExpr> out;
+    for (const Addend& addend : merged) {
+        if (addend.coefficient == 0.0) {
+            continue;
+        }
+        const bool negative = addend.coefficient < 0.0 && out.has_value();
+        const double magnitude = negative ? -addend.coefficient : addend.coefficient;
+        SymExpr piece = addend.kernel ? scaled_addend(*addend.kernel, magnitude)
+                                      : sym_const(magnitude);
+        if (!out) {
+            out = std::move(piece);
+        } else if (negative) {
+            out = sym_sub(std::move(*out), std::move(piece));
+        } else {
+            out = sym_add(std::move(*out), std::move(piece));
+        }
+    }
+    if (!out) {
+        return sym_const(0.0);
+    }
+    return out;
+}
+
+} // namespace
+
 SymExpr sym_simplify(SymExpr expr) {
     if (expr.left) {
         expr.left = std::make_unique<SymExpr>(sym_simplify(std::move(*expr.left)));
@@ -943,6 +1097,9 @@ SymExpr sym_simplify(SymExpr expr) {
         if (expr.right->op == SymOp::Const && expr.right->value == 0.0) {
             return take_child(expr.left);
         }
+        if (auto collected = collect_sum_terms(expr)) {
+            return std::move(*collected);
+        }
         break;
     case SymOp::Sub:
         if (expr.left->op == SymOp::Const && expr.right->op == SymOp::Const) {
@@ -953,6 +1110,9 @@ SymExpr sym_simplify(SymExpr expr) {
         }
         if (expr.left->op == SymOp::Const && expr.left->value == 0.0) {
             return sym_neg(take_child(expr.right));
+        }
+        if (auto collected = collect_sum_terms(expr)) {
+            return std::move(*collected);
         }
         break;
     case SymOp::Mul:

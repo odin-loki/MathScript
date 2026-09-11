@@ -945,6 +945,42 @@ TEST(SymbolicTables, ExpansionDeclinesRatherThanReturningPartOfTheAnswer) {
     EXPECT_NEAR(at(root, "x", -3.0), 3.0, 1e-12) << sym_to_string(root);
 }
 
+// Simplification collects like terms in a sum, and "like" has to mean the same term
+// rather than the same printed form, for the reason the expansion test below gives. The
+// first version of the collector keyed addends by `sym_to_string` and this is the case
+// that caught it.
+TEST(SymbolicTables, SimplificationKeepsDistinctAtomsApart) {
+    const SymExpr difference =
+        sym_simplify(parse_or_die("sin(1.0000001*x) - sin(1.0000002*x)"));
+    const double at_two = at(difference, "x", 2.0);
+    EXPECT_NE(at_two, 0.0) << "distinct atoms collapsed: " << sym_to_string(difference);
+    EXPECT_NEAR(at_two, std::sin(1.0000001 * 2.0) - std::sin(1.0000002 * 2.0), 1e-15);
+
+    const SymExpr cancels = sym_simplify(parse_or_die("sin(1.0000001*x) - sin(1.0000001*x)"));
+    EXPECT_EQ(at(cancels, "x", 2.0), 0.0) << sym_to_string(cancels);
+}
+
+// What collection is for, and -- more usefully -- what it is not for. A sum of like
+// terms is added up; a product is left exactly as it was, including a product sitting
+// beside a sum that did collect. Routing simplify through expansion's polynomial form
+// would have multiplied those out in all ~180 of its callers.
+TEST(SymbolicTables, SimplificationCollectsSumsAndLeavesProductsAlone) {
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("x + x"))), "(2.000000 * x)");
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("2*x + 3*x"))), "(5.000000 * x)");
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("3*x - x"))), "(2.000000 * x)");
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("x - x"))), "0.000000");
+
+    // Untouched, all of them.
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("x*x"))), "(x * x)");
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("(x+1)*(x+2)"))),
+              "((x + 1.000000) * (x + 2.000000))");
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("x + y"))), "(x + y)");
+    // The product survives a sum that collected around it, which is the case a
+    // polynomial normal form would not have left alone.
+    EXPECT_EQ(sym_to_string(sym_simplify(parse_or_die("x*x + y + y"))),
+              "((x * x) + (2.000000 * y))");
+}
+
 TEST(SymbolicTables, ExpansionKeepsDistinctAtomsApart) {
     // Atoms are identified by structure, not by printed form. sym_to_string renders
     // a constant with six decimals, so sin(1.0000001*x) and sin(1.0000002*x) print

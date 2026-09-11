@@ -314,8 +314,29 @@ were regressions; all were already true and none had a test.
   but no reading of the line claims it, so it reports the generic "could not read" now
   where it used to report a phantom matrix. `bigint: "495.0" is not an integer literal`
   is what it should say. **Open.**
-- **`sym_simplify("x + x")` returns `(x + x)`.** Like terms are collected during
-  `sym_expand` and not during `sym_simplify`.
+- **`sym_simplify("x + x")` returned `(x + x)`.** Like terms were collected during
+  `sym_expand` and not during `sym_simplify`, which folded a constant into a constant,
+  dropped a zero, and stopped: `sym_simplify("2*x + 3*x")` came back as
+  `((2.000000 * x) + (3.000000 * x))`, the input with the spaces moved. **Fixed**, and
+  the shape of the fix is the point.
+
+  The obvious route is to reuse expansion's polynomial normal form. It would also
+  multiply products out -- `x*x` becoming `(x ^ 2.000000)` -- in all ~180 of simplify's
+  callers, including the ODE solvers that dispatch on the *op* of what it returns. So
+  the collector flattens the sum, adds the coefficients of terms that are the same
+  term, and changes nothing else; when nothing merges it returns the expression it was
+  given rather than a rebuilt copy, so a sum with no like terms in it is untouched.
+  `x*x + y + y` is `((x * x) + (2.000000 * y))`: the product survives a sum that
+  collected around it.
+
+  The first version keyed addends by `sym_to_string`, and an existing test caught it
+  within the hour. The printer renders a constant with six decimals, so
+  `sin(1.0000001*x)` and `sin(1.0000002*x)` print identically and their difference
+  collapsed to exactly zero. `SymbolicTables.ExpansionKeepsDistinctAtomsApart` exists
+  because expansion made the same mistake earlier, and its comment names the trap in
+  advance. The text is a bucket key now and `sym_equal` decides; the simplify half of
+  the property is asserted too, so the next person to reach for a printed form as an
+  identity has two tests telling them not to.
 
 The transcripts record all seven as they are, with the two most misleading marked in
 the script files, so each becomes a readable diff the day it is fixed rather than an
