@@ -399,6 +399,38 @@ preprocessor removed, so a fallback implementation behind a `#if` is invisible t
 technique *and* to the test suite at the same time -- and the two silences look exactly
 alike from the outside.
 
+Fourth file: `src/sym2/expr.cpp`, 16 mutants at seed 11 against all eight targets that
+cover it. **10 of 16 killed, 62.5%** -- the lowest of the four, and the §10 core. Six
+survivors, and the spread is the finding rather than the number:
+
+  - **One real gap, and it is in `evaluate`.** `*base == 0.0 && *exponent < 0.0` widened
+    to `<=` -- which turns `0^0` into a division-by-zero error -- survived all eight
+    suites. `test_sym2_core` *does* assert `0^0`, but on the BUILDER, which folds the
+    literal to `undefined` before any Pow node exists; the evaluator's own guard is a
+    different path reached only when base and exponent both come out zero from the
+    environment, and nothing was asserting it. Measured: `evaluate(b^e, {b:0, e:0})` is
+    `1.0`, following `std::pow`. **Tested now**, and the new assertion was checked
+    against the mutant: it fails.
+  - **Two are unreachable, and for the same reason.** `:308`, the `hash !=` fast path in
+    `structurally_equal`'s structural fallback, and `:347`, the equal-value branch of
+    `compare` on two Reals. Both functions short-circuit on `a == b` first, and
+    interning means the public API cannot produce two structurally equal nodes that are
+    not the same pointer -- measured over integers, reals, symbols, sums and a nested
+    power, every pair came back pointer-identical. `structurally_equal`'s comment
+    justifies the fallback by "a node built before an interner reset, or handed in from
+    a bridge that constructed one directly"; there is no interner-reset API, so it is
+    defensive code for a caller that does not exist yet.
+  - **Three are equivalent.** `:371` and `:363` sit after an explicit equality test
+    (`if (x != y)`, `if (xb == yb) return 0;`), so widening `<` to `<=` cannot change
+    the branch taken; `:363`'s other mutant returns 2 where the code returns 1, and a
+    three-way comparator is consumed as a sign. `:958` sorts by `display_key`, and `mul`
+    collects same-base factors at construction, so two factors with an equal key do not
+    arise.
+
+The number to take from this is not 62.5%. It is that the newest code in the tree, whose
+tests were written alongside it, had its one real gap exactly where a test asserted the
+*builder* and the reader would reasonably believe the behaviour was covered.
+
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:
 

@@ -168,6 +168,19 @@ TEST(Sym2Core, WhatHasNoValueSaysSo) {
     // one silently.
     EXPECT_TRUE(is_undefined(pow(integer(0), integer(0))));
     EXPECT_TRUE(is_undefined(pow(integer(0), integer(-1))));
+    // The two above are the BUILDER folding a literal, which is a different code path
+    // from `evaluate` and does not exercise it: the fold means no Pow node with a zero
+    // base ever reaches the evaluator that way. §8.4 found the evaluator's own guard
+    // unasserted -- a mutant that widened `exponent < 0` to `<= 0`, turning 0^0 into a
+    // division-by-zero error, survived all eight sym2 suites.
+    const ExprRef general = pow(symbol("b"), symbol("e"));
+    const auto zero_to_zero = evaluate(general, {{"b", 0.0}, {"e", 0.0}});
+    ASSERT_TRUE(zero_to_zero.has_value()) << "0^0 reported an error at evaluation time";
+    EXPECT_DOUBLE_EQ(*zero_to_zero, 1.0)
+        << "the evaluator follows std::pow, which is 1; the builder's `undefined` is a "
+           "statement about the SYMBOL 0^0, not about the limit of b^e at the origin";
+    // A negative exponent over a zero base is the case the guard is actually for.
+    EXPECT_FALSE(evaluate(general, {{"b", 0.0}, {"e", -1.0}}).has_value());
     // ...and undefined is contagious rather than being swallowed by a zero factor.
     EXPECT_TRUE(is_undefined(mul({integer(0), div(x, integer(0))})));
     EXPECT_TRUE(is_undefined(add({integer(1), div(x, integer(0))})));
