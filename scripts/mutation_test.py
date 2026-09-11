@@ -194,7 +194,9 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=30, help="mutants to try")
     parser.add_argument("--seed", type=int, default=1,
                         help="which mutants get tried; a run is reproducible from it")
-    parser.add_argument("--build-timeout", type=int, default=900)
+    parser.add_argument("--build-timeout", type=int, default=1800,
+                        help="per-mutant build; the baseline gets four times this, "
+                             "because it may be a cold build of the whole tree")
     parser.add_argument("--test-timeout", type=int, default=600)
     args = parser.parse_args()
 
@@ -210,8 +212,17 @@ def main() -> int:
 
     print(f"{source}: {len(sites)} sites, trying {min(args.limit, len(sites))} "
           f"(seed {args.seed})")
+    # The baseline may be a cold build of everything the target links, which is a
+    # different order of cost from a mutant's rebuild of one translation unit. Giving it
+    # the same budget is how the first run of this harness reported "the unmutated tree
+    # does not build" about a tree that builds perfectly well and was still compiling.
     print("establishing the baseline...", flush=True)
-    code, output = run(build, args.build_timeout)
+    code, output = run(build, args.build_timeout * 4)
+    if code == 124:
+        print(f"the baseline build did not finish within {args.build_timeout * 4}s. That "
+              f"is a timeout, not a failure: build the target once by hand and run this "
+              f"again, or raise --build-timeout.", file=sys.stderr)
+        return 1
     if code != 0:
         print("the unmutated tree does not build; fix that first\n" + output[-2000:],
               file=sys.stderr)
