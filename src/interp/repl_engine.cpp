@@ -4385,8 +4385,18 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                 return std::unexpected(
                     DomainError{"bigint_pow", "expected non-negative integer exponent"});
             }
+            // Quadratic in the exponent -- binary exponentiation squares a number that
+            // is itself growing -- and, like bigint_factorial and bigint_fib, the result
+            // then has to round-trip through a double exactly. 10^309 already fails
+            // that, so this bound refuses nothing that could have worked; all it does is
+            // stop the computing.
+            auto exp_bounded =
+                checked_superlinear_argument("bigint_pow", "exponent", args[1], 2, 0.04);
+            if (!exp_bounded) {
+                return std::unexpected(exp_bounded.error());
+            }
             return bigint_to_scalar(
-                bignum::bigint_pow(*base, static_cast<long long>(args[1])), "bigint_pow");
+                bignum::bigint_pow(*base, static_cast<long long>(*exp_bounded)), "bigint_pow");
         }
         if (fn == "cplx_cauchy_integral") {
             return eval_cplx_cauchy_integral(args[0], args[1]);

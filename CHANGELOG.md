@@ -463,6 +463,21 @@ read; CP's ALS converges out of `max_iter` (1e7 iterations of a 40x40 returns in
 so only its rank is charged. `tensorops_decompose_tucker` measured like CP and is
 unchanged.
 
+### Work for an answer that could never be shown
+
+The REPL's scalar is a double and `bigint_to_scalar` requires the exact BigInt to
+round-trip through one, so 21! already fails and so does fib(79). What the bignum
+commands did with a large argument was compute the exact answer first and refuse it
+afterwards: `bigint_fib(200000)` spent 15.3 s building a number it then declined to
+print. Both are quadratic in n. The new bounds sit far above where that round trip stops
+succeeding, so they refuse nothing that could have worked -- all they do is stop the
+computing.
+
+The Schmidt family is cubic in the subsystem dimension: the Gram matrix is `dim_a` by
+`dim_a` and the Jacobi sweep over it is cubic, measured 0.65 s at 1024, so 4096 is 82 s.
+Bounded across `quantum_schmidt_rank`, `_number`, `_decomposition`, `_bases` and
+`quantum_entanglement_entropy`.
+
 ### A step count that is not an argument at all
 
 The six CFD advection commands take `t_end` and `dt` and no step count: the number of

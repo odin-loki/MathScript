@@ -3783,6 +3783,15 @@ Result<double> eval_info_tsallis_entropy(double q_param, const Matrix<double>& p
 
 Result<double> eval_quantum_entanglement_entropy(const Matrix<double>& psi_m, int dim_a,
                                                  int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_entanglement_entropy` at dim_a = 4096 is 6.9e10 units: 82 s, measured
+    // from 0.65 s at dim_a = 1024. A ten-qubit subsystem stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument("quantum_entanglement_entropy", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_entanglement_entropy");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -6474,6 +6483,16 @@ Result<Matrix<double>> eval_quantum_grover_search(int n_qubits, const Matrix<dou
 }
 
 Result<double> eval_quantum_schmidt_rank(const Matrix<double>& psi_m, int dim_a, int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_rank` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) is an ordinary thing to
+    // decompose and stays well inside the bound; a twelve-qubit one does not.
+    auto dim_bounded = checked_superlinear_argument("quantum_schmidt_rank", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_schmidt_rank");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -11150,6 +11169,15 @@ Result<Matrix<double>> eval_quantum_anticommutator(const Matrix<double>& A_m,
 Result<Matrix<double>> eval_quantum_schmidt_decomposition(const Matrix<double>& psi_m, int dim_a,
                                                           int dim_b) {
     constexpr const char* fn = "quantum_schmidt_decomposition";
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_decomposition` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument(fn, "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, fn);
     if (!psi) {
         return std::unexpected(psi.error());
@@ -11621,6 +11649,16 @@ Result<Matrix<double>> eval_izaac_randn_matrix(size_t rows, size_t cols) {
 }
 
 Result<double> eval_quantum_schmidt_number(const Matrix<double>& psi_m, int dim_a, int dim_b) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_number` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) is an ordinary thing to
+    // decompose and stays well inside the bound; a twelve-qubit one does not.
+    auto dim_bounded = checked_superlinear_argument("quantum_schmidt_number", "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, "quantum_schmidt_number");
     if (!psi) {
         return std::unexpected(psi.error());
@@ -11737,6 +11775,15 @@ constexpr double kQuantumSchmidtBasesTag = 282.0;
 Result<Matrix<double>> eval_quantum_schmidt_bases(const Matrix<double>& psi_m, int dim_a,
                                                   int dim_b) {
     constexpr const char* fn = "quantum_schmidt_bases";
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic, so
+    // `quantum_schmidt_bases` at dim_a = 4096 is 6.9e10 units: 82 s, measured from
+    // 0.65 s at dim_a = 1024. A ten-qubit subsystem (1024) stays well inside the bound.
+    auto dim_bounded = checked_superlinear_argument(fn, "dim_a",
+                                                    static_cast<double>(dim_a), 3, 1.2,
+                                                    kMaxReplSimulationWorkNanos);
+    if (!dim_bounded) {
+        return std::unexpected(dim_bounded.error());
+    }
     auto psi = matrix_to_ket(psi_m, fn);
     if (!psi) {
         return std::unexpected(psi.error());
@@ -15642,6 +15689,20 @@ bool try_parse_bigint_gcd_assignment(const std::string& line, std::string& name,
 Result<double> eval_bigint_unary(const std::string& fn, int n) {
     if (n < 0) {
         return std::unexpected(DomainError{fn.c_str(), "expected non-negative integer"});
+    }
+    // Both are quadratic in n -- each of the n steps multiplies or adds a number that is
+    // itself growing -- and `bigint_fib(200000)` spent 15.3 s building an exact BigInt
+    // that `bigint_to_scalar` below then refused, because the REPL's scalar is a double
+    // and the answer has to round-trip through one exactly. So the work was not merely
+    // slow, it was work for an answer that could never be shown.
+    //
+    // The bound is deliberately far ABOVE where that round trip stops succeeding -- 21!
+    // already fails, and so does fib(79) -- so it refuses nothing that could have
+    // worked. All it does is stop the computing.
+    auto bounded = checked_superlinear_argument(fn, "n", static_cast<double>(n), 2,
+                                                fn == "bigint_factorial" ? 3.5 : 0.4);
+    if (!bounded) {
+        return std::unexpected(bounded.error());
     }
     const bignum::BigInt value =
         fn == "bigint_factorial" ? bignum::bigint_factorial(n) : bignum::bigint_fibonacci(n);

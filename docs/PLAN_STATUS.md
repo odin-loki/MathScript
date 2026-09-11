@@ -559,6 +559,22 @@ appears, and it sits in the six `eval_cfd_*` functions because that is where eve
 dispatch path converges -- applying the lesson from `signal_resample` rather than
 relearning it.
 
+**Work for an answer that could never be shown.** The REPL's scalar is a double and
+`bigint_to_scalar` requires the exact BigInt to round-trip through one, so 21! already
+fails and so does fib(79). What the bignum commands did with a large argument was compute
+the exact answer FIRST and refuse it afterwards: `bigint_fib(200000)` spent 15.3 s
+building a number it then declined to print, and `bigint_factorial(20000)` 1.4 s. Both are
+quadratic in n, because each of the n steps operates on a number that is itself growing.
+The bounds added sit far above where the round trip stops succeeding, so they refuse
+nothing that could have worked; all they do is stop the computing.
+
+**And the Schmidt family is cubic in the subsystem dimension.** The Gram matrix is
+`dim_a` by `dim_a` and the Jacobi sweep over it is cubic: 0.65 s at dim_a = 1024, so
+dim_a = 4096 is 6.9e10 units and 82 s. Ten qubits is an ordinary subsystem to decompose
+and stays inside the bound; twelve does not. Five commands share it --
+`quantum_schmidt_rank`, `_number`, `_decomposition`, `_bases` and
+`quantum_entanglement_entropy`.
+
 **One reported finding did not survive a probe.** The allocation audit recorded
 `graph_bipartite_match` aborting at its second argument. It does not:
 `graph_bipartite_match(M3, 3000000000)` is refused by the argument guard and

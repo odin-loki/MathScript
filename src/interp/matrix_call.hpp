@@ -257,12 +257,13 @@ constexpr double kMaxReplSimulationWorkNanos = 4e9;  // four seconds
 /// that takes a second instead of a quarter is still a command that came back.
 inline Result<int> checked_superlinear_argument(const std::string& fn, const char* what,
                                                 double value, int power,
-                                                double nanos_per_unit) {
+                                                double nanos_per_unit,
+                                                double budget_nanos = kMaxReplCommandWorkNanos) {
     if (!std::isfinite(value) || value != std::floor(value)) {
         return std::unexpected(
             DomainError{fn, std::string("expected an integer ") + what});
     }
-    const double units = kMaxReplCommandWorkNanos / nanos_per_unit;
+    const double units = budget_nanos / nanos_per_unit;
     const auto cap = static_cast<double>(
         static_cast<long long>(std::pow(units, 1.0 / static_cast<double>(power))));
     if (std::abs(value) > cap) {

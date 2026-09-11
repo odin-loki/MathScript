@@ -218,3 +218,41 @@ TEST(ReplSuperlinearArguments, AStepCountCanBeARatioRatherThanAnArgument) {
                           "the step count t_end/dt implies");
     expect_ok(interp, "cfd_run_advection(G, U, 1.0, 0.1, 0.001)");
 }
+
+TEST(ReplSuperlinearArguments, WorkForAnAnswerThatCouldNeverBeShown) {
+    // The REPL's scalar is a double, and `bigint_to_scalar` requires the exact BigInt to
+    // round-trip through one -- so 21! already fails, and so does fib(79). What the
+    // bignum commands did with a large argument was compute the exact answer first and
+    // refuse it afterwards: `bigint_fib(200000)` spent 15.3 s building a number it then
+    // declined to print.
+    //
+    // The bounds here sit far ABOVE where that round trip stops succeeding, so they
+    // refuse nothing that could have worked. All they do is stop the computing.
+    Interpreter interp;
+    for (const auto* call : {"bigint_factorial(2000000000)", "bigint_fib(2000000000)",
+                             "bigint_pow(10, 1000000000)"}) {
+        expect_error_contains(interp, call, "is too large");
+    }
+    // Everything inside the range a double can hold still answers, exactly.
+    expect_contains(interp, "bigint_factorial(20)", "2.43290200817664e+18");
+    expect_contains(interp, "bigint_fib(70)", "190392490709135");
+    expect_contains(interp, "bigint_pow(2, 40)", "1099511627776");
+}
+
+TEST(ReplSuperlinearArguments, ASchmidtDecompositionIsCubicInTheSubsystemDimension) {
+    // The Gram matrix is dim_a by dim_a and the Jacobi sweep over it is cubic: measured
+    // 0.65 s at dim_a = 1024, so dim_a = 4096 is 6.9e10 units and 82 s. Ten qubits
+    // (1024) is an ordinary subsystem to decompose and stays inside the bound; twelve
+    // does not.
+    Interpreter interp;
+    expect_ok(interp, "P = ones(4096,1)");
+    for (const auto* call : {"quantum_schmidt_rank(P, 4096, 1)",
+                             "quantum_schmidt_number(P, 4096, 1)",
+                             "quantum_entanglement_entropy(P, 4096, 1)",
+                             "quantum_schmidt_decomposition(P, 4096, 1)",
+                             "quantum_schmidt_bases(P, 4096, 1)"}) {
+        expect_error_contains(interp, call, "dim_a 4096 is too large");
+    }
+    expect_ok(interp, "Q = ones(1024,1)");
+    expect_ok(interp, "quantum_schmidt_rank(Q, 1024, 1)");
+}
