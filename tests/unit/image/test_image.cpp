@@ -2595,3 +2595,239 @@ TEST(ImageFilter, SharpenEmptyAndOneByOneAlreadyFinite) {
     auto s = sharpen(one);
     EXPECT_TRUE(std::isfinite(s.at(0, 0, 0)));
 }
+
+// ---------------------------------------------------------------------------
+// §8.4: the filters, against a reference rather than against a shape.
+//
+// `src/image/image.cpp` scored 38.1% over viable mutants, the lowest of the nine
+// files measured, and the survivors said why: the filter tests above assert that a
+// blurred spike is "less than 1 and more than 0.1", that a constant image stays
+// constant, and that the output has the same number of rows as the input. None of
+// that can see an indexing mistake. Mutants that survived included `c + d - half`
+// becoming `c + d + half` -- the whole kernel window shifted -- and one of the nine
+// taps of the 3x3 convolution changing sign.
+//
+// The reference below is the definition: correlate with replicate padding, the
+// naive way, in double. Comparing a filter against the definition is the only
+// comparison that can fail for an indexing reason, and it fails loudly -- a shifted
+// window is an error of order one, not of order epsilon.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Replicate-padded correlation, straight from the definition.
+Image reference_correlate(const Image& img,
+                          const std::vector<std::vector<float>>& kernel) {
+    const int kr = static_cast<int>(kernel.size());
+    const int kc = static_cast<int>(kernel[0].size());
+    const int half_r = kr / 2;
+    const int half_c = kc / 2;
+    Image out(img.rows, img.cols, img.channels, 0.f);
+    for (int ch = 0; ch < img.channels; ++ch) {
+        for (int r = 0; r < img.rows; ++r) {
+            for (int c = 0; c < img.cols; ++c) {
+                double acc = 0.0;
+                for (int dr = 0; dr < kr; ++dr) {
+                    for (int dc = 0; dc < kc; ++dc) {
+                        const int rr = std::min(std::max(r + dr - half_r, 0), img.rows - 1);
+                        const int cc = std::min(std::max(c + dc - half_c, 0), img.cols - 1);
+                        acc += static_cast<double>(kernel[static_cast<std::size_t>(dr)]
+                                                         [static_cast<std::size_t>(dc)]) *
+                               static_cast<double>(img.at(rr, cc, ch));
+                    }
+                }
+                out.at(r, c, ch) = static_cast<float>(acc);
+            }
+        }
+    }
+    return out;
+}
+
+// A deterministic image, different in every channel so a channel mix-up shows.
+Image patterned_image(int rows, int cols, int channels, std::uint64_t seed) {
+    Image img(rows, cols, channels, 0.f);
+    std::uint64_t state = seed;
+    for (int ch = 0; ch < channels; ++ch) {
+        for (int r = 0; r < rows; ++r) {
+            for (int c = 0; c < cols; ++c) {
+                state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+                img.at(r, c, ch) = static_cast<float>((state >> 33) % 1000u) / 1000.f;
+            }
+        }
+    }
+    return img;
+}
+
+void expect_same_image(const Image& got, const Image& want, const char* what) {
+    ASSERT_EQ(got.rows, want.rows) << what;
+    ASSERT_EQ(got.cols, want.cols) << what;
+    ASSERT_EQ(got.channels, want.channels) << what;
+    for (int ch = 0; ch < want.channels; ++ch) {
+        for (int r = 0; r < want.rows; ++r) {
+            for (int c = 0; c < want.cols; ++c) {
+                EXPECT_NEAR(got.at(r, c, ch), want.at(r, c, ch), 2e-5f)
+                    << what << " at (" << r << ", " << c << ", " << ch << ")";
+            }
+        }
+    }
+}
+
+} // namespace
+
+TEST(ImageFilterGolden, ImfilterMatchesTheDefinition) {
+    // Three kernels chosen for the paths they take rather than for what they do:
+    // a separable one (which goes through the two 1-D passes), a non-separable one
+    // (which does not), and a 5x3 one that is neither square nor odd in both
+    // extents. Every one is asymmetric, so a kernel applied backwards -- correlation
+    // where convolution was meant, or the reverse -- is a different answer.
+    const std::vector<std::vector<std::vector<float>>> kernels = {
+        {{1.f, 2.f, 3.f}, {2.f, 4.f, 6.f}, {-1.f, -2.f, -3.f}},   // separable
+        {{0.5f, -1.f, 0.25f}, {2.f, 0.f, -3.f}, {1.f, 4.f, -0.5f}},  // not separable
+        {{1.f, -2.f, 0.5f}, {0.f, 3.f, -1.f}, {2.f, 1.f, 0.f},
+         {-1.f, 0.5f, 2.f}, {0.25f, -0.75f, 1.5f}},
+    };
+    std::uint64_t seed = 7;
+    for (const auto& kernel : kernels) {
+        for (const int channels : {1, 3}) {
+            for (const int size : {1, 2, 3, 4, 7}) {
+                const Image img = patterned_image(size, size + 1, channels, ++seed * 31);
+                expect_same_image(imfilter(img, kernel), reference_correlate(img, kernel),
+                                  "imfilter");
+            }
+        }
+    }
+}
+
+TEST(ImageFilterGolden, BoxfilterMatchesTheMeanItClaims) {
+    // The box filter has a running-sum interior and a separate pass for the columns
+    // near each edge, and a mutant that shifted the edge pass's window survived --
+    // because the only box-filter test used a CONSTANT image, where every window has
+    // the same mean wherever it is placed.
+    std::uint64_t seed = 101;
+    for (const int ksize : {1, 3, 5, 7}) {
+        for (const int channels : {1, 3}) {
+            for (const int size : {1, 3, 4, 6, 9}) {
+                const Image img = patterned_image(size, size + 2, channels, ++seed * 37);
+                std::vector<std::vector<float>> mean(
+                    static_cast<std::size_t>(ksize),
+                    std::vector<float>(static_cast<std::size_t>(ksize),
+                                       1.f / static_cast<float>(ksize * ksize)));
+                expect_same_image(boxfilter(img, ksize), reference_correlate(img, mean),
+                                  "boxfilter");
+            }
+        }
+    }
+}
+
+TEST(ImageFilterGolden, GaussianBlurIsSeparableAndPreservesMass) {
+    // The Gaussian kernel is built inside the library, so there is no independent
+    // reference for its taps -- but two properties pin the INDEXING, which is where
+    // the survivors were. A blur of a constant image is that constant everywhere,
+    // including at the replicate-padded border; and a blur of a single spike is
+    // symmetric about the spike, which a shifted window is not.
+    for (const int channels : {1, 3}) {
+        const Image flat(7, 9, channels, 0.375f);
+        const Image blurred = imgaussfilt(flat, 1.5f);
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int r = 0; r < 7; ++r) {
+                for (int c = 0; c < 9; ++c) {
+                    EXPECT_NEAR(blurred.at(r, c, ch), 0.375f, 1e-4f)
+                        << "constant at (" << r << ", " << c << ", " << ch << ")";
+                }
+            }
+        }
+
+        Image spike(9, 9, channels, 0.f);
+        for (int ch = 0; ch < channels; ++ch) {
+            spike.at(4, 4, ch) = 1.f;
+        }
+        const Image spread = imgaussfilt(spike, 1.0f);
+        for (int ch = 0; ch < channels; ++ch) {
+            for (int d = 1; d <= 3; ++d) {
+                EXPECT_NEAR(spread.at(4, 4 - d, ch), spread.at(4, 4 + d, ch), 1e-6f)
+                    << "horizontal symmetry at d = " << d << " channel " << ch;
+                EXPECT_NEAR(spread.at(4 - d, 4, ch), spread.at(4 + d, 4, ch), 1e-6f)
+                    << "vertical symmetry at d = " << d << " channel " << ch;
+            }
+            EXPECT_GT(spread.at(4, 4, ch), spread.at(4, 3, ch));
+            EXPECT_GT(spread.at(4, 3, ch), spread.at(4, 2, ch));
+        }
+    }
+}
+
+TEST(ImageEdgeGolden, CannyPutsTheEdgeWhereTheEdgeIs) {
+    // The Canny tests above assert that the output has as many rows as the input.
+    // That cannot see a mutant which reads the suppressed-magnitude buffer at
+    // channel 1 of a one-channel image -- which, with the interleaved layout, is the
+    // NEXT PIXEL -- and so shifts the whole edge map by one. It survived.
+    //
+    // A clean vertical step has its edge in a known place, so that is what is
+    // asserted: strong edges on the two columns either side of the transition, and
+    // nothing at all in the flat interior on either side of it.
+    Image img(11, 12, 1, 0.f);
+    for (int r = 0; r < 11; ++r) {
+        for (int c = 6; c < 12; ++c) {
+            img.at(r, c, 0) = 1.f;
+        }
+    }
+    const Image edges = canny(img, 0.1f, 0.3f, 1.0f);
+    ASSERT_EQ(edges.rows, 11);
+    ASSERT_EQ(edges.cols, 12);
+
+    // The middle rows are away from the replicate-padded top and bottom, so the
+    // gradient there is purely horizontal and the answer is unambiguous.
+    for (int r = 3; r <= 7; ++r) {
+        bool on_the_step = false;
+        for (int c = 5; c <= 6; ++c) {
+            on_the_step = on_the_step || edges.at(r, c, 0) == 1.f;
+        }
+        EXPECT_TRUE(on_the_step) << "no strong edge at the step in row " << r;
+        // Two columns clear of the transition on each side there is nothing to find.
+        for (const int c : {1, 2, 9, 10}) {
+            EXPECT_FLOAT_EQ(edges.at(r, c, 0), 0.f)
+                << "edge found in the flat region at (" << r << ", " << c << ")";
+        }
+    }
+}
+
+TEST(ImageThresholdGolden, OtsuFindsTheValleyRatherThanTheMiddle) {
+    // `if (wF == 0) break;` widened to `!=` breaks out on the first bin that has any
+    // background weight left, so `best_t` keeps its initial 128 -- a threshold of
+    // 0.502 whatever the image looks like. Every existing Otsu test used values
+    // straddling that midpoint, so the fixed answer was the right answer and the
+    // mutant survived.
+    //
+    // Here both modes sit ABOVE 0.502, so a threshold stuck at the middle puts the
+    // whole image in one class and the split has to be found rather than assumed.
+    Image img(8, 8, 1, 0.f);
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 8; ++c) {
+            img.at(r, c, 0) = (c < 4) ? 0.60f : 0.92f;
+        }
+    }
+    const Image out = threshold_otsu(img);
+    ASSERT_EQ(out.rows, 8);
+    ASSERT_EQ(out.cols, 8);
+    for (int r = 0; r < 8; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), 0.f)
+                << "the darker mode was not separated at (" << r << ", " << c << ")";
+        }
+        for (int c = 4; c < 8; ++c) {
+            EXPECT_FLOAT_EQ(out.at(r, c, 0), 1.f)
+                << "the brighter mode was not separated at (" << r << ", " << c << ")";
+        }
+    }
+
+    // And the degenerate image the guard itself is for: one value everywhere, so the
+    // foreground weight reaches zero and the loop has to stop rather than divide.
+    const Image flat(4, 4, 1, 0.3f);
+    const Image flat_out = threshold_otsu(flat);
+    ASSERT_EQ(flat_out.rows, 4);
+    for (int r = 0; r < 4; ++r) {
+        for (int c = 0; c < 4; ++c) {
+            EXPECT_TRUE(flat_out.at(r, c, 0) == 0.f || flat_out.at(r, c, 0) == 1.f)
+                << "a constant image gave a non-binary result at (" << r << ", " << c << ")";
+        }
+    }
+}

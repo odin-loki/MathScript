@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eight files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0% -- every survivor either killed by a new test or classified by measurement |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; nine files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% -- every survivor either killed by a new test, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -843,6 +843,54 @@ a file where none of the 20 mutants failed to compile. Three survivors:
 | `:1359` the PBKDF2 degenerate guard | **A gap, and a subtle one.** `if (dklen == 0 \|\| iterations == 0) return {};` survived the zero becoming a one -- because `dklen = 0` takes the same path either way (the block count rounds to zero and the loop does not run) and every other test asks for 16, 20, 25 or 64 bytes. Nothing asked for ONE, so nothing could tell the guard from a guard that also refuses a one-byte key. **Tested now**, by PBKDF2's own property: a shorter derived key is a PREFIX of a longer one, which pins every short length at once rather than pinning one more vector. |
 | `:43` `#    define O_CLOEXEC 0` | **Not compiled.** It is inside `#ifndef O_CLOEXEC`, and Linux defines it, so the mutant produced a byte-identical program -- the same class as `numthy.cpp:312` above. |
 | `:722` `for (int i = 0; i < 16; ++i)` in `aes_sub_bytes` | **A memory error that a plain build cannot see.** Widened to `<=` the loop writes `state[16]`, one byte past the AES block: undefined behaviour rather than a wrong answer, and the byte it corrupts is not one any assertion reads, so all of `test_crypto` passed. This is a limit of the technique rather than of the suite -- the mutant would die under the AddressSanitizer job, and mutation testing run against a non-sanitised build is blind to exactly this class. Recorded rather than "fixed": there is no test-level assertion that can see a stray write into a buffer the tests cannot reach. |
+
+Ninth file: `src/image/image.cpp`, 22 mutants at seed 37 against the three suites that
+cover it. **8 of 21 viable killed, 38.1%** -- the lowest of the nine by a wide margin, on
+the largest file measured (4040 lines). The survivors said why in one sentence: **the
+image tests assert shapes, not pixels.**
+
+  - `ImageFilter.GaussianBlur` asserts a blurred spike is "less than 1 and more than 0.1".
+  - `ImageFilter.BoxFilter` uses a CONSTANT image, where every window has the same mean
+    wherever it is placed.
+  - `ImageEdge.Canny` asserts the output has as many rows and columns as the input.
+
+None of that can see an indexing mistake, and the mutants that survived were indexing
+mistakes: `c + d - half` becoming `c + d + half` (the whole kernel window shifted) in both
+the separable filter's and the box filter's multi-channel branches; a row loop starting at
+1; one of the nine taps of the 3x3 convolution changing sign; and Canny reading its
+suppressed-magnitude buffer at channel 1 of a one-channel image, which with the
+interleaved layout is the NEXT PIXEL.
+
+**And writing the test that could see it found a real defect.** `threshold_otsu` returned
+an all-ones image for every clean two-mode input tested -- 0.60/0.92, 0.20/0.80,
+0.55/0.95, 0.62/0.90. `best_t` is the LAST bin of the background class, because the loop
+accumulates `wB` up to and including `t`, and thresholding at `best_t/255` with
+`threshold_binary`'s `>=` puts that whole bin on the foreground side. On a bimodal image
+the background is exactly one bin, so all of it crossed. The threshold is the first
+FOREGROUND bin now, `(best_t + 1)/255`, which is exact: a pixel lands in bin
+`(int)(v*255)`, so `bin >= best_t + 1` is precisely `v >= (best_t + 1)/255`. Nothing in
+the tree asserted Otsu's values -- the four integration tests that use it call
+`expect_ok` -- which is how it stood.
+
+The new tests are reference-based rather than golden-valued: `reference_correlate`
+correlates with replicate padding straight from the definition, in double, and `imfilter`
+and `boxfilter` are compared against it over three kernels (separable, non-separable, and
+5x3), one and three channels, and five sizes each. Comparing a filter against the
+definition is the only comparison that can fail for an indexing reason. Six survivors were
+verified killed against their own mutants.
+
+**The second run is not a before-and-after, and saying so matters.** Re-running seed 37
+after the fix gives 22 viable and **45.5%**, but the site list is derived from the file
+and the file changed, so it is a different sample of the same population rather than the
+same mutants re-scored. Quoting 38.1% -> 45.5% as a ratchet would be the same inflation
+this harness refuses elsewhere. What is measured is narrower and firmer: two independent
+samples of about twenty mutants scored 38.1% and 45.5%, and each of the six survivors the
+new tests were written for fails under its own mutant.
+
+Both samples agree on where the rest of the gap is: the feature detectors (SIFT's
+descriptor binning, ORB's orientation quadrants, FAST's non-maximum suppression) and the
+segmentation code (graph cut's foreground mean, adapthisteq's tile size). Those are
+recorded rather than closed here.
 
 Three crashes turned up while reading for those, all in code a frequency table reaches
 from `ans_decode_vec`, and all verified before and after:

@@ -1416,7 +1416,15 @@ Image threshold_otsu(const Image& img) {
         double var=wB*wF*(mB-mF)*(mB-mF);
         if (var>best){best=var;best_t=t;}
     }
-    return threshold_binary(g, best_t/255.f);
+    // best_t is the LAST bin of the background class -- the loop accumulates wB up
+    // to and including t -- so the split is "background <= best_t, foreground above".
+    // Thresholding at best_t/255 with threshold_binary's `>=` puts the whole
+    // background bin on the foreground side, and on a clean two-mode image that is
+    // every pixel: measured, a half-and-half image of 0.60 and 0.92 came back all
+    // ones, and so did 0.20 and 0.80, and 0.55 and 0.95. The threshold has to be the
+    // first FOREGROUND bin. A pixel lands in bin (int)(v*255), so bin >= best_t + 1
+    // is exactly v >= (best_t + 1)/255 and the comparison stays as it is.
+    return threshold_binary(g, static_cast<float>(best_t + 1)/255.f);
 }
 
 namespace {
