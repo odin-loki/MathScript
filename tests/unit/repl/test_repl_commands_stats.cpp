@@ -4673,7 +4673,7 @@ TEST(ReplCommandsTest, stats_bootstrap_mean_errors) {
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 0, 1)",
                           "expected positive integer n_boot");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 1.5, 1)",
-                          "expected positive integer n_boot");
+                          "expected an integer n_boot");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], notnum, 1)",
                           "expected stats_bootstrap_mean(x[, n_boot[, seed]])");
     expect_error_contains(interp, "stats_bootstrap_mean([1; 2; 3; 4; 5], 20, -1)",

@@ -729,7 +729,7 @@ TEST(ReplCommandsTest, info_permutation_entropy) {
     expect_error_contains(interp, "pe = info_permutation_entropy([1;2;3;4;5], 0)",
                           "expected positive integer order");
     expect_error_contains(interp, "pe = info_permutation_entropy([1;2;3;4;5], 1.5)",
-                          "expected positive integer order");
+                          "expected an integer order");
 }
 
 TEST(ReplCommandsTest, info_sample_entropy_errors) {

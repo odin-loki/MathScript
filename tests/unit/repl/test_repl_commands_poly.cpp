@@ -4697,14 +4697,14 @@ TEST(ReplCommandsTest, poly_scale_noassign) {
 TEST(ReplCommandsTest, poly_pow_noassign) {
     Interpreter interp;
     expect_contains(interp, "poly_pow([1; 1], 2)", "pow =");
-    expect_error_contains(interp, "poly_pow([1; 1], 1.5)", "non-negative integer n");
+    expect_error_contains(interp, "poly_pow([1; 1], 1.5)", "expected an integer n");
 }
 
 TEST(ReplCommandsTest, poly_cheb_expand_noassign) {
     Interpreter interp;
     expect_ok(interp, "p = [1; -2; 0; 1]");
     expect_contains(interp, "poly_cheb_expand(p, 3)", "cheb =");
-    expect_error_contains(interp, "poly_cheb_expand(p, 1.5)", "non-negative integer n");
+    expect_error_contains(interp, "poly_cheb_expand(p, 1.5)", "expected an integer n");
 }
 
 TEST(ReplCommandsTest, poly_eval_noassign) {

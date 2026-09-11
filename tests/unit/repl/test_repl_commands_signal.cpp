@@ -5585,7 +5585,7 @@ TEST(ReplCommandsTest, signal_moving_average_execute_errors) {
     expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 0)",
                           "expected positive integer window");
     expect_error_contains(interp, "signal_moving_average([5; 5; 5; 5], 1.5)",
-                          "expected positive integer window");
+                          "expected an integer window");
     expect_error_contains(interp, "ma = signal_moving_average(missing, 3)", "unknown matrix");
     expect_error_contains(interp, "ma = signal_moving_average([5; 5; 5; 5], 0)",
                           "expected positive integer window");

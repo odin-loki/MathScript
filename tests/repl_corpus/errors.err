@@ -3,7 +3,7 @@ error: bfgs: unknown variable 'x' (this call binds x0)
 error: bisection: unknown variable 'x' (this call binds x0)
 error: sym_limit: limit does not exist or could not be determined numerically
 error: sym_mellin: no closed form found for this expression
-error: repl: could not read 'bigint("495.0")' as a matrix call, a matrix constructor, or a scalar expression
+error: bigint: invalid decimal literal: 495.0
 error: assign: invalid variable name: A(1, 1) (element assignment like A(i,j) = v is not supported)
 error: stats_one_way_anova: the test is not defined for these groups: fewer than two non-empty groups, no residual degrees of freedom, or no within-group variation
 error: rle_encode_vec: byte values must be whole numbers in [0, 255]
