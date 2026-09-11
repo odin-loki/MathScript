@@ -2417,6 +2417,7 @@ Result<std::string> eval_sym_simplify_string(const std::string& expr_arg);
 Result<std::string> eval_sym_export_strings(const std::string& expr_arg,
                                             const std::string& notation_arg);
 Result<std::string> eval_sym_latex_string(const std::string& expr_arg);
+Result<std::string> eval_sym_from_latex_string(const std::string& tex_arg);
 
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg);
 

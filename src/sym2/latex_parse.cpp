@@ -277,15 +277,15 @@ constexpr const char* kMsgBinomial =
     "[E-LATEX-0022] \\binom{n}{k} has no expression head; write "
     "\\operatorname{binomial}(n, k)";
 constexpr const char* kMsgIntegralBounds =
-    "[E-LATEX-0023] Head::Integral records no bounds (expr.hpp:62), so limits would be "
-    "silently discarded; write \\int f \\, dx";
+    "[E-LATEX-0023] an integral here records no bounds, so limits would be silently "
+    "discarded; write \\int f \\, dx";
 constexpr const char* kMsgLimitDirection =
-    "[E-LATEX-0024] Head::Limit records no direction (expr.hpp:63), so a one-sided "
+    "[E-LATEX-0024] a limit here records no direction, so a one-sided "
     "limit would be read as a two-sided one";
 constexpr const char* kMsgPartial =
-    "[E-LATEX-0025] Head::Derivative records no distinction between a partial and a "
-    "total derivative (notation_latex.cpp:414); write \\frac{d}{dx}. \\partial alone is "
-    "the symbol named partial";
+    "[E-LATEX-0025] a derivative here records no distinction between a partial and a "
+    "total one, so the two would be indistinguishable; write \\frac{d}{dx}. "
+    "\\partial alone is the symbol named partial";
 constexpr const char* kMsgBracket =
     "[E-LATEX-0026] \\{ \\} is a set or a case split, [a, b] is an interval, a list or "
     "a matrix row, and \\lfloor x \\rfloor is a floor; none has an expression head. Use "
@@ -304,8 +304,8 @@ constexpr const char* kMsgFontVariant =
     "[E-LATEX-0030] \\varGamma is a font variant of \\Gamma, not a distinct symbol; "
     "write \\Gamma";
 constexpr const char* kMsgScientific =
-    "[E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode "
-    "(notation_latex.cpp:259-262); write 1 \\times 10^{20}";
+    "[E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode; "
+    "write 1 \\times 10^{20}";
 constexpr const char* kMsgInfimum =
     "[E-LATEX-0033] \\inf is the infimum operator, not infinity; write \\infty. (\\sup "
     "is a function name in this subset; \\inf is not.)";

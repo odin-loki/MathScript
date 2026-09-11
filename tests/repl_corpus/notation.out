@@ -9,3 +9,8 @@ pow(x, 2.0) + 1.0
 \sqrt{x}
 Rational(1, 3)
 1/3
+x/y
+x^2 + 1
+x^(1/2)
+integral(f, x)
+d/dx(f)

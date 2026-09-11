@@ -10679,6 +10679,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  name = sym_diff(\"expr\",\"var\") differentiate quoted expression w.r.t. variable\n"
             "  name = sym_simplify(\"expr\") simplify quoted symbolic expression\n"
             "  sym_latex(\"expr\")             the expression as LaTeX\n"
+            "  sym_from_latex(\"tex\")        read a LaTeX expression back\n"
             "  sym_export(\"expr\",\"notation\") latex, mathml, content-mathml, unicode,\n"
             "                                ascii, sympy, mathematica, c, c++, python\n"
             "  name = sym_expand(\"expr\") expand quoted symbolic expression\n"
@@ -11216,7 +11217,7 @@ Result<std::string> Interpreter::execute(const std::string& line) {
             "  painleve1(x,y0,yp0), painleve2(x,y0,yp0,alpha), painleve3(x,y0,yp0,alpha,beta), painleve4(x,y0,yp0,alpha,beta), painleve5(x,y0,yp0,alpha,beta,gamma,delta), painleve6(x,y0,yp0,alpha,beta,gamma,delta)\n"
             "  legendre_p(n,x), beta(a,b)\n"
             "  clausen(theta), eta_dirichlet(s), beta_dirichlet(s), zeta_hurwitz(s,a), lerch_phi(z,s,a), debye(n,x)\n"
-            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\"), sym_latex(\"expr\"), sym_export(\"expr\",\"notation\")\n"
+            "  sym_diff(\"expr\",\"var\"), sym_simplify(\"expr\"), sym_expand(\"expr\"), sym_collect(\"expr\",\"var\"), sym_substitute(\"expr\",\"var\",\"replacement\"), sym_limit(\"expr\",\"var\",point), sym_series(\"expr\",\"var\",point,order), sym_solve_linear(\"eq1;eq2\",\"x;y\"), sym_integrate(\"expr\",\"var\"), sym_eval(\"expr\",\"var=value\"), sym_laplace(\"expr\",\"t\",\"s\"), sym_ilaplace(\"expr\",\"s\",\"t\"), sym_mellin(\"expr\",\"t\",\"s\"), sym_imellin(\"expr\",\"s\",\"t\"), sym_hankel(\"expr\",\"r\",\"k\"), sym_ihankel(\"expr\",\"k\",\"r\"), sym_fourier(\"expr\",\"t\",\"omega\"), sym_ifourier(\"expr\",\"omega\",\"t\"), sym_ztransform(\"expr\",\"n\",\"z\"), sym_iztransform(\"expr\",\"z\",\"n\"), sym_dsolve(\"rhs\",\"x\",\"y\"), sym_latex(\"expr\"), sym_export(\"expr\",\"notation\"), sym_from_latex(\"tex\")\n"
             "  ode_euler(\"y - t*t\", 0, 1, 2, 100), ode_rk4(\"y\", 0, 1, 1, 100), ode_rk2(\"y\", 0, 1, 1, 100), ode_midpoint(\"y\", 0, 1, 1, 100), ode_rk45(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_rk23(\"y\", 0, 1, 1, 1e-4, 1e-7), ode_cashkarp(\"y\", 0, 1, 1, 1e-6, 1e-9), ode_backward_euler(\"y\", 0, 1, 1, 100), cmaes(\"x0*x0+x1*x1\", [2,3], 0.5, 500, 42), bfgs(\"(x0-3)*(x0-3)\", [0])\n"
             "  ode_bdf2(\"-10*y\", 0, 1, 1, 100), ode_trapezoidal(\"-y\", 0, 1, 1, 200), ode_exponential_euler(\"0\", -5, 0, 1, 1, 200), ode_rosenbrock23(\"-10*y\", 0, 1, 1, 200), ode_verlet(\"-9.8\", 0, 0, 0, 1, 100)\n"
             "  ode_rk4_vec(\"y1; -y0\", 0, [1, 0], 6.283185, 1000), ode_verlet_vec(\"-9.8; 0\", 0, [0, 0], [0, 5], 1, 100)\n"
@@ -21638,6 +21639,14 @@ Result<std::string> Interpreter::execute(const std::string& line) {
 
         if (fn == "sym_latex") {
             auto value = eval_sym_latex_string(arg);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            return *value;
+        }
+
+        if (fn == "sym_from_latex") {
+            auto value = eval_sym_from_latex_string(arg);
             if (!value) {
                 return std::unexpected(value.error());
             }

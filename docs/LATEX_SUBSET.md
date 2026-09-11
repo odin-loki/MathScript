@@ -394,16 +394,16 @@ Diagnostics are quoted verbatim; `L:C` is the line and column of the offending t
 | A28 | `=` `<` `>` `\le` `\leq` `\ge` `\neq` `\ne` `\approx` `\equiv` `\sim` `\propto` `\in` `\mid` | `[E-LATEX-0020] the subset parses expressions, not equations; '=' has no expression head. Parse the two sides separately, or write the difference` |
 | A29 | `\sum` `\prod` `\bigcup` `\bigcap` `\coprod` `\bigoplus` | `[E-LATEX-0021] \sum_{i=1}^{n} has no expression head in ms::sym2 (see expr.hpp Head); big operators are outside the subset` |
 | A30 | `\binom{n}{k}`, `{n \choose k}` | `[E-LATEX-0022] \binom{n}{k} has no expression head; write \operatorname{binomial}(n, k)` |
-| A31 | `\int_{a}^{b}`, `\oint` | `[E-LATEX-0023] Head::Integral records no bounds (expr.hpp:62), so limits would be silently discarded; write \int f \, dx` |
-| A32 | `\lim_{x \to 0^{+}}`, `\limsup`, `\liminf` | `[E-LATEX-0024] Head::Limit records no direction (expr.hpp:63), so a one-sided limit would be read as a two-sided one` |
-| A33 | `\frac{\partial}{\partial x}` | `[E-LATEX-0025] Head::Derivative records no distinction between a partial and a total derivative (notation_latex.cpp:414); write \frac{d}{dx}. \partial alone is the symbol named partial` |
+| A31 | `\int_{a}^{b}`, `\oint` | `[E-LATEX-0023] an integral here records no bounds, so limits would be silently discarded; write \int f \, dx` |
+| A32 | `\lim_{x \to 0^{+}}`, `\limsup`, `\liminf` | `[E-LATEX-0024] a limit here records no direction, so a one-sided limit would be read as a two-sided one` |
+| A33 | `\frac{\partial}{\partial x}` | `[E-LATEX-0025] a derivative here records no distinction between a partial and a total one, so the two would be indistinguishable; write \frac{d}{dx}. \partial alone is the symbol named partial` |
 | A34 | `\{ … \}`, `[a, b]`, `[ … ]`, `\langle` `\lfloor` `\lceil`, and the NORM delimiters `\lVert` and `\|` | `[E-LATEX-0026] \{ \} is a set or a case split, [a, b] is an interval, a list or a matrix row, and \lfloor x \rfloor is a floor; none has an expression head. Use ( ) for grouping and \operatorname{floor}(x) for a floor` |
 | A35 | a vertical bar `&#124;` carrying a script (`f\big&#124;_{0}^{1}`), `\left.`, `\right.` | `[E-LATEX-0027] an evaluation bar (a null delimiter with limits) has no expression head` |
 | A36 | nested bare vertical bars (`&#124;&#124;x&#124;&#124;` or `&#124;a&#124;b&#124;`) | `[E-LATEX-0028] a bare vertical bar cannot be paired: the open and close delimiter are the same character. Write \left&#124; … \right&#124; or \lvert … \rvert` |
 | A37 | `\text{}` `\mathbf` `\mathbb` `\mathcal` `\mathfrak` `\mathsf` `\boldsymbol` `\vec` `\hat` `\bar` `\overline` `\tilde` `\underline` `\mathit` `\bm` | `[E-LATEX-0029] decoration is not part of a name in this subset: \hat{x} and x are different symbols to a reader and the same name to the parser. Write x_{hat} or another name` |
 | A38 | `\varGamma`, `\upalpha` | `[E-LATEX-0030] \varGamma is a font variant of \Gamma, not a distinct symbol; write \Gamma` |
 | A39 | differential/sign count mismatch | `[E-LATEX-0031] N integral signs but M differentials; write one \, dx per \int` |
-| A40 | `1e20` | `[E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode (notation_latex.cpp:259-262); write 1 \times 10^{20}` |
+| A40 | `1e20` | `[E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode; write 1 \times 10^{20}` |
 | A41 | `\inf` | `[E-LATEX-0033] \inf is the infimum operator, not infinity; write \infty. (\sup is a function name in this subset; \inf is not.)` |
 | A42 | `\cfrac` | `[E-LATEX-0034] \cfrac is continued-fraction layout with an optional alignment argument, not a distinct operation; write \frac{a}{b}` |
 | A43 | `\newcommand` `\renewcommand` `\def` `\let` `\providecommand` | `[E-LATEX-0035] macro expansion is not performed; TeX is Turing-complete. Expand the macro before parsing` |
@@ -502,20 +502,25 @@ Rules:
 2. **Each message begins with its stable code** from §3.2 -- `[E-LATEX-0013]` -- which
    is what makes a diagnostic quotable in a bug report and searchable in this document.
    Codes are never renumbered; a rule that goes away leaves its number unused.
-3. **The message names what was expected and what was found**, with the found text
+3. **A diagnostic cites no source file or line.** This document does, throughout, and
+   should: it is a specification for whoever implements the parser. A message a *user*
+   reads is a different audience, and a file-and-line in one goes stale the first time
+   somebody adds a function above it — pointing a reader at a line that now says
+   something else is worse than pointing them nowhere.
+4. **The message names what was expected and what was found**, with the found text
    quoted verbatim and never normalised -- a diagnostic about `\varGamma` says
    `\varGamma` and not `\Gamma`. At end of input it says so rather than quoting
    nothing.
-4. **A delimiter mismatch names the opener too.** `\left(` closed by `\right]`, an
+5. **A delimiter mismatch names the opener too.** `\left(` closed by `\right]`, an
    unclosed `{`, a `\begin{pmatrix}` closed by `\end{bmatrix}`: the position is the
    closer and the message carries the opener's position, because the closer is where
    the reader is and the opener is what they have to go back to.
-5. **The parser reports the first error and stops.** No recovery and no cascade: a
+6. **The parser reports the first error and stops.** No recovery and no cascade: a
    strict parser that guesses its way past an error is the failure mode this document
    exists to prevent, and a list of ten errors nine of which are consequences of the
    first is worse than one error.
-6. **There are no warnings.** A construct is in the subset or it is not.
-7. `options.decimal_separator` selects the decimal terminal. `options.matrix_environment`
+7. **There are no warnings.** A construct is in the subset or it is not.
+8. `options.decimal_separator` selects the decimal terminal. `options.matrix_environment`
    is ignored on input -- all five environments are accepted -- and so are `display`,
    `sized_delimiters`, `multiplication` and `roots_as_radicals`: the grammar accepts
    every setting's output at once, which is what makes the round-trip property

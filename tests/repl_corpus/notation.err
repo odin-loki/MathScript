@@ -1,0 +1,2 @@
+error: line 1, column 5: [E-LATEX-0013] a superscript on a function name is the square of the value at 2 and the inverse function at -1; write (\sin(x))^{2}, \arcsin(x), or \frac{1}{\sin(x)}
+error: line 1, column 2: [E-LATEX-0032] 1e20 is 1 multiplied by Euler's number, plus 20, in math mode; write 1 \times 10^{20}

@@ -49,6 +49,7 @@
 #include "ms/pde/pde.hpp"
 #include "ms/symbolic/symbolic.hpp"
 #include "ms/sym2/bridge.hpp"
+#include "ms/sym2/latex_parse.hpp"
 #include "ms/sym2/notation.hpp"
 #include "ms/ode/ode.hpp"
 #include "ms/optim/optim.hpp"
@@ -15436,6 +15437,26 @@ Result<std::string> eval_sym_latex_string(const std::string& expr_arg) {
     return sym2::to_latex(*expr) + "\n";
 }
 
+/// §11.2's inverse of `sym_latex`.
+///
+/// The result is shown with `sym2::to_string` -- the ASCII form -- rather than echoed
+/// back as LaTeX. Echoing the input would confirm nothing: what the user needs to see is
+/// the EXPRESSION that was read, and that `\\frac{x}{y}` came back as `x/y` is the whole
+/// of that. A reader who typed something the subset refuses gets the diagnostic with its
+/// code and position instead, which is the other half of the same confirmation.
+Result<std::string> eval_sym_from_latex_string(const std::string& tex_arg) {
+    std::string tex_text;
+    if (!parse_quoted_string(tex_arg, tex_text) || tex_text.empty()) {
+        return std::unexpected(
+            DomainError{"sym_from_latex", "expected sym_from_latex(\"tex\")"});
+    }
+    const auto expr = sym2::parse_latex(tex_text);
+    if (!expr) {
+        return std::unexpected(expr.error());
+    }
+    return sym2::to_string(*expr) + "\n";
+}
+
 Result<std::string> eval_sym_integrate_strings(const std::string& expr_arg, const std::string& var_arg) {
     auto expr = parse_sym_quoted_expr(expr_arg, "sym_integrate");
     if (!expr) {
@@ -17502,7 +17523,7 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
         fn != "sym_hankel" && fn != "sym_ihankel" &&
         fn != "sym_fourier" && fn != "sym_ifourier" &&
         fn != "sym_ztransform" && fn != "sym_iztransform" && fn != "sym_dsolve" &&
-        fn != "sym_latex" && fn != "sym_export") {
+        fn != "sym_latex" && fn != "sym_export" && fn != "sym_from_latex") {
         return std::nullopt;
     }
     const auto args = split_call_args(cmd);
@@ -17523,6 +17544,13 @@ std::optional<Result<std::string>> try_eval_sym_command(const std::string& cmd) 
             return std::unexpected(DomainError{fn, "expected sym_latex(\"expr\")"});
         }
         return eval_sym_latex_string(args->at(0));
+    }
+    if (fn == "sym_from_latex") {
+        if (args->size() != 1) {
+            return std::unexpected(
+                DomainError{"sym_from_latex", "expected sym_from_latex(\"tex\")"});
+        }
+        return eval_sym_from_latex_string(args->at(0));
     }
     if (fn == "sym_export") {
         if (args->size() != 2) {
@@ -17876,9 +17904,27 @@ std::optional<std::vector<std::string>> split_call_args(const std::string& cmd) 
     std::vector<std::string> args;
     std::string current;
     int depth = 0;
+    // A comma inside a quoted string is part of the string, not a separator. Without
+    // this, every argument a user would actually write with one came apart:
+    // `sym_eval("x*y", "x=2,y=3")` -- multi-variable evaluation, which is the whole
+    // point of the second argument -- reported an arity error, as did any expression
+    // carrying a call of two arguments, and `\,` in LaTeX, which is a thin space.
+    //
+    // `parse_quoted_string` accepts either quote character and has no escape sequence,
+    // so this tracks whichever one opened and closes on the same one. Adding an escape
+    // here that the reader does not honour would be worse than having none.
+    char quote = '\0';
     for (size_t i = open + 1; i < close; ++i) {
         const char c = cmd[i];
-        if (c == '[') {
+        if (quote != '\0') {
+            current += c;
+            if (c == quote) {
+                quote = '\0';
+            }
+        } else if (c == '"' || c == '\'') {
+            quote = c;
+            current += c;
+        } else if (c == '[') {
             ++depth;
             current += c;
         } else if (c == ']') {
@@ -18578,6 +18624,7 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
             fn == "sym_fourier" ||
             fn == "sym_ifourier" || fn == "sym_ztransform" || fn == "sym_iztransform" ||
             fn == "sym_dsolve" || fn == "sym_latex" || fn == "sym_export" ||
+            fn == "sym_from_latex" ||
             fn == "graph_pagerank" || fn == "graph_dijkstra_dist" ||
             fn == "graph_bellman_ford_dist" || fn == "graph_max_flow" ||
             fn == "graph_min_cut" ||

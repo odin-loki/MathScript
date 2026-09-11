@@ -452,7 +452,7 @@ TEST(Sym2LatexParse, A33_APartialDerivative) {
     // `Head::Derivative` draws no distinction between a partial and a total derivative,
     // so reading `\partial` as one would assert something the tree cannot hold.
     expect_rejected("\\frac{\\partial}{\\partial x} f", "E-LATEX-0025", 1, 7,
-                    "records no distinction between a partial and a total derivative");
+                    "records no distinction between a partial and a total one");
     // Standing alone it is simply the symbol named partial, which the printer emits.
     expect_parses_as("\\partial", symbol("partial"));
 }
