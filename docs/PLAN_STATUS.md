@@ -198,12 +198,56 @@ strongest evidence available that the parser is reading the guards correctly.
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Open | |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; run over `src/compress/compress.cpp`, 66.7% -> 80.0% over viable mutants, three remaining classified rather than counted as gaps |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
 | 8.8 Group 573 integration targets | Done | 573 executables → 31 |
 | 8.9 Lock it in | Done | four source-only gates plus the coverage ratchet, all gating in CI |
+
+### §8.4, and the four kinds of survivor
+
+`scripts/mutation_test.py` changes one character-range of a source file, rebuilds the
+target that covers it, runs it, and reports what happened. Coverage says a line ran; a
+surviving mutant says nothing asserted it.
+
+**Mutants that do not compile are reported separately and are not counted as killed.**
+Folding them in is the standard way a mutation score is inflated: a harness that
+generates mostly uncompilable mutants and calls them killed reports 95% while testing
+nothing. The score is over viable mutants only, and the raw counts are printed.
+
+First file: `src/compress/compress.cpp`, 16 mutants at seed 3. **Five of fifteen viable
+mutants survived — 66.7% — on a file with 105 tests and full line coverage.** What made
+the run worth more than the number is that the five were four different things:
+
+| Survivor | What it was |
+|---|---|
+| `:791` wavelet header byte order | A missing test. Every wavelet test was short enough that the length fits in the last header byte, so reading the wrong one gave the same answer. **Killed.** |
+| `:329` ANS frequency normalisation | A missing test *that no round trip can supply*. The excess comes off the largest frequency; the encoder writes its choice into `freq_table`, which the decoder rebuilds from, so the decoder absorbs it wherever the encoder did. **Killed by pinning the bytes.** |
+| `:270` the decoder's count clamp | **Equivalent.** `symbol_for_count` clamps to the last index by construction, so `total - 1` and `total + 1` select the same symbol. Not a gap. |
+| `:359` `index_of`'s `-1` | **Unreachable.** All three callers look up a symbol the model was built from. Not a gap — but all three then index `freq` and `cum` with the result unchecked. |
+| `:185` the range coder's carry | **Dead, or as good as.** Instrumented and counted: zero hits across 800,000 bytes in four distributions, on both the encode and decode paths. The condition tests bit 56 of a 64-bit `low` while `kTop` is `1u << 24`, a 32-bit coder's constant, and the expression truncates through `static_cast<uint32_t>`. Recorded rather than changed: altering a working entropy coder's carry logic with no reproducing input would be reckless. **Open.** |
+
+The general lesson is the second row. **A property that says "decode undoes encode" is
+blind to any change applied symmetrically**, and for a codec that is most of the
+implementation. `CompressFormat.TheEncodedBytesAreWhatTheyHaveAlwaysBeen` pins the exact
+output of both entropy coders, which makes the compressed format a contract —
+deliberately, since `bzip2_compress_vec` and its siblings hand a user a matrix they can
+save and read back in a later build.
+
+Score after: **80.0%**, with the three remaining classified above rather than counted as
+gaps.
+
+Three crashes turned up while reading for those, all in code a frequency table reaches
+from `ans_decode_vec`, and all verified before and after:
+
+- every count zero: `raw_total` was zero and `from_counts` divided by it. **SIGFPE.**
+- a count above `INT_MAX`: `static_cast<int>` made it negative, skewing every scaled
+  frequency computed from the total.
+- and one that appeared only *after* the first two were fixed: a table normalising to no
+  usable symbols left the decoders indexing an empty model. **SIGSEGV.** A guard that
+  returns an empty model turns a division by zero into an out-of-bounds read unless the
+  caller is guarded too.
 
 ### What the corpus found on its first run
 
@@ -757,7 +801,7 @@ disagreeing about `-2 + 1` -- which is a worse state than both being wrong.
 | Item | Status |
 |---|---|
 | 11.1 Output — `to_latex(ExprRef)` and the sibling formats | Done |
-| 11.2 Input — parsing LaTeX | Open |
+| 11.2 Input — parsing LaTeX | Done — `docs/LATEX_SUBSET.md` defines the subset, `parse_latex` reads it, `sym_from_latex("tex")` in the REPL |
 
 **§11.1 is done, as one walk and five tables rather than as ten printers.** The plan
 insisted on that shape and the reason held up: almost everything a printer does is
@@ -785,9 +829,52 @@ derivative, integral or limit has no source form. The C, C++ and Python tables e
 identifier that does not exist, so the code fails to compile and names the problem,
 rather than emitting a plausible call.
 
-**§11.2 stays open**, and the plan's assessment of it stands: LaTeX is presentation
-markup and there is no correct general parser, so the work is to define a subset, parse
-it strictly, and reject everything outside it with a source position.
+**§11.2 is done, and the plan's assessment of it is what shaped it**: LaTeX is
+presentation markup and there is no correct general parser, so the work was to define a
+subset, parse it strictly, and reject everything outside it with a source position.
+
+The subset is defined by the printer rather than by taste. `docs/LATEX_SUBSET.md` fixes
+the accepted language as **everything `notation_latex.cpp` can emit, under every
+`NotationOptions` combination**, plus twelve human spellings listed by name. That is
+what turns
+
+    parse_latex(to_latex(e, options)) == e
+
+from an aspiration into an assertion -- and the document lists, exhaustively, the
+twenty-eight shapes where it does not hold, each one a case where the printed form
+carries less than the node did: a whole-valued `Real` prints as an integer, a total and
+a partial derivative are spelled the same way, `\sqrt{x}` is a half power rather than a
+call. Every one of the twenty-eight has its own test pinning what *does* come back. An
+exception list nobody tests is an exception list that grows.
+
+Every rejection names the ambiguity rather than the rule: `\sin^{2}(x)` is the square
+at 2 and the inverse at -1; `\int_{a}^{b}` would have its bounds silently discarded
+because `Head::Integral` records none; `\hat{x}` and `x` are different symbols to a
+reader and the same name to a parser.
+
+**The parser and its 107 tests were written in parallel by two authors, neither seeing
+the other's work, both writing from the document.** They disagreed thirteen times. Ten
+were the parser's. The other three were not bugs on either side -- they were places the
+document was wrong or silent, and each is recorded in it now:
+
+- three of them had **one** cause, and it was a markdown table cell. A literal `|` in a
+  table has to be escaped as `\|`, which is also LaTeX's control symbol for the norm
+  delimiter, so A34, A36, H2 and H3 all wrote the same two characters and meant
+  different things by them. §2.4's grammar, which is in a code block where the character
+  survives, settles it. Every table writes `&#124;` for a literal bar now.
+- **N24** claimed a Constant and a Symbol of the same name print byte-identically. They
+  do not: a Constant never goes through `split_subscript`, so `constant("gamma_E")`
+  prints `\mathrm{gamma\_E}` while `symbol("gamma_E")` splits and prints
+  `\gamma_{E}`. The exception is real; the reason given for it was not.
+- **`\frac{a}{b \cdot c}`** was a question the document had not asked.
+  `mul({a, b^-1, c^-1})` and `mul({a, (b c)^-1})` print the same string, so one of them
+  cannot read back as itself. The parser distributes, keeping the shape a canonical node
+  actually has; the other is N28, whose stated consequence is that `\frac{d}{d \cdot x}`
+  reads as `1/x`.
+
+That is what writing the tests from the document rather than from the implementation
+buys. A test read off a parser agrees with that parser's reading of an ambiguous
+sentence, and the sentence stays ambiguous.
 
 ## §12 — GUI
 

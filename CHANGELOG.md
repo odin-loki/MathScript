@@ -506,6 +506,63 @@ false` gives `x^{\frac{1}{2}}` and never `x^{1/2}`.
 worth writing, and `format_error` dropped the line and column -- the reason that type
 exists rather than `SymbolicError`. Both fixed.
 
+### §8.4 — mutation testing
+
+`scripts/mutation_test.py` changes one character-range of a source file, rebuilds the
+target that covers it, runs it, and reports what survived. Coverage says a line ran; a
+surviving mutant says nothing asserted it, which is the failure a coverage percentage
+conceals.
+
+Mutants that do not compile are reported separately and are **not** counted as killed.
+Folding them in is the standard way a mutation score is inflated: a harness generating
+mostly uncompilable mutants and calling them killed reports 95% while testing nothing.
+
+First file, `src/compress/compress.cpp`: five of fifteen viable mutants survived —
+**66.7%**, on a file with 105 tests and full line coverage — and the five were four
+different things. Two were missing tests and are killed. One is equivalent
+(`symbol_for_count` clamps, so the clamped value cannot change the symbol). One is
+unreachable through every caller. And one is dead code: the range coder's carry branch
+took **zero hits across 800,000 bytes in four distributions**, its condition testing bit
+56 of a 64-bit accumulator while `kTop` is a 32-bit coder's `1u << 24`. **80.0%** after,
+with the three remaining classified rather than counted as gaps.
+
+The general finding is worth more than the number. **A property that says "decode undoes
+encode" is blind to any change applied symmetrically**, and for a codec that is most of
+the implementation: the encoder's frequency normalisation travels to the decoder inside
+`freq_table`, so whichever symbol absorbed the rounding excess, the decoder absorbs it
+there too. `CompressFormat.TheEncodedBytesAreWhatTheyHaveAlwaysBeen` pins the exact
+output of both entropy coders, which makes the compressed format a contract —
+deliberately, since `bzip2_compress_vec` hands a user a matrix they can save and read
+back in a later build.
+
+Three crashes turned up while reading for those, all reachable through a caller-supplied
+frequency table: a table of zero counts divided by zero (**SIGFPE**), a count above
+`INT_MAX` went negative through `static_cast<int>`, and — appearing only after those two
+were fixed — a table normalising to no usable symbols left the decoders indexing an
+empty model (**SIGSEGV**). A guard that returns an empty model turns a division by zero
+into an out-of-bounds read unless the caller is guarded too.
+
+### §11.2 — reading the subset back
+
+`parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under
+every `NotationOptions` combination, plus twelve human spellings listed by name, and
+refuse everything else with a code, a line and a column. `sym_from_latex("tex")` in the
+REPL shows what was read in ASCII rather than echoing the LaTeX back: what confirms a
+parse is the expression, and that `\frac{x}{y}` came back as `x/y` is the whole of that.
+
+The parser and its 107 tests were written in parallel by two authors, neither seeing the
+other's work, both writing from `docs/LATEX_SUBSET.md`. They disagreed thirteen times.
+Ten were the parser's. The other three were places the document was wrong or silent, and
+three of those had one cause: a literal `|` inside a markdown table has to be escaped as
+`\|`, which is also LaTeX's control symbol for the norm delimiter, so four rows wrote
+the same two characters and meant different things by them. §2.4's grammar, in a code
+block where the character survives, settled it.
+
+Fixed in passing, and not ours to begin with: `split_call_args` split on a comma inside a
+quoted string, so `sym_eval("x*y", "x=2,y=3")` — multi-variable evaluation, which is what
+the second argument is for — reported an arity error, as did any argument carrying a
+two-argument call or a LaTeX thin space.
+
 ### §8.5 — properties, not cases
 
 A fixed case proves a function returns the value someone wrote down once. An invariant
