@@ -389,6 +389,123 @@ The corpus is discovered at run time, so a new transcript needs no build-system 
 That also means an empty corpus directory would let the file pass while testing
 nothing, so the first assertion is that the corpus is not empty.
 
+### The Windows job had never run a transcript
+
+`test_repl_corpus` invokes `mathscriptc` through `std::system`, and on Windows that is
+`cmd.exe /c <command>`. cmd's documented rule is that unless the command holds exactly
+*two* quote characters it strips the first and the last one; the command holds eight --
+a quoted program, a quoted script and two quoted redirect targets -- so the closing
+quote came off the final redirect, cmd found an unterminated quote where a filename
+should be, said
+
+    The filename, directory name, or volume label syntax is incorrect.
+
+and exited 1 without running anything. Every transcript, every run, since the corpus
+was added. An extra outer pair of quotes is what the stripping is there to consume.
+
+Three cycles were spent on hypotheses about what empty output meant, while the exit
+code sat there saying it could not have come from the program (a Windows access
+violation is 3221225477 and `mathscriptc` cannot return 1 without first writing to
+standard error) and cmd's own message sat 5,800 lines deep in a CTest log. The two
+"Windows failures" recorded before this were inferred rather than observed, and
+`docs/PLAN_STATUS.md` now says so; both fixes they prompted stand on their own.
+
+`mathscriptc` also flushes standard output after every line now. Redirected to a file
+`std::cout` is fully buffered, so a script runner that flushes only at exit loses
+everything it printed if it dies partway; and `std::cerr` being unit-buffered while
+`std::cout` was not could put a diagnostic ahead of output that came before it.
+
+### Commands that ended the session instead of reporting
+
+Found by running every one of the 485 matrix-call handlers at every arity it accepts,
+each in its own process, with a marker line before each call so the last marker names
+the one that died.
+
+- **`bzip2_decompress_vec(ones(2, 2))` called `std::terminate`.** Four bytes of 0x01 is
+  a legal-looking header naming rotation 16,843,009 of a body with no rotations, and
+  `ibwt` reached `out.reserve(m - 1)` with `m = 0` -- `reserve(SIZE_MAX)`, which in a
+  tree built without exceptions ends the process. Underneath it, `ibwt` indexed `Fs`
+  and `T_inv` with the primary index directly, so an index outside the data was an
+  out-of-bounds read rather than a wrong answer, and it arrives from a stream's own
+  header. Both are guarded; the REPL reports a stream it cannot read rather than
+  returning an empty matrix.
+- `bzip2_like_decompress`'s second parameter was accepted and ignored -- every caller
+  computed the primary index from the same header the function reads for itself. It is
+  gone: a parameter that is ignored lets a caller pass the wrong value and get the
+  right answer, which is the same as letting it pass the right value and get the wrong
+  one.
+
+### Ninety-eight callees had no no-target form
+
+`transpose(A)` reported "unknown function: transpose" while `B = transpose(A)` worked.
+A hand-written chain of 92 `else if (fn == ...)` branches -- continued in a second
+function of 53 more, because MSVC refused it as one -- sits in front of the matrix-call
+registry, and its terminal `else` did not decline a name it had never heard of. It
+claimed the line, six lines above the registry that knows every matrix-returning callee
+there is.
+
+So a unary call whose argument resolves to a matrix reached the registry only if
+somebody had added the name to the list by hand: `prewitt`, `scharr` and `roberts` were
+on it and `sobel` was not; `graph_laplacian` was and `laplacian` was not. The tail
+returns "not mine" now and the caller asks the registry, which prints **and stores**
+under `_`. Thirteen further callees that want a scalar stop saying `unknown function:
+zeros` and give their own diagnosis.
+
+`stats_one_way_anova` and `rle_encode_vec`, both recorded as open findings, are two of
+the 98.
+
+### Diagnostics that named something the user never wrote
+
+- `not_a_function(1)` reported **"unknown matrix: 1"**. Saying "unknown function"
+  instead would be a different false claim: 278 real callees -- `mat_at`,
+  `finance_npv`, `stats_percentile` among them -- reach the same return in the
+  one-argument shape from dispatch blocks no predicate there enumerates. The line now
+  says only what was established, and still names the argument when the argument is a
+  name.
+- `sym_simplify("x + x")` returned `(x + x)`. It collects like terms now, by flattening
+  the sum and adding the coefficients of terms that are the same term -- not by routing
+  through expansion's polynomial form, which would multiply products out in all ~180 of
+  simplify's callers. The first version keyed terms by their printed form, and
+  `sin(1.0000001*x) - sin(1.0000002*x)` collapsed to zero because six decimals is not
+  an identity; an existing test caught it.
+
+### ms::sym2
+
+- `derivative`, `integral` and `limit` did not refuse a null `ExprRef` where `add`,
+  `mul`, `pow` and `function` all do. One guard here and none there is worse than none
+  anywhere: a caller who checked one of them has checked the majority and been misled.
+- The interning table grew by one bucket for every distinct expression the process ever
+  built and released. It keeps weak references and prunes a bucket when something
+  hashes into it again, which never happens once every node in it has died. A sweep
+  every 4,096 inserts reclaims them. Nothing about a value could see this -- every
+  answer stayed correct while the table grew without bound.
+
+### §11.2 — the LaTeX subset, defined before it is parsed
+
+`docs/LATEX_SUBSET.md` defines the language `parse_latex` accepts as **the image of the
+printer**: everything `to_latex` can emit under every `NotationOptions` combination,
+plus twelve human spellings listed by name. That is what turns
+
+    parse_latex(to_latex(e, options)) == e
+
+from an aspiration into an assertion, and the document lists exhaustively the
+twenty-seven shapes where it does not hold, each one a case where the printed form
+genuinely carries less than the node did -- a whole-valued `Real` prints as an integer,
+a total and a partial derivative are spelled the same way, `\sqrt{x}` is a half power
+rather than a call. It also carries the token list with exact bytes, an EBNF grammar
+with precedence stated, and the exact diagnostic for every rejection, each one naming
+the ambiguity rather than the rule: `\sin^{2}(x)` is the square at 2 and the inverse at
+-1, `\int_{a}^{b}` would have its bounds silently discarded, `\hat{x}` and `x` are
+different symbols to a reader and the same name to a parser.
+
+Two comments in `notation.hpp` described output the printer does not make and are
+corrected: `display` gives `\dfrac` and never `\[ ... \]`, and `roots_as_radicals =
+false` gives `x^{\frac{1}{2}}` and never `x^{1/2}`.
+
+`ParseError::msg` was a `std::string_view`, which is a dangling view at every site
+worth writing, and `format_error` dropped the line and column -- the reason that type
+exists rather than `SymbolicError`. Both fixed.
+
 ### §8.5 — properties, not cases
 
 A fixed case proves a function returns the value someone wrote down once. An invariant
