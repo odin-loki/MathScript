@@ -563,6 +563,38 @@ quoted string, so `sym_eval("x*y", "x=2,y=3")` — multi-variable evaluation, wh
 the second argument is for — reported an arity error, as did any argument carrying a
 two-argument call or a LaTeX thin space.
 
+An adversarial review of the committed parser then found five more, and no crash: 220,000
+fuzzed inputs under ASan and UBSan produced no report, and the depth guard held to 20,000
+nestings. Two of the five were wrong answers.
+
+- `\frac{dy}{dx}` came back `y/x`, and `\frac{d^{2}y}{dx^{2}}` came back `d*y/x^2` --
+  carrying a factor of `d` the author never wrote, standing exactly where the order of
+  the derivative had been. `match_derivative_operator` requires the numerator group to be
+  exactly `d`, so every Leibniz spelling except `\frac{d}{dx} f` fell through to
+  `parse_fraction`, which distributes the denominator, leaving `mul` to cancel the `d`s.
+  The partial form was already rejected, so the asymmetry was the parser's rather than
+  the subset's. Now A53 / E-LATEX-0045.
+- `\int x \, dx + 1` came back `integral(d*x^2 + 1)`. Text after the differential breaks
+  the backwards scan that finds it, and the exemption for an empty variable list --
+  written for `\int f`, which has no differential at all -- then re-read `\, dx` as the
+  factors `d` and `x`. Two integral signs rejected the same input correctly. Now A54 /
+  E-LATEX-0046.
+- `(x\right)` was diagnosed as "expected ')' ... found ')'", pointing at a perfectly good
+  `)` while the `\right` six columns earlier went unnamed. `mismatch_site` skipped over
+  `\right` unconditionally; skipping is right only when the opener licenses `\right` as
+  its closer's prefix, which a bare `(` does not. The rule is now "skip the prefix this
+  opener licenses", which fixes `\left(x\big)` at the same time.
+- E-LATEX-0018 told the author of `f'(x)` to write `\frac{d}{dx} f(x)`, which in this
+  subset is a juxtaposition and therefore a product: following the advice gave the
+  derivative of `f` times `x`, with no call in it and no second diagnostic. It names the
+  `\operatorname` form now, and the test parses the advice *out of the message* so the
+  two cannot drift.
+- `\mathrm{ }` was accepted as `symbol(" ")`, whose printed form was a single space --
+  and a single space is empty input, so it did not read back. §4.1 promises a round trip
+  for every base that is non-empty and not all-digits, and this was a counterexample §4.2
+  did not list. The fence went into the printer, which no longer sets a one-character
+  whitespace name bare, rather than into a new exception row.
+
 ### §8.5 — properties, not cases
 
 A fixed case proves a function returns the value someone wrote down once. An invariant

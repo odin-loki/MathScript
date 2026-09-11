@@ -149,8 +149,8 @@ std::string spell_name(const std::string& name) {
     if (all_digits(name)) {
         return name;
     }
-    if (name.size() == 1) {
-        return escape(name);
+    if (name.size() == 1 && std::isspace(static_cast<unsigned char>(name.front())) == 0) {
+        return escape(name);  // §4.1: whitespace set bare is empty input, not a name
     }
     return "\\mathrm{" + escape(name) + "}";
 }

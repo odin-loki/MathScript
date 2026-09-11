@@ -263,7 +263,8 @@ constexpr const char* kMsgFactorial =
     "negation in some writing; write \\operatorname{factorial}(n)";
 constexpr const char* kMsgPrime =
     "[E-LATEX-0018] a prime or a dot is a derivative with respect to an unwritten "
-    "variable (and a prime is also a transpose); write \\frac{d}{dx} f(x)";
+    "variable (and a prime is also a transpose); write "
+    "\\frac{d}{dx} \\operatorname{f}(x)";
 constexpr const char* kMsgPlusMinus =
     "[E-LATEX-0019] a \\pm b denotes two expressions at once; a MathScript expression "
     "is one value";
@@ -1282,7 +1283,7 @@ private:
         pos_ = close;
         if (sized) {
             if (!lex::is_word(peek(), "right") || !lex::is_char(peek(1), ')')) {
-                return unclosed(mismatch_site(), opener, "'\\left('", "'\\right)'");
+                return unclosed(mismatch_site(true), opener, "'\\left('", "'\\right)'");
             }
             advance();
             advance();
@@ -1293,7 +1294,7 @@ private:
             advance();
         }
         if (!lex::is_char(peek(), ')')) {
-            return unclosed(mismatch_site(), opener, lex::describe(opener), "')'");
+            return unclosed(mismatch_site(false), opener, lex::describe(opener), "')'");
         }
         advance();
         return inner;
@@ -1337,16 +1338,25 @@ private:
 
     bool at_bar() const { return is_bar(peek()); }
 
-    /// Where to point when a closing delimiter does not match its opener. `\right` is in
-    /// the subset and the character after it is not, so `\left( x \right]` is diagnosed
-    /// on the `]` -- the same choice A35 makes for `\left.`.
-    const Token& mismatch_site() const {
-        if (lex::is_word(peek(), "right") ||
-            (peek().kind == TokKind::ControlWord &&
-             lookup(kBigDelimiters, peek().text) != nullptr)) {
-            return peek(1);
-        }
-        return peek();
+    /// Where to point when a closing delimiter does not match its opener.
+    ///
+    /// A closer is a prefix plus a delimiter character, and WHICH prefix is allowed
+    /// depends on the opener: `\left(` must close with `\right)`, while a bare `(`
+    /// closes with `)` or with a sized `\big)`. When the prefix standing there is the
+    /// one this opener licenses, the prefix is fine and the delimiter after it is the
+    /// token out of place -- `\left( x \right]` is diagnosed on the `]`, the same
+    /// choice A35 makes for `\left.`.
+    ///
+    /// When it is the other prefix, the prefix ITSELF is the token out of place, and
+    /// skipping it produced a diagnostic that contradicted itself: `(x\right)` read
+    /// "expected ')' ... found ')'" and pointed at a perfectly good `)`, while the
+    /// `\right` six columns earlier -- the only thing wrong with the input -- was never
+    /// named.
+    const Token& mismatch_site(bool sized) const {
+        const bool licensed = sized ? lex::is_word(peek(), "right")
+                                    : (peek().kind == TokKind::ControlWord &&
+                                       lookup(kBigDelimiters, peek().text) != nullptr);
+        return licensed ? peek(1) : peek();
     }
 
     /// A36. An unbraced bar cannot be paired, so it is accepted only where there is
@@ -1377,7 +1387,7 @@ private:
         switch (kind) {
         case BarKind::Right:
             if (!lex::is_word(peek(), "right") || !is_bar(peek(1))) {
-                return unclosed(mismatch_site(), opener, "'\\left|'", "'\\right|'");
+                return unclosed(mismatch_site(true), opener, "'\\left|'", "'\\right|'");
             }
             advance();
             advance();
@@ -1608,7 +1618,7 @@ private:
                 return true;
             }
             if (!probe) {
-                unclosed(mismatch_site(), opener, "'\\left('", "'\\right)'");
+                unclosed(mismatch_site(true), opener, "'\\left('", "'\\right)'");
             }
             return false;
         }

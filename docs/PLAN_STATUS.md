@@ -876,6 +876,41 @@ That is what writing the tests from the document rather than from the implementa
 buys. A test read off a parser agrees with that parser's reading of an ambiguous
 sentence, and the sentence stays ambiguous.
 
+**An adversarial review of the committed parser found five more, and no crash.** 220,000
+fuzzed inputs under ASan and UBSan produced no report, and the depth guard holds to
+20,000 nestings on a 256 KB stack. What it did find was two wrong results and three
+diagnostics that were worse than useless, all now fixed:
+
+- **`\frac{dy}{dx}` came back `y/x`.** `match_derivative_operator` requires the numerator
+  to be exactly `d`, so every Leibniz spelling except `\frac{d}{dx} f` fell through to
+  `parse_fraction` -- which distributes the denominator (N28), leaving `mul` to collect
+  `d^1 * d^-1` and cancel. `\frac{d^{2}y}{dx^{2}}` came back `d*y/x^2`, carrying a factor
+  of `d` the author never wrote, standing exactly where the order of the derivative had
+  been. The partial form was already rejected, so the asymmetry was in the parser rather
+  than in the subset. Now **A53 / E-LATEX-0045**.
+- **`\int x \, dx + 1` came back `integral(d*x^2 + 1)`.** The integrand runs to the end
+  of the enclosing group, so text after the differential breaks the backwards scan, no
+  differentials are found, and the empty-variable-list exemption -- written for `\int f`,
+  which has no differential at all -- re-read `\, dx` as the factors `d` and `x`. Two
+  integral signs rejected the same input correctly, so the hole was exactly the one-sign
+  case. Now **A54 / E-LATEX-0046**.
+- **`(x\right)` was diagnosed as "expected ')' ... found ')'".** `mismatch_site` skipped
+  over `\right` unconditionally and pointed at the token after it. That is right only
+  when the opener licenses `\right` as its closer's prefix: a bare `(` does not, so the
+  one thing wrong with the input was never named and the reader was sent to a perfectly
+  good `)` six columns further on. The rule is now "skip the prefix this opener
+  licenses", which fixes the mirror case (`\left(x\big)`) at the same time.
+- **E-LATEX-0018 handed out advice that parsed to something else.** It told the author of
+  `f'(x)` to write `\frac{d}{dx} f(x)` -- but an unmarked juxtaposition before a
+  parenthesis is a product (A1), so following it gave the derivative of `f` times `x`,
+  with no call in it, and no second diagnostic to say so. It names the `\operatorname`
+  form now, and the test takes the advice *out of the message* and parses it, so the two
+  cannot drift.
+- **`\mathrm{ }` was accepted as `symbol(" ")`**, which §4.1 promises will round-trip and
+  which did not: a one-character name printed bare, so the whole printed form was a
+  single space, and a single space is empty input. The fence went into the printer rather
+  than into a §4.2 row, because the guarantee as §4.1 words it is the one worth having.
+
 ## §12 — GUI
 
 **Open.**

@@ -627,6 +627,33 @@ TEST(Sym2LatexException, N12_AnEmptySymbolNameVanishesFromTheOutput) {
     EXPECT_NE(error->msg.find("E-LATEX-0001"), std::string::npos) << error->msg;
 }
 
+TEST(Sym2LatexRoundTrip, AOneCharacterWhitespaceNameIsFencedRatherThanSetBare) {
+    // §4.1 promises a round trip for every Symbol whose base is non-empty and not
+    // all-digits. `symbol(" ")` is one of those, and it used to be a counterexample that
+    // §4.2 did not list: a one-character name was set bare, so the whole printed form
+    // was a single space -- which is not a name in math mode, it is EMPTY INPUT, and it
+    // came back as E-LATEX-0001 rather than as the symbol.
+    //
+    // The fence is in the printer rather than in a new exception row, because the
+    // guarantee as §4.1 words it is the one worth having.
+    for (const char* name : {" ", "\t", "\n", "\r"}) {
+        SCOPED_TRACE(name);
+        const ExprRef atom = symbol(name);
+        const std::string printed = to_latex(atom);
+        EXPECT_NE(printed, std::string(name))
+            << "set bare, so what reaches the parser is whitespace: [" << printed << "]";
+        const Result<ExprRef> back = parse_latex(printed);
+        ASSERT_TRUE(back.has_value())
+            << "the printer's own output was rejected: [" << printed << "] -- "
+            << describe(back.error());
+        EXPECT_TRUE(structurally_equal(*back, atom))
+            << "came back as " << to_string(*back) << " from [" << printed << "]";
+    }
+    // A name that is only partly whitespace was never at risk -- it is more than one
+    // character, so it was already fenced -- but it is the neighbouring case.
+    EXPECT_TRUE(structurally_equal(reparse(to_latex(symbol("a b"))), symbol("a b")));
+}
+
 TEST(Sym2LatexException, N13_ANonCanonicalGreekSpellingComesBackCanonical) {
     // `greek_letter` lowercases the whole name and keys the capital on the first
     // character alone, so four spellings collapse onto two.

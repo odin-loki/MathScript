@@ -404,7 +404,7 @@ Diagnostics are quoted verbatim; `L:C` is the line and column of the offending t
 | A23 | `\log_{2}(x)` | `[E-LATEX-0015] a subscript on a function name is the base of the logarithm here and an index elsewhere; the subset has no based logarithm. Write \frac{\log(x)}{\log(2)}` |
 | A24 | `a / b c` | `[E-LATEX-0016] the denominator ends at b or at c depending on the writer; use \frac{a}{bc} or \frac{a}{b} \cdot c` |
 | A25 | `n!` | `[E-LATEX-0017] a postfix ! is a factorial, a double factorial when doubled, and a negation in some writing; write \operatorname{factorial}(n)` |
-| A26 | `f'(x)`, `\dot{x}`, `\ddot{x}` | `[E-LATEX-0018] a prime or a dot is a derivative with respect to an unwritten variable (and a prime is also a transpose); write \frac{d}{dx} f(x)` |
+| A26 | `f'(x)`, `\dot{x}`, `\ddot{x}` | `[E-LATEX-0018] a prime or a dot is a derivative with respect to an unwritten variable (and a prime is also a transpose); write \frac{d}{dx} \operatorname{f}(x)` |
 | A27 | `a \pm b`, `a \mp b` | `[E-LATEX-0019] a \pm b denotes two expressions at once; a MathScript expression is one value` |
 | A28 | `=` `<` `>` `\le` `\leq` `\ge` `\neq` `\ne` `\approx` `\equiv` `\sim` `\propto` `\in` `\mid` | `[E-LATEX-0020] the subset parses expressions, not equations; '=' has no expression head. Parse the two sides separately, or write the difference` |
 | A29 | `\sum` `\prod` `\bigcup` `\bigcap` `\coprod` `\bigoplus` | `[E-LATEX-0021] \sum_{i=1}^{n} has no expression head here; big operators are outside the subset` |

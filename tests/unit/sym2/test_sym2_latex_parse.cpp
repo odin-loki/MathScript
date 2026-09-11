@@ -48,6 +48,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstring>
 #include <string>
 #include <variant>
 #include <vector>
@@ -447,6 +448,31 @@ TEST(Sym2LatexParse, A26_APrimeOrADot) {
     expect_rejected("\\ddot{x}", "E-LATEX-0018", 1, 1, "a prime or a dot is a derivative");
 }
 
+TEST(Sym2LatexParse, A26TheAdviceParsesToWhatTheAuthorWasWriting) {
+    // A rejection that hands out a remedy is only as good as the remedy. The advice is
+    // taken out of the message rather than restated here, so the two cannot drift.
+    //
+    // It used to read `\frac{d}{dx} f(x)`, which in this subset is a juxtaposition and
+    // therefore a PRODUCT (A1): following it gave the derivative of `f` times `x`, with
+    // no call in it at all. Someone who wrote `f'(x)` and did what they were told got a
+    // different expression and no second diagnostic to say so.
+    const Result<ExprRef> back = parse_latex("f'(x)");
+    ASSERT_FALSE(back.has_value()) << "accepted a prime";
+    const ms::ParseError* error = std::get_if<ms::ParseError>(&back.error());
+    ASSERT_NE(error, nullptr) << describe(back.error());
+
+    const std::size_t write_at = error->msg.find("write ");
+    ASSERT_NE(write_at, std::string::npos) << "the message offers no remedy: " << error->msg;
+    const std::string advice = error->msg.substr(write_at + std::strlen("write "));
+
+    const Result<ExprRef> remedy = parse_latex(advice);
+    ASSERT_TRUE(remedy.has_value())
+        << "the advice does not parse: " << advice << " -- " << describe(remedy.error());
+    EXPECT_EQ(*remedy, derivative(function("f", {symbol("x")}), {symbol("x")}))
+        << "following the advice gives " << to_string(*remedy) << ", not the derivative "
+        << "of f -- the advice was: " << advice;
+}
+
 TEST(Sym2LatexParse, A27_PlusOrMinus) {
     // `a \pm b` denotes two expressions at once and a MathScript expression is one value.
     expect_rejected("a \\pm b", "E-LATEX-0019", 1, 3, "denotes two expressions at once");
@@ -713,6 +739,42 @@ TEST(Sym2LatexParse, ADelimiterMismatchNamesTheOpenerAsWellAsTheCloser) {
     EXPECT_EQ(error->col, 16U) << "expected the closing delimiter: " << error->msg;
     EXPECT_NE(error->msg.find("\\left("), std::string::npos)
         << "the message does not name the opener: " << error->msg;
+}
+
+TEST(Sym2LatexParse, AnUnlicensedCloserPrefixIsItselfTheTokenOutOfPlace) {
+    // The skip in the test above is right only because `\left(` LICENSES `\right` as
+    // its closer's prefix, so the prefix is fine and the delimiter after it is not.
+    // Skipping unconditionally made the diagnostic contradict itself: a bare `(` does
+    // not license `\right`, and `(x\right)` came back "expected ')' ... found ')'",
+    // pointing at a perfectly good `)` while the `\right` went unnamed.
+    {
+        const Result<ExprRef> back = parse_latex("(x\\right)");
+        ASSERT_FALSE(back.has_value()) << "accepted a bare '(' closed by '\\right)'";
+        const ms::ParseError* error = std::get_if<ms::ParseError>(&back.error());
+        ASSERT_NE(error, nullptr) << describe(back.error());
+        EXPECT_EQ(error->line, 1U);
+        // Column 3 is the backslash of `\right`, which is the whole of what is wrong.
+        EXPECT_EQ(error->col, 3U) << "expected the \\right: " << error->msg;
+        EXPECT_NE(error->msg.find("\\right"), std::string::npos)
+            << "the message does not name the token out of place: " << error->msg;
+    }
+    {
+        // The mirror: `\left(` does not license a sized `\big` either.
+        const Result<ExprRef> back = parse_latex("\\left(x\\big)");
+        ASSERT_FALSE(back.has_value()) << "accepted '\\left(' closed by '\\big)'";
+        const ms::ParseError* error = std::get_if<ms::ParseError>(&back.error());
+        ASSERT_NE(error, nullptr) << describe(back.error());
+        EXPECT_EQ(error->line, 1U);
+        EXPECT_EQ(error->col, 8U) << "expected the \\big: " << error->msg;
+    }
+    {
+        // And the prefix each opener DOES license still closes it. Narrowing the skip
+        // must not narrow what is accepted -- `mismatch_site` only chooses where to
+        // point once something has already gone wrong.
+        EXPECT_TRUE(parse_latex("(x\\big)").has_value()) << "'\\big)' no longer closes '('";
+        EXPECT_TRUE(parse_latex("\\left(x\\right)").has_value())
+            << "'\\right)' no longer closes '\\left('";
+    }
 }
 
 TEST(Sym2LatexParse, AnUnclosedGroupNamesWhereItWasOpened) {
