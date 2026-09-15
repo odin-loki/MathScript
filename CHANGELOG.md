@@ -989,6 +989,40 @@ rewrites `x^1` to a bare `x`. **The branch is unreachable for the input it was w
 for** — redundant code rather than an untested one. The test stays, because the contract it
 asserts was genuinely unasserted whatever kills that mutant.
 
+### §8.4 — four special functions whose value nothing asserted
+
+`src/special/special.cpp` scored **62.5%** with nothing not-viable, and four survivors were
+the same shape — the clearest of the exercise: a function with a closed form, a mutation
+that turns it into a different function, and not one test that would notice.
+
+- **`beta_func`**: `lgamma(a) + lgamma(b) - lgamma(a+b)` became `+ lgamma(a+b)`, so
+  `B(a,b) = Γ(a)Γ(b)/Γ(a+b)` became `Γ(a)Γ(b)Γ(a+b)`. Every value wrong, every test passing.
+- **`spherical_yn`**: `y_n(x) = √(π/2x)·Y_{n+1/2}(x)` became `Y_{n−1/2}(x)`. The `j`
+  counterpart on the line above it *is* asserted, which is why that one's mutant dies.
+- **`legendre_p`**: the domain guard `x > 1.0` became `x >= 1.0`, making `P_n(1)` NaN —
+  and `P_n(1) = 1` is the first entry in the table.
+- **`erfinv`**: `erfinv(-1)` returned `+∞`.
+
+The suites around them assert *shape* — finiteness, sign, monotonicity, a recurrence
+relating one call to another — and **a recurrence is satisfied by a whole family of
+functions, not only the right one**. The new tests compare against closed forms written out
+in the test: B(a,b) at integer and half-integer arguments with its symmetry and recurrence;
+`j_0..j_3` and `y_0..y_3` against their elementary forms plus the cross-family Wronskian
+`j_{n+1}y_n − j_n y_{n+1} = 1/x²`; `P_n(±1)` with the interior values beside them; and
+`erfinv` at both ends of its range.
+
+One measurement changed the test rather than the code. Comparing `spherical_yn` at 1e-10
+failed, and the failure was the test's: the values agree to about **eight significant
+figures**, because `bessel_y_general` at half-integer order goes through a series of that
+accuracy, worst relative disagreement 1.9e-8. The file carries two tolerances and says why —
+asserting 1e-10 there would assert an accuracy the library does not claim.
+
+A fifth survivor was the same shape deeper down. **`pcf_w` has already been wrong once**,
+and the sign in the corrected DLMF 12.14.4 combination was still unasserted. The
+differential equation cannot see it — `w1` and `w2` both solve it, so *every* combination
+does. What identifies this one is the origin, where `W(a,0)` and `W'(a,0)` read the two
+coefficients straight off, minus sign included. **62.5% -> 79.2%.**
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

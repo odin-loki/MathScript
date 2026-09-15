@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; fifteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; sixteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1258,6 +1258,58 @@ The remaining eight are located and left open, which is the useful state to leav
 | `:4885` `ode_integrate(..., depth + 1)` -> `depth + 2` | A recursion-depth budget, the same family as the other iteration budgets classified in this section. |
 | `:5034`, `:5093` the ODE identity and zero tolerances | Comparisons against `kOdeZeroTol` and `kOdeIdentityTol`: knife-edge tolerances, the same shape as LDL's `amax` scan. |
 | `:5277` the `Add`/`Sub`/`Neg` test in an ODE rewrite | |
+
+
+Sixteenth file: `src/special/special.cpp`, 24 mutants at seed 71 against the eleven suites
+that cover it. **15 of 24 viable killed, 62.5%**, nothing not-viable -- and four survivors
+were the same shape, the clearest of the whole exercise: **a function with a closed form,
+a mutation that turns it into a different function, and not one test that would notice.**
+
+| Survivor | What the mutation made it compute |
+|---|---|
+| `beta_func` | `lgamma(a) + lgamma(b) - lgamma(a+b)` became `+ lgamma(a+b)`, so `B(a,b) = Gamma(a)Gamma(b)/Gamma(a+b)` became `Gamma(a)Gamma(b)Gamma(a+b)`. **Every value wrong, every test passing.** |
+| `spherical_yn` | `y_n(x) = sqrt(pi/2x) Y_{n+1/2}(x)` became `Y_{n-1/2}(x)` -- a different order of a different function. The `j` counterpart on the line ABOVE it is asserted, which is why that one's mutant dies and this one's does not. |
+| `legendre_p` | the domain guard `x > 1.0` became `x >= 1.0`, so `P_n(1)` is NaN. `P_n(1) = 1` is the first entry in the table. |
+| `erfinv` | `erfinv(-1)` returned `+infinity`. |
+
+What the four have in common is that the suites around them assert SHAPE -- finiteness,
+sign, monotonicity, a recurrence relating one call to another -- **and a recurrence is
+satisfied by a whole family of functions, not only the right one.**
+`tests/unit/special/test_special_reference_values.cpp` compares against closed forms
+written out in the test, which is the one comparison a different function cannot satisfy:
+B(a,b) at integer and half-integer arguments plus the symmetry and the recurrence
+`B(a+1,b) = B(a,b)*a/(a+b)`; `j_0..j_3` and `y_0..y_3` against their elementary closed
+forms and the cross-family Wronskian `j_{n+1} y_n - j_n y_{n+1} = 1/x^2`; `P_n(+/-1)` at
+both endpoints with the interior values beside them, so the endpoint assertion cannot be
+met by a function that is 1 everywhere; and `erfinv` at both ends of its range with the odd
+symmetry and a round trip through `erf`.
+
+**One measurement changed what the test says rather than what the code does.** The first
+version compared `spherical_yn` at 1e-10 and it failed -- and the failure was the test's,
+not the library's. The values agree to about eight significant figures, because
+`bessel_y_general` at half-integer order goes through a series of that accuracy; the worst
+relative disagreement over seven arguments and four orders is **1.9e-8**. So the file
+carries two tolerances and says why: `spherical_jn` is held to 1e-12 and `spherical_yn` to
+1e-6, which is the accuracy that function actually has and still four orders of magnitude
+tighter than anything that could confuse it with a neighbouring order. Asserting 1e-10
+there would have been asserting an accuracy the library does not claim.
+
+A fifth survivor was the same shape one level deeper. **`pcf_w` has already been wrong
+once** -- the comment above it records that a `U cos(pi a) - V sin(pi a)` mix was a
+different function -- and the sign in the corrected DLMF 12.14.4 combination was still
+unasserted. The differential equation cannot see it: `w1` and `w2` both solve
+`y'' + (x^2/4 - a)y = 0`, so **every** linear combination does, and a residual test passes
+for the wrong one. What identifies this particular combination is the origin, where `w1` is
+1 with slope 0 and `w2` is 0 with slope 1, so `W(a,0)` and `W'(a,0)` read the two
+coefficients straight off -- including the minus sign between them. `W(0,0)` matches
+`2^{-3/4} sqrt(Gamma(1/4)/Gamma(3/4))` to twelve digits, `W'(a,0)` is negative for every
+`a` tested, and `W(a,0)` is even in `a` because the gamma moduli are.
+
+Score after: **62.5% -> 79.2%**, the same twenty-four mutants re-scored. Five survive:
+`erfinv`'s `x < 0.0` becoming `x <= 0.0` is equivalent, because the function has already
+returned at `x == 0.0` seven lines earlier; a root bracket's `flo*fhi < 0` and a pivot's
+`< 0.0` both turn on an endpoint being exactly zero; and one is a convergence heuristic's
+`r > 4`.
 
 
 ### What the corpus found on its first run
