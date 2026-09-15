@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; seventeen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eighteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1353,6 +1353,46 @@ entry, so `== 4` is unreachable; and a window of 3 then falls through to the gen
 which computes the same median. Measured rather than argued -- **58 medfilt tests exercise
 window 3, several asserting output values, and not one of them can tell the two paths
 apart.**
+
+
+Eighteenth file: `src/stats/stats.cpp`, 24 mutants at seed 79 against the ten suites that
+cover it. **18 of 23 viable killed, 78.3%.** Three of the five survivors were gaps and are
+closed; the other two are classified.
+
+- **`shapiro_wilk`'s small-sample branch.** Royston's normalising transformation has two
+  sets of polynomial coefficients, `n <= 11` and `n > 11`, and signs inside the SMALL one's
+  `mu` and `sigma` mutate freely: nothing in the tree asserts a p-value for a sample of
+  eleven or fewer.
+- **`weighted_correlation`'s size guard** is three `||` clauses, and nothing had ever given
+  it mismatched lengths -- so the guard could have been any combination of the three and
+  answered every test identically.
+- **`friedman` on a single treatment.** The tie correction divides by `n*(k^3 - k)`, which
+  is zero at `k = 1`, and no test runs Friedman on one column.
+
+**One of these taught the sharper lesson, and it came from checking the kill rather than
+assuming it.** The first version of the Shapiro-Wilk test asserted that a near-normal
+sample scores `p > 0.5` and a strongly skewed one `p < 0.01`. That killed the `mu` mutants
+and did **not** kill `sigma`'s -- because `sigma` divides the z-score, so shrinking it only
+pushes an already-extreme p further towards the end it was already at. **The ends of the
+range are exactly where that coefficient stops mattering.** What pins it is a p-value in
+the MIDDLE, so the file now also pins four borderline samples at p between 0.056 and 0.186.
+Those numbers are Royston's published algorithm applied to those points -- determined, not
+chosen -- so pinning them pins the transformation, the same move as pinning the compressed
+format's bytes. With them, both coefficient mutants die.
+
+The same care caught a mis-aimed check twice over: hand-patching "the `-` on line 1243" and
+"the `||` on line 262" flipped **different operators** from the ones the harness had chosen
+on those lines, so the first round of kills was real but was not the kills being claimed.
+The harness reports a line and an operator, not a column; when a line carries several, the
+mutant has to be reproduced exactly before a kill can be attributed to it.
+
+Score after: **78.3% -> 87.0%**, the same twenty-four mutants re-scored. Three survive:
+
+| Survivor | Why |
+|---|---|
+| `:932` friedman's `tie_cubed_sum > 0 && tie_denom > 0` | **Equivalent, provably.** `tie_cubed_sum > 0` requires a tie group of two or more in some row, which requires `k >= 2`, which makes `tie_denom = n*(k^3 - k) >= 6n > 0`. The second condition is implied by the first, so `&&` and `\|\|` agree on every input. |
+| `:262` the second `\|\|` in the size guard | Masked: `weighted_inputs_valid`, called four lines later, checks `x.size() != w.size()` itself and the only loop in between iterates `w`'s own range. The clause is a redundant early-out, not the thing that makes it safe. |
+| `:1619` `for (int j = i + 1; ...)` -> `i - 1` | At `i = 0` that is `phi[static_cast<size_t>(-1)]` -- a read at a huge index. For every other `i` the extra terms multiply `phi` entries that are still zero, so the arithmetic is unchanged; the one real effect is the out-of-bounds read, which a build without sanitizers cannot see. |
 
 
 ### What the corpus found on its first run

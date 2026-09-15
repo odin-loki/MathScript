@@ -1053,6 +1053,35 @@ for two compounding reasons: even windows are rejected at entry so `== 4` is unr
 and a 3-window then falls to the general path, which computes the same median. Measured —
 58 medfilt tests exercise window 3 and none can tell the two paths apart.
 
+### §8.4 — the ends of a p-value's range are where its scale coefficient stops mattering
+
+`src/stats/stats.cpp` scored **78.3%**, and three survivors were gaps now closed:
+`shapiro_wilk`'s small-sample branch (Royston's transformation has separate coefficients for
+`n ≤ 11`, and nothing asserted a p-value for a sample that size); `weighted_correlation`'s
+size guard (three `||` clauses, never given mismatched lengths, so the guard could have been
+any combination of them); and `friedman` on a single treatment, where the tie correction
+divides by `n(k³−k)` — zero at `k = 1`.
+
+**One taught the sharper lesson, and only because the kill was checked rather than assumed.**
+The first version asserted that a near-normal sample scores `p > 0.5` and a strongly skewed
+one `p < 0.01`. That killed the `mu` mutants and *not* `sigma`'s — because `sigma` divides
+the z-score, so shrinking it only pushes an already-extreme p further towards the end it was
+already at. The ends of the range are exactly where that coefficient stops mattering. What
+pins it is a p-value in the **middle**, so four borderline samples are pinned at p between
+0.056 and 0.186 — Royston's published algorithm applied to those points, determined rather
+than chosen. With them both coefficient mutants die.
+
+The same care caught a mis-aimed check twice: hand-patching "the `-` on line 1243" and "the
+`||` on line 262" flipped *different operators* than the harness had chosen on those lines.
+The harness reports a line and an operator, not a column — when a line carries several, the
+mutant must be reproduced exactly before a kill can be attributed to it.
+
+**78.3% -> 87.0%.** Of the three that survive, `friedman`'s `tie_cubed_sum > 0 && tie_denom
+> 0` is provably equivalent (a tie group of two or more needs `k ≥ 2`, which makes
+`n(k³−k) ≥ 6n > 0`, so the second condition is implied by the first); the remaining size-guard
+clause is masked by `weighted_inputs_valid`, which re-checks the length itself; and one is a
+read at `phi[(size_t)(-1)]` that a build without sanitizers cannot see.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under
