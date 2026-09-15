@@ -71,10 +71,28 @@ TEST(APFloatBasic, ExactDoubleConversion) {
     EXPECT_EQ(APFloat("0.1", 60).to_string_fixed(20), "0.10000000000000000000");
 }
 
+// §8.4: `trunc`, `floor` and `ceil` were tested only on NEGATIVE values.
+//
+// All three route through `ap_trunc_div_pow10`, whose last line is
+// `a.negative = neg && !a.is_zero();` -- and a sample of 24 mutants at seed 83
+// turned that `&&` into `||` without a single test noticing. It cannot be
+// noticed from a negative input: with `neg` true, `neg || anything` and
+// `neg && !is_zero()` agree except on a zero result. From a POSITIVE one it is
+// immediate -- `false || !is_zero()` is true for every non-zero quotient, so
+// `APFloat("2.7").trunc()` comes back as -2.
+//
+// The three lines below this comment are the original test, kept as they were.
+// What follows them is both signs, both sides of zero, and the identities that
+// tie the three functions together.
 TEST(APFloatBasic, ConversionsOut) {
     EXPECT_TRUE(APFloat("-2.7", 50).trunc() == BigInt(-2LL));
     EXPECT_TRUE(APFloat("-2.7", 50).floor() == BigInt(-3LL));
     EXPECT_TRUE(APFloat("-2.7", 50).ceil() == BigInt(-2LL));
+
+    // The same three from the other side of zero.
+    EXPECT_TRUE(APFloat("2.7", 50).trunc() == BigInt(2LL));
+    EXPECT_TRUE(APFloat("2.7", 50).floor() == BigInt(2LL));
+    EXPECT_TRUE(APFloat("2.7", 50).ceil() == BigInt(3LL));
     EXPECT_TRUE(APFloat("2.5", 50).round() == BigInt(2LL));   // ties to even,
     EXPECT_TRUE(APFloat("3.5", 50).round() == BigInt(4LL));   // unlike Rational::round
     EXPECT_TRUE(APFloat("-2.5", 50).round() == BigInt(-2LL));
@@ -82,6 +100,46 @@ TEST(APFloatBasic, ConversionsOut) {
     EXPECT_NEAR(APFloat("2.5", 50).to_double(), 2.5, 1e-15);
     EXPECT_NEAR(ap_pi(60).to_double(), 3.14159265358979312, 1e-15);
     EXPECT_EQ(APFloat("0.125", 50).to_rational().to_string(), "1/8");
+
+    // Magnitudes below one, where the quotient is zero and the sign of that zero
+    // is the whole question.
+    EXPECT_TRUE(APFloat("0.3", 50).trunc() == BigInt(0LL));
+    EXPECT_TRUE(APFloat("-0.3", 50).trunc() == BigInt(0LL));
+    EXPECT_TRUE(APFloat("0.3", 50).floor() == BigInt(0LL));
+    EXPECT_TRUE(APFloat("-0.3", 50).floor() == BigInt(-1LL));
+    EXPECT_TRUE(APFloat("0.3", 50).ceil() == BigInt(1LL));
+    EXPECT_TRUE(APFloat("-0.3", 50).ceil() == BigInt(0LL));
+
+    // On an exact integer all three agree, whichever sign it carries.
+    for (const char* text : {"7.0", "-7.0", "0.0"}) {
+        const APFloat v(text, 50);
+        EXPECT_TRUE(v.trunc() == v.floor()) << text;
+        EXPECT_TRUE(v.trunc() == v.ceil()) << text;
+    }
+
+    // The identities that tie the three together, over both signs and several
+    // magnitudes. floor(x) <= trunc(x) <= ceil(x) always; trunc agrees with
+    // floor above zero and with ceil below it; and floor(-x) = -ceil(x).
+    for (const char* text : {"0.3", "2.7", "123.456", "1000000.5", "0.000001"}) {
+        const APFloat pos(text, 50);
+        const APFloat neg(std::string("-") + text, 50);
+
+        EXPECT_TRUE(pos.floor() == pos.trunc()) << text << ": trunc is not floor above zero";
+        EXPECT_TRUE(neg.ceil() == neg.trunc()) << text << ": trunc is not ceil below zero";
+        EXPECT_TRUE(pos.ceil() == pos.floor() + BigInt(1LL))
+            << text << ": ceil and floor do not straddle a non-integer";
+
+        EXPECT_TRUE(pos.floor() == BigInt(0LL) - neg.ceil()) << text << ": floor(-x) != -ceil(x)";
+        EXPECT_TRUE(pos.ceil() == BigInt(0LL) - neg.floor()) << text << ": ceil(-x) != -floor(x)";
+        EXPECT_TRUE(pos.trunc() == BigInt(0LL) - neg.trunc()) << text << ": trunc is not odd";
+
+        // And the positive ones really are positive, which is the assertion the
+        // negative-only cases above could never make.
+        if (!(pos.trunc() == BigInt(0LL))) {
+            EXPECT_FALSE(pos.trunc().negative) << text << ": trunc of a positive is negative";
+        }
+        EXPECT_FALSE(pos.ceil().negative) << text << ": ceil of a positive is negative";
+    }
     EXPECT_EQ(APFloat::from_rational(Rational(1, 3), 40).to_string(40),
               "0." + std::string(40, '3'));
 }

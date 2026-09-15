@@ -1082,6 +1082,24 @@ mutant must be reproduced exactly before a kill can be attributed to it.
 clause is masked by `weighted_inputs_valid`, which re-checks the length itself; and one is a
 read at `phi[(size_t)(-1)]` that a build without sanitizers cannot see.
 
+### §8.4 — trunc, floor and ceil were tested only on negative values
+
+`src/bignum/bignum.cpp` scored **77.3%**, and one survivor was a real gap of the plainest
+kind. `APFloat::trunc`, `floor` and `ceil` all route through `ap_trunc_div_pow10`, whose
+closing line is `a.negative = neg && !a.is_zero();` — and that `&&` became `||` with nothing
+noticing. It cannot be noticed from a negative input, where the two readings agree except on
+a zero quotient; from a positive one it is immediate, since `false || !is_zero()` is true for
+every non-zero quotient, so **`APFloat("2.7").trunc()` comes back as −2**. All three
+assertions in `ConversionsOut` used `-2.7`.
+
+Both signs are asserted now, on both sides of zero, with the identities a single-sign test
+cannot state: `floor(x) = trunc(x)` above zero and `ceil(x) = trunc(x)` below it, `ceil` and
+`floor` straddling a non-integer by exactly one, `floor(−x) = −ceil(x)`, `trunc` odd — and
+directly that `trunc` and `ceil` of a positive value are **not negative**. **77.3% ->
+81.8%**, with two of the four remaining survivors explained by the source itself: a halving
+count whose comment says "Only the run time depends on this, never the value", and a guard
+whose `m <= 0` clause is unreachable from all twelve of its call sites.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

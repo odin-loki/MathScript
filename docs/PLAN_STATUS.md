@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; eighteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; nineteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1393,6 +1393,33 @@ Score after: **78.3% -> 87.0%**, the same twenty-four mutants re-scored. Three s
 | `:932` friedman's `tie_cubed_sum > 0 && tie_denom > 0` | **Equivalent, provably.** `tie_cubed_sum > 0` requires a tie group of two or more in some row, which requires `k >= 2`, which makes `tie_denom = n*(k^3 - k) >= 6n > 0`. The second condition is implied by the first, so `&&` and `\|\|` agree on every input. |
 | `:262` the second `\|\|` in the size guard | Masked: `weighted_inputs_valid`, called four lines later, checks `x.size() != w.size()` itself and the only loop in between iterates `w`'s own range. The clause is a redundant early-out, not the thing that makes it safe. |
 | `:1619` `for (int j = i + 1; ...)` -> `i - 1` | At `i = 0` that is `phi[static_cast<size_t>(-1)]` -- a read at a huge index. For every other `i` the extra terms multiply `phi` entries that are still zero, so the arithmetic is unchanged; the one real effect is the out-of-bounds read, which a build without sanitizers cannot see. |
+
+
+Nineteenth file: `src/bignum/bignum.cpp`, 24 mutants at seed 83 against the four suites
+that cover it. **17 of 22 viable killed, 77.3%**, and one survivor was a real gap of the
+plainest kind.
+
+**`APFloat::trunc`, `floor` and `ceil` were tested only on NEGATIVE values.** All three
+route through `ap_trunc_div_pow10`, whose closing line is
+`a.negative = neg && !a.is_zero();`, and that `&&` became `||` with nothing noticing. It
+cannot be noticed from a negative input -- with `neg` true the two readings agree except on
+a zero quotient -- but from a positive one it is immediate: `false || !is_zero()` is true
+for every non-zero quotient, so **`APFloat("2.7").trunc()` comes back as -2**. The three
+assertions in `ConversionsOut` all used `-2.7`.
+
+Both signs are asserted now, on both sides of zero, along with the identities that tie the
+three together and which no single-sign test can state: `floor(x) = trunc(x)` above zero and
+`ceil(x) = trunc(x)` below it, `ceil` and `floor` straddling a non-integer by exactly one,
+`floor(-x) = -ceil(x)`, `trunc` odd -- and, directly, that `trunc` and `ceil` of a positive
+value are **not negative**, which is the assertion the negative-only cases could never make.
+
+Score after: **77.3% -> 81.8%**. Four survive, and two of them the source itself explains:
+
+| Survivor | Why |
+|---|---|
+| `:847` `if (m < 4) m = 4;` -> `<=` | Assigns 4 where the value is already 4. The comment four lines above says it outright: `ap_halving_count` chooses how many argument halvings precede a Taylor series, and **"Only the run time depends on this, never the value."** |
+| `:890` `x.mantissa.is_zero() \|\| m <= 0` -> `&&` | Unreachable and value-preserving. All twelve call sites of `ap_scale_pow2_down` pass a literal 1 or 2, or `ap_halving_count`'s result, which is clamped to `[4, 400]` -- so `m <= 0` never holds; and a zero mantissa scaled by `5^m` at a shifted exponent is still zero. |
+| `:1079`, `:1632` | An exponent-field bound that differs only at exactly `EXP10_LIMIT`, and a precision-growth heuristic's `extra + 4`. |
 
 
 ### What the corpus found on its first run
