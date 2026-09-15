@@ -1023,6 +1023,36 @@ differential equation cannot see it — `w1` and `w2` both solve it, so *every* 
 does. What identifies this one is the origin, where `W(a,0)` and `W'(a,0)` read the two
 coefficients straight off, minus sign included. **62.5% -> 79.2%.**
 
+### §8.4 — every cheby2 test in the tree designs an order-2 filter
+
+`src/signal/signal.cpp` scored **83.3%**, the highest first-run figure of the files
+measured, and all four survivors reduce to one sentence: every `cheby2` test designs an
+order-2 filter. `cheb2ap`'s **odd**-order branch places its stopband zeros in two loops that
+skip `m = 0` (where the zero is at infinity), and both loop bounds mutate freely because no
+test ever reaches them — while the even-order branch three lines above is asserted and its
+mutants die. And `lp2hp_zpk`'s gain normalisation multiplies by `prod(-p)`; turning that
+into `prod(p)` scales the gain by `(-1)^order` — identical for even order, **a sign flip for
+odd**, which no assertion on `|H|` can see.
+
+The new tests design orders 2 through 8 at three attenuations and three cutoffs, and assert
+what Chebyshev type II *means* rather than reference coefficients: the stopband edge sits
+**exactly** on `10^(−rs/20)` (the design is equiripple, so that is where the ripple touches,
+not a bound); the passband reference gain is exactly **+1 signed**, which is the only thing
+that can see a gain scaled by `(−1)^order`; the stopband stays under target across the band;
+the impulse response decays; and odd and even orders differ in where the zeros go — type II
+of odd order has one zero at `s = ∞`, which the bilinear transform maps to `z = −1`, so an
+odd-order design has a transmission zero at Nyquist and an even-order one does not.
+
+That last assertion went in the wrong way round first and the test said so — which is the
+argument for running a test rather than reading it, and it is recorded in the file as such.
+
+**Nothing was wrong**: the implementation meets every property at every order. What was
+missing was anything saying so. **83.3% -> 95.8%**, 23 of 24 — the highest of the files
+measured. The one survivor is `median_filter`'s `window_length == 3` fast path, equivalent
+for two compounding reasons: even windows are rejected at entry so `== 4` is unreachable,
+and a 3-window then falls to the general path, which computes the same median. Measured —
+58 medfilt tests exercise window 3 and none can tell the two paths apart.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; sixteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; seventeen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1310,6 +1310,49 @@ Score after: **62.5% -> 79.2%**, the same twenty-four mutants re-scored. Five su
 returned at `x == 0.0` seven lines earlier; a root bracket's `flo*fhi < 0` and a pivot's
 `< 0.0` both turn on an endpoint being exactly zero; and one is a convergence heuristic's
 `r > 4`.
+
+
+Seventeenth file: `src/signal/signal.cpp`, 24 mutants at seed 73 against the eleven suites
+that cover it. **20 of 24 viable killed, 83.3%** -- the highest first-run score of the
+seventeen -- and all four survivors reduce to a single sentence: **every `cheby2` test in
+the tree designs an order-2 filter.**
+
+| Survivor | What order 2 cannot see |
+|---|---|
+| `cheb2ap:1418`, `:1422` | The ODD-order branch places the stopband zeros in two loops that skip `m = 0`, where the zero is at infinity. Both bounds mutate freely -- `m = -order + 1` to `-order - 1`, `m = 2` to `m = 3` -- because no test ever designs an odd-order filter. The EVEN-order branch three lines above them is asserted and its mutants die. |
+| `lp2hp_zpk:1475` | The gain normalisation multiplies by `prod(-p)` over the poles. Turning that into `prod(p)` multiplies the gain by `(-1)^order`: identical for even order, **a sign flip for odd**. Order 2 cannot see it -- and neither can any assertion on `\|H\|`, only a signed one. |
+
+`tests/unit/signal/test_signal_cheby2_orders.cpp` designs orders 2 through 8 and asserts
+what Chebyshev type II *means* rather than reference coefficients, at three stopband
+attenuations and three cutoffs:
+
+- **The stopband edge sits exactly on the attenuation asked for.** Not approximately and
+  not "at least": the design is equiripple and `\|H(w_n)\| = 10^(-rs/20)` is where the
+  ripple touches. Measured at 1e-9 relative, and it holds at every order.
+- **The passband reference gain is exactly +1, signed.** `H(0)` for the lowpass and
+  `H(pi)` for the highpass. This is the only assertion that can see a gain multiplied by
+  `(-1)^order`.
+- The stopband stays under its target across the band, and the impulse response decays.
+- **Odd and even order differ in where the zeros go, and it is visible in the
+  coefficients.** Type II of odd order has one zero at `s = infinity`, which the bilinear
+  transform maps to `z = -1`: so an odd-order design has a transmission zero AT NYQUIST and
+  an even-order one does not, and equivalently `b(-1)` vanishes for odd order and does not
+  for even.
+
+That last assertion went in the wrong way round first, and the test said so -- which is the
+argument for running a test rather than reading it. It is recorded in the file as such.
+
+**Nothing was wrong.** The implementation meets every one of those properties at every
+order, even and odd; what was missing was anything saying so. Score after: **83.3% ->
+95.8%**, 23 of 24, the same twenty-four mutants re-scored -- the highest of the seventeen
+files.
+
+The one survivor is `median_filter`'s `window_length == 3` fast path becoming `== 4`, and
+it is equivalent for two reasons that compound: the function rejects every even window at
+entry, so `== 4` is unreachable; and a window of 3 then falls through to the general path,
+which computes the same median. Measured rather than argued -- **58 medfilt tests exercise
+window 3, several asserting output values, and not one of them can tell the two paths
+apart.**
 
 
 ### What the corpus found on its first run
