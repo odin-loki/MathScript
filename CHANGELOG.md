@@ -1134,6 +1134,32 @@ covered by cases that make each term carry the answer in turn plus a slanted seg
 against a direct minimisation. **37.5% -> 50.0%** raw, with the twelve remaining survivors
 exactly the twelve padding sites: **12 of 12 over the reachable set.**
 
+### §8.4 — an optimiser that takes steps of the wrong size still arrives
+
+`src/optim/optim.cpp` scored **36.4%**, the lowest first-run figure of the files measured,
+and the survivors share one diagnosis: the optimiser tests assert that a run *converged* and
+that the answer is near a known optimum within a loose tolerance, and a great many wrong
+implementations satisfy both.
+
+Two survivors have exact statements available. **Adam's bias correction** — `m / (1 −
+β₁ᵗ)` became `m / (1 + β₁ᵗ)` — went unnoticed because nothing had ever asserted a *step
+size*, and the correction's entire purpose is that the first step has magnitude α whatever
+the gradient's scale. That is now asserted over gradients spanning six orders of magnitude,
+from both sides, and across two coordinates whose gradients differ by four orders: without
+the correction the first step is about **2.35 α**.
+
+**Brent's inverse quadratic interpolation** is the more instructive one, because the first
+attempt to kill it *failed*. Landing on the root to 1e-12 does not separate a damaged
+interpolation from a healthy one — the bisection fallback still converges, and with 200
+iterations to spend, "more slowly" is invisible. What separates them is a tight **iteration
+budget**: measured, the correct method reaches machine precision in six iterations on these
+brackets where bisection alone needs about fifty. Asserted at eight.
+
+**36.4% -> 45.5%**, with the twelve remaining survivors characterised rather than closed —
+six coordinate-loop starts, two Nelder-Mead shape parameters, and one each in CMA-ES,
+differential evolution and a bracket test that differs only when the width is exactly the
+tolerance.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

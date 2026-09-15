@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-one files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1475,6 +1475,52 @@ carry the answer in turn, and check a slanted segment against a direct minimisat
 
 Score after: **37.5% -> 50.0%** raw, and the twelve remaining survivors are **exactly** the
 twelve padding sites, confirmed line by line. Over the reachable set that is **12 of 12**.
+
+
+Twenty-first file: `src/optim/optim.cpp`, 24 mutants at seed 97 against the nine suites
+that cover it. **8 of 22 viable killed, 36.4%** -- the lowest first-run figure of the
+twenty-one, and the survivors share one diagnosis, which is the one this whole exercise
+keeps arriving at. **The optimiser tests assert that a run CONVERGED and that the answer is
+near a known optimum within a loose tolerance, and a great many wrong implementations
+satisfy both.** An optimiser that takes steps of the wrong SIZE still walks downhill and
+still arrives.
+
+Two survivors have exact statements available, and those are now asserted.
+
+- **Adam's bias correction.** `m / (1 - beta1^t)` became `m / (1 + beta1^t)`, and nothing
+  noticed, because nothing had ever asserted a STEP SIZE. The correction's entire purpose is
+  that the **first step has magnitude alpha whatever the gradient's scale**: at `t = 1` the
+  corrected moments are exactly `g` and `g^2`, so the step is `alpha*g/(|g| + eps)`. Measured
+  and then asserted over gradients spanning six orders of magnitude and three values of
+  alpha -- the step is alpha to one part in a million every time -- with the sign checked
+  from both sides and a two-coordinate case whose gradients differ by four orders of
+  magnitude taking the same-sized step in each. Without the correction that first step is
+  about **2.35 alpha**.
+- **Brent's inverse quadratic interpolation.** `(q - 1)(r - 1)(s - 1)` became `(q + 1)...`,
+  and the first attempt to kill it -- landing on the root to 1e-12 -- **failed**, which is
+  the informative part. A damaged interpolation still converges, because the bisection
+  fallback catches it; with 200 iterations to spend, "more slowly" is invisible. What
+  separates them is a tight ITERATION BUDGET rather than a tight tolerance. Measured: the
+  correct method reaches machine precision in **six** iterations on these brackets, where
+  bisection alone would need about fifty. Asserted at eight.
+
+Score after: **36.4% -> 45.5%**. Twelve survive, and they are characterised rather than
+closed:
+
+- Six are `for (int i = 0; ...)` becoming `i = 1`, or an accumulator initialised to 1
+  instead of 0, inside the coordinate loops of gradient descent, CG, RMSprop and the
+  Nelder-Mead sweep. Each skips a coordinate or an iteration, and an optimiser that skips
+  one still converges on a separable objective.
+- Two are Nelder-Mead's initial simplex and its reflection coefficient -- a starting shape
+  and a step length, which change the path and not the destination.
+- One is CMA-ES's sigma-path normalisation, one differential evolution's distinct-index
+  draw (`while (c == i || c == a || c == b)` as `&&`, which lets a vector be chosen twice),
+  and one Brent's `(b - a) < tol` as `<=`, which differs only when the bracket width is
+  **exactly** tol -- a float coincidence of measure zero.
+
+Closing those needs per-coordinate assertions on optimisers whose objectives are not
+separable, and for the stochastic three, a seeded population whose contents are pinned.
+Recorded here as located rather than done.
 
 
 ### What the corpus found on its first run
