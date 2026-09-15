@@ -668,8 +668,12 @@ BodeData bode(const TransferFunction& sys,
     bd.magnitude.resize(n_pts);
     bd.phase.resize(n_pts);
     double lw_lo = std::log10(w_lo), lw_hi = std::log10(w_hi);
+    // A one-point sweep has no interval to divide, and i / (n_pts - 1) was 0/0:
+    // every frequency, magnitude and phase came back NaN. One point sits at the
+    // start of the range, which is where i == 0 lands for every other n_pts.
+    const double span = (n_pts > 1) ? 1.0 / (n_pts - 1) : 0.0;
     for (int i = 0; i < n_pts; ++i) {
-        double w = std::pow(10.0, lw_lo + (lw_hi - lw_lo) * i / (n_pts - 1));
+        double w = std::pow(10.0, lw_lo + (lw_hi - lw_lo) * i * span);
         auto H = freqresp(sys, w);
         bd.w[i]         = w;
         bd.magnitude[i] = 20.0 * std::log10(std::abs(H));
@@ -682,8 +686,9 @@ std::vector<std::pair<double,double>> nyquist(const TransferFunction& sys,
               double w_lo, double w_hi, int n_pts) {
     std::vector<std::pair<double,double>> pts;
     double lw_lo = std::log10(w_lo), lw_hi = std::log10(w_hi);
+    const double span = (n_pts > 1) ? 1.0 / (n_pts - 1) : 0.0;  // see bode()
     for (int i = 0; i < n_pts; ++i) {
-        double w = std::pow(10.0, lw_lo + (lw_hi - lw_lo) * i / (n_pts - 1));
+        double w = std::pow(10.0, lw_lo + (lw_hi - lw_lo) * i * span);
         auto H = freqresp(sys, w);
         pts.push_back({H.real(), H.imag()});
     }
@@ -707,7 +712,21 @@ Margins margin(const TransferFunction& sys) {
         m.gain_crossover_freq = 0.0;
     }
 
-    double prev_phase = 0.0;
+    // The phase crossover is a crossing of -180 degrees, and std::arg does not
+    // return a phase: it returns the principal value, in (-180, 180]. A phase
+    // that descends through -180 comes back from std::arg as +180 and then
+    // counts DOWN, so `ph_deg < -180.0` was never true for any system and this
+    // loop never recorded a crossing. gain_margin_db stayed at its +inf
+    // initialiser and phase_crossover_freq at 0 for every plant ever passed in
+    // -- including 1/(s+1)^3, whose gain margin is 18.06 dB at w = sqrt(3).
+    //
+    // The fix is to unwrap as the sweep goes: each step is taken modulo 360 into
+    // (-180, 180] and added to the running total, so the phase is continuous and
+    // the -180 line is somewhere it can actually reach. The first sample has no
+    // predecessor, so it keeps the principal value -- a low-frequency anchor,
+    // which is the same convention a Bode plot uses.
+    double prev_phase = 0.0;    // unwrapped, degrees
+    double prev_raw = 0.0;      // what std::arg returned, degrees
     double prev_mag_db = 0.0;
     bool first = true;
 
@@ -715,9 +734,15 @@ Margins margin(const TransferFunction& sys) {
         double w = w_lo * std::pow(w_hi / w_lo, static_cast<double>(i) / (N - 1));
         auto H = freqresp(sys, w);
         double mag_db = 20.0 * std::log10(std::abs(H));
-        double ph_deg = std::arg(H) * 180.0 / M_PI;
+        const double raw_deg = std::arg(H) * 180.0 / M_PI;
+        double ph_deg = raw_deg;
 
         if (!first) {
+            double step = raw_deg - prev_raw;
+            while (step > 180.0) step -= 360.0;
+            while (step < -180.0) step += 360.0;
+            ph_deg = prev_phase + step;
+
             // Gain crossover: |H| = 1 (0 dB)
             if ((prev_mag_db >= 0.0 && mag_db < 0.0) ||
                 (prev_mag_db <= 0.0 && mag_db > 0.0)) {
@@ -732,6 +757,7 @@ Margins margin(const TransferFunction& sys) {
             }
         }
         prev_mag_db = mag_db;
+        prev_raw    = raw_deg;
         prev_phase  = ph_deg;
         first = false;
     }
@@ -746,7 +772,10 @@ StepData step_response(const TransferFunction& sys, double t_end, int n_pts) {
     StepData data;
     data.t.resize(n_pts);
     data.y.resize(n_pts);
-    double dt = t_end / (n_pts - 1);
+    // A single sample spans no interval. t_end / (n_pts - 1) divided by zero,
+    // made dt infinite, and then t[0] = 0 * inf = NaN -- a trace whose only
+    // time stamp was not a number. The sample is the response at t = 0.
+    double dt = (n_pts > 1) ? t_end / (n_pts - 1) : 0.0;
 
     // Exact zero-order-hold propagation, which is what the section heading has
     // always claimed. This was forward Euler (x += dt * (A x + B u)) with a
@@ -806,7 +835,7 @@ StepData impulse_response(const TransferFunction& sys, double t_end, int n_pts) 
     StepData data;
     data.t.resize(n_pts);
     data.y.resize(n_pts);
-    double dt = t_end / (n_pts - 1);
+    double dt = (n_pts > 1) ? t_end / (n_pts - 1) : 0.0;  // see step_response()
 
     // Impulse: x(0) = B, then the free response x(t) = e^{A t} x(0), propagated
     // exactly by Ad = e^{A dt}. This was forward Euler, with the same
@@ -999,19 +1028,6 @@ static bool gauss_solve_flat(std::vector<double>& K, int n, int cols) {
                 K[static_cast<size_t>(row * cols + j)] -= f * K[static_cast<size_t>(col * cols + j)];
         }
     }
-    return true;
-}
-
-[[maybe_unused]] static bool gauss_solve(std::vector<std::vector<double>>& K, int n) {
-    const int cols = n + 1;
-    std::vector<double> flat(static_cast<size_t>(n * cols));
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < cols; ++j)
-            flat[static_cast<size_t>(i * cols + j)] = K[static_cast<size_t>(i)][static_cast<size_t>(j)];
-    if (!gauss_solve_flat(flat, n, cols)) return false;
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < cols; ++j)
-            K[static_cast<size_t>(i)][static_cast<size_t>(j)] = flat[static_cast<size_t>(i * cols + j)];
     return true;
 }
 
@@ -1490,7 +1506,7 @@ PIDGains pidtune(const TransferFunction& plant, double bandwidth) {
 // ---- Kalman filter ----
 
 // Small dense matrix inverse via Gauss-Jordan with partial pivoting, in the
-// same defensive style as gauss_solve() above: never throws, and reports
+// same defensive style as gauss_solve_flat() above: never throws, and reports
 // singularity through `ok` instead (mat_inv() now returns Result rather than
 // throwing). A singular innovation covariance is an expected, recoverable
 // degenerate input rather than a programming error.

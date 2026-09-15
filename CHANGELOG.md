@@ -1160,6 +1160,65 @@ six coordinate-loop starts, two Nelder-Mead shape parameters, and one each in CM
 differential evolution and a bracket test that differs only when the width is exactly the
 tolerance.
 
+### §8.4 — a gain margin that was +inf for every plant ever passed in
+
+`src/control/control.cpp` scored **79.2%**, and three real defects came out of the run.
+
+The first survivor was the one worth the exercise: `double im = std::sqrt(-disc) / (2 * a);`
+becoming `std::sqrt(disc)`. That line runs only when `disc < 0` — the complex-conjugate
+branch of the quadratic root finder — so the mutant takes the square root of a *negative*
+number and every pole comes back **NaN**. Nothing noticed, because `ControlTF.Poles` uses
+`s² + 3s + 2`, whose discriminant is 1: the branch that produces complex poles had no test
+at all, and complex poles are what a second-order system has whenever it is underdamped.
+Four natural frequencies against five damping ratios now assert the closed form for both
+parts, the conjugacy, and the two relations read off a pole — |p| is ωₙ and −Re(p)/|p| is ζ.
+
+Two more survivors were step-response boundaries a smooth 500-point trace never reaches:
+the *falling* arm of the 10%–90% crossing search (every step response in the suite ends
+above where it started, so that arm had never run) and a settling search whose only
+out-of-tolerance sample is the first one. A fourth sat inside a `[[maybe_unused]] static
+bool gauss_solve` that nothing called, a wrapper around the flat solver that *is* used —
+**deleted**.
+
+**Defect one.** The fifth pointed at an explicit-Euler fallback nothing had reached, and
+reaching it exposed `dt = t_end / (n_pts - 1)` and the sweeps' `i / (n_pts - 1)`. With one
+sample both divide by zero, so `step_response`, `impulse_response`, `bode` and `nyquist`
+each returned a trace whose only time or frequency was **NaN**. A single sample is the
+response at t = 0, and the one point of a sweep sits at the start of its range. Fixed in
+all four.
+
+**Defect two, the serious one.** A second round drew a fresh sample, and one survivor was
+`prev_phase >= -180.0 && ph_deg < -180.0` becoming `<=` — killable only by a plant whose
+sampled phase lands on exactly −180.000000. Looking for one found `1/s²`, and finding it
+found this: **`std::arg` does not return a phase, it returns the principal value in
+(−180, 180]**. A phase descending through −180 comes back as +180 and counts down, so
+`ph_deg < -180.0` was never true for any plant, `margin()` never recorded a phase
+crossover, and **`gain_margin_db` stayed at its +∞ initialiser and `phase_crossover_freq`
+at 0 for every transfer function the function has ever been given**. `1/(s+1)³` has a gain
+margin of 18.06 dB at ω = √3; `margin()` reported infinity. The sweep is unwrapped now —
+each step taken modulo 360 into (−180, 180] and added to a running total. Measured after:
+`1/(s(s+1)(s+2))` 15.584 dB at 1.4159 (exact 15.563 dB at √2), `1/(s+1)³` 18.084 dB at
+1.734 (exact 18.062 dB at √3), and `10/(s+1)³` **negative** in both axes, which is how the
+function says the closed loop is unstable.
+
+The test that knew the right answer was already in the tree, behind
+`if (std::isfinite(m.gain_margin_db) && m.phase_crossover_freq > 0.0)`. The guard was never
+true, so the only two assertions that knew the textbook value never ran. They are
+unconditional now. *A conditional assertion whose condition is the defect is the same
+silence as no assertion, with more lines — and it survives review because it reads like
+diligence.*
+
+Four further survivors were out-of-bounds accesses a plain build cannot see. Rather than
+write them off, `control.cpp` was compiled alone under `-fsanitize=address,undefined` and
+driven over the same entry points the suite drives: **four of six candidate sites are real
+heap-buffer-overflows AddressSanitizer catches**, and of the two that are clean one is
+provably equivalent — extra columns appended to a minor are never read.
+
+**79.2% → 100.0%** (24 of 24 viable), eight new tests. The last survivor to fall,
+`abs_yf > 1e-12` as `>=`, differs only when |y_final| is exactly the floor; its sibling on
+the same line, `peak_value >= yf`, is equivalent by proof — when the peak equals the final
+value the assignment computes the zero the field already held.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

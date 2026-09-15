@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-one files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-two files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5%, control 79.2% -> 100.0% (three defects fixed, including a gain margin that was +inf for every plant ever passed in) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1522,6 +1522,96 @@ Closing those needs per-coordinate assertions on optimisers whose objectives are
 separable, and for the stochastic three, a seeded population whose contents are pinned.
 Recorded here as located rather than done.
 
+
+Twenty-second file: `src/control/control.cpp`, 24 mutants at seed 101 against the two
+suites that cover it. **19 of 24 viable killed, 79.2%** on the first run -- and this file
+took three rounds rather than one, because each round's fixes moved the line numbers and
+the seed then drew a fresh sample. Three real defects came out of it, one of them a
+documented output that had never carried a real value.
+
+**Round one, 79.2%.** The survivor worth the whole exercise was
+`double im = std::sqrt(-disc) / (2 * a);` becoming `std::sqrt(disc)`. That line runs only
+when `disc < 0` -- the complex-conjugate branch of the quadratic root finder -- so the
+mutant takes the square root of a negative number and **every pole comes back NaN**.
+Nothing noticed, because `ControlTF.Poles` uses `s^2 + 3s + 2`, whose discriminant is 1:
+**the branch that produces complex poles had no test at all**, and complex poles are what
+a second-order system has whenever it is underdamped, which is the case control theory is
+about. `ControlComplexPoles.UnderdampedPolesAreTheConjugatePairTheyShouldBe` sweeps four
+natural frequencies against five damping ratios and asserts the closed form for both
+parts, the conjugacy, and the two relations an engineer reads off a pole -- that its
+distance from the origin is the natural frequency and the cosine of its angle from the
+negative real axis is the damping ratio.
+
+Two more were step-response boundaries a smooth 500-point trace never reaches: the FALLING
+arm of the 10%-90% crossing search (every step response in the suite ends above where it
+started, so the arm had never run), and a settling search whose only out-of-tolerance
+sample is the first one. A fourth was inside a `[[maybe_unused]] static bool gauss_solve`
+that nothing called -- a vector-of-vectors wrapper around the flat solver that is actually
+used. **Deleted**, as the three uncalled `dlasr_*` routines in `lapack_dbdsqr.cpp` were.
+
+The fifth pointed at the explicit-Euler fallback in `step_response`, which nothing had ever
+reached. Reaching it turned up **the first defect**: `dt = t_end / (n_pts - 1)` and the
+sweeps' `i / (n_pts - 1)`. **With one sample both divide by zero**, so `step_response`,
+`impulse_response`, `bode` and `nyquist` each returned a trace whose only time or frequency
+was **NaN**. A single sample spans no interval; it is the response at `t = 0`, and the one
+point of a sweep sits at the start of its range. Fixed in all four.
+
+**Round two, 66.7% on a fresh sample of 24.** Two of the eight survivors were ordinary
+boundaries and are now asserted. Four were out-of-bounds accesses that a plain build cannot
+see -- and rather than write them off as memory-blind, as earlier files did, this round
+settled them: `control.cpp` was compiled on its own under `-fsanitize=address,undefined`
+and linked against the ordinary archives, and a driver was run over the same entry points
+the suite drives. **Four of the six candidate sites are real heap-buffer-overflows that
+AddressSanitizer catches** (an off-by-one minor in `poly_mat_det`, the Tustin `D` loop, the
+fallback march's bound, and its `B` column index); the other two are clean, and one of those
+is **provably equivalent** -- extra columns appended to a minor are never read.
+
+The eighth survivor was the one that mattered. `if ((prev_phase >= -180.0 && ph_deg < -180.0) || ...)`
+became `<=`, and to kill it the sweep had to land exactly on -180.000000 degrees. Looking
+for such a plant found `1/s^2`, whose phase is exactly -180 at all 5000 sampled
+frequencies -- and then found **the second defect, which is the serious one**.
+
+`std::arg` does not return a phase. It returns the principal value, in `(-180, 180]`. A
+phase descending through -180 comes back as `+180` and counts down from there, so
+`ph_deg < -180.0` **was never true for any plant**, the loop never recorded a phase
+crossover, and `Margins::gain_margin_db` stayed at its `+inf` initialiser while
+`phase_crossover_freq` stayed at `0` -- **for every transfer function the function has ever
+been given**. `1/(s+1)^3` has a gain margin of 18.06 dB at `w = sqrt(3)`; `margin()`
+reported infinity. The sweep is unwrapped now: each step is taken modulo 360 into
+`(-180, 180]` and added to a running total, so the phase is continuous and the -180 line is
+somewhere it can be reached. Measured after: `1/(s(s+1)(s+2))` gives 15.584 dB at 1.4159
+against an exact 15.563 dB at `sqrt(2)`, `1/(s+1)^3` gives 18.084 dB at 1.734 against
+18.062 dB at `sqrt(3)`, and `10/(s+1)^3` gives **negative** margins in both axes, which is
+how the function says the closed loop is unstable. The residual is the 5000-point sweep's
+0.18% spacing.
+
+The test that knew the right answer was already in the tree:
+
+```cpp
+if (std::isfinite(m.gain_margin_db) && m.phase_crossover_freq > 0.0) {
+    EXPECT_NEAR(m.phase_crossover_freq, std::sqrt(2.0), 0.15);
+    EXPECT_NEAR(m.gain_margin_db, 20.0 * std::log10(6.0), 3.0);
+}
+```
+
+**The guard was never true, so the only two assertions that knew the textbook value never
+ran.** They are unconditional now. A conditional assertion whose condition is the defect is
+the same silence as no assertion, with more lines -- and it survives review because it
+reads like diligence.
+
+**Round three, 95.8%, then 100.0%.** The last survivor was `if (info.peak_value > yf && abs_yf > 1e-12)`,
+which carries two `>` and so two possible mutants. `peak_value >= yf` is **equivalent by
+proof**: when the peak equals the final value the assignment computes
+`100*(peak - yf)/|yf|`, which is the zero the field already held. `abs_yf >= 1e-12` differs
+only when `|y_final|` is exactly the floor -- and the floor is a real contract, since a
+percentage of a final value that small is made of rounding. Asserted at exactly 1e-12 and
+at ten times it, where the same shape does report 400%.
+
+Final: **24 of 24 viable killed, 100.0%**, and eight new tests. The generalising lesson is
+the `margin()` one, and it is not about control theory. **A library function can have a
+documented output that has never once been computed, and a full-coverage suite will not
+say so, because "is finite or is infinite" passes either way.** The mutation harness found
+it by asking for the only input that could tell two comparisons apart.
 
 ### What the corpus found on its first run
 

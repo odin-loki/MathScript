@@ -1912,11 +1912,14 @@ TEST(ControlMargins, PhaseCrossoverAndGainMargin) {
     auto m = margin(sys);
     EXPECT_GT(m.gain_crossover_freq, 0.0);
     EXPECT_TRUE(std::isfinite(m.phase_margin_deg) || std::isinf(m.phase_margin_deg));
-    EXPECT_TRUE(std::isfinite(m.gain_margin_db) || std::isinf(m.gain_margin_db));
-    if (std::isfinite(m.gain_margin_db) && m.phase_crossover_freq > 0.0) {
-        EXPECT_NEAR(m.phase_crossover_freq, std::sqrt(2.0), 0.15);
-        EXPECT_NEAR(m.gain_margin_db, 20.0 * std::log10(6.0), 3.0);
-    }
+    // These two were written behind `if (isfinite(gain_margin_db) && ...)`, and
+    // the condition was never true: margin() compared std::arg's principal
+    // value against -180, so it never saw a phase crossover for any plant and
+    // the guard quietly skipped the only assertions that knew the answer.
+    // The phase is unwrapped now, so they run.
+    ASSERT_TRUE(std::isfinite(m.gain_margin_db)) << "gm " << m.gain_margin_db;
+    EXPECT_NEAR(m.phase_crossover_freq, std::sqrt(2.0), 0.15);
+    EXPECT_NEAR(m.gain_margin_db, 20.0 * std::log10(6.0), 3.0);
 }
 
 TEST(ControlStepInfo, NeverSettlesIsInf) {
