@@ -1100,6 +1100,40 @@ directly that `trunc` and `ceil` of a positive value are **not negative**. **77.
 count whose comment says "Only the run time depends on this, never the value", and a guard
 whose `m <= 0` clause is unreachable from all twelve of its call sites.
 
+### §8.4 — a 37.5% score where half the sample never runs
+
+`src/geo/geo.cpp` scored **37.5%**, the lowest of the twenty files measured and the one
+where the raw number is most misleading. Thirteen of the fifteen survivors sat inside the
+256-row Lorensen-Cline triangle table, and reproducing the harness's exact sites settles
+what they are: **twelve of the twenty-four land in the trailing `-1` padding of a table
+row.** The reader stops at each row's *first* terminator, so those twelve are unreachable by
+construction and no test can kill them. Over the twelve that are reachable, the first run
+scored 9 of 12.
+
+A reference table is not the way to check a reference table — copying one in asserts that
+two transcriptions agree. What checks it is the cube: for a given pattern of corner signs
+the isosurface can only cross an edge whose endpoints disagree, it must cross every such
+edge, and the pieces must join up. **All 256 patterns** now go through the public entry
+point and are checked from cube geometry alone — every vertex on a sign-changing edge, every
+such edge carrying a vertex, no edge shared by more than two triangles, consistent winding,
+and the patch boundary meeting each cut point exactly once per face. That last one pins the
+triangulation rather than just the vertex set, and it was needed: the surviving table mutant
+swapped an entry for *another edge cut in the same configuration*, which the first four
+invariants all permit.
+
+Two of the five invariants went in wrong the first time and the tests said so — complement
+pairs differ in triangle count for 88 of the 256 cases (Lorensen-Cline resolves ambiguous
+configurations independently on each side), and a cut point is met once per face rather than
+twice, because a cube edge lies in two faces. Both corrections are recorded in the file.
+
+The two survivors outside the table were closed too: `circumcenter`, reached through
+`voronoi` — whose vertices *are* the circumcentres, and whose positions nothing checked — now
+asserted by the defining equidistance; and `dist_point_segment3`'s projection parameter,
+where a sign flip in one dot-product term is invisible whenever that term is zero, now
+covered by cases that make each term carry the answer in turn plus a slanted segment checked
+against a direct minimisation. **37.5% -> 50.0%** raw, with the twelve remaining survivors
+exactly the twelve padding sites: **12 of 12 over the reachable set.**
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

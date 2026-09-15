@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; nineteen files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8% -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1420,6 +1420,61 @@ Score after: **77.3% -> 81.8%**. Four survive, and two of them the source itself
 | `:847` `if (m < 4) m = 4;` -> `<=` | Assigns 4 where the value is already 4. The comment four lines above says it outright: `ap_halving_count` chooses how many argument halvings precede a Taylor series, and **"Only the run time depends on this, never the value."** |
 | `:890` `x.mantissa.is_zero() \|\| m <= 0` -> `&&` | Unreachable and value-preserving. All twelve call sites of `ap_scale_pow2_down` pass a literal 1 or 2, or `ap_halving_count`'s result, which is clamped to `[4, 400]` -- so `m <= 0` never holds; and a zero mantissa scaled by `5^m` at a shifted exponent is still zero. |
 | `:1079`, `:1632` | An exponent-field bound that differs only at exactly `EXP10_LIMIT`, and a precision-growth heuristic's `extra + 4`. |
+
+
+Twentieth file: `src/geo/geo.cpp`, 24 mutants at seed 89 against the suites that cover it.
+**9 of 24 viable killed, 37.5%** -- the lowest raw score of the twenty, and the one where
+the raw score is most misleading. **Half the sample never runs at all.**
+
+Thirteen of the fifteen survivors sat inside the 256-row Lorensen-Cline triangle table, and
+reproducing the harness's exact sites (by importing its own `find_sites` and mapping each
+offset back to a column) settles what they are: **twelve of the twenty-four land in the
+trailing `-1` padding of a table row.** The reader is
+`for (int t = 0; kTriTable[cube_index][t] != -1; t += 3)`, so it stops at the row's FIRST
+terminator and never touches the rest -- those twelve are unreachable by construction, and
+no test of any kind can kill them. Over the twelve that are reachable the first run scored
+**9 of 12, 75%**.
+
+That correction mattered a second time. Hand-patching "the `-` on line 1800" flipped the
+FIRST `-1`, which is live, while the harness had chosen a later one, which is not -- so the
+kill was real but was not the kill being claimed. Same lesson as `stats.cpp`, and worth
+stating once as a rule: **the harness reports a line and an operator, not a column, and a
+line with several has to be reproduced exactly before a kill can be attributed to it.**
+
+The substantive question the run asked is whether the table is right, and a reference table
+is not the way to check a reference table -- copying one in asserts that two transcriptions
+agree. What checks it is the cube. For a given pattern of corner signs the isosurface can
+only cross an edge whose endpoints disagree, it must cross every such edge, and the pieces
+must join up; none of that needs the table.
+`tests/unit/geo/test_geo_marching_all_cases.cpp` drives **all 256 patterns** through the
+public entry point and asserts, from cube geometry alone:
+
+1. every vertex is the midpoint of a sign-changing edge,
+2. every sign-changing edge carries a vertex, and no triangle is degenerate,
+3. each undirected edge of the patch is shared by at most two triangles,
+4. the winding is consistent -- every directed edge is traversed exactly once,
+5. **the patch boundary lies on the cube's faces and meets each cut point exactly once per
+   face.**
+
+The fifth is the one that pins the triangulation rather than the vertex set, and it was
+needed: the surviving live table mutant swapped one entry for **another edge that is also
+cut in that configuration**, so the first four all passed under it. Two of the five went in
+wrong the first time and the tests said so -- the complement pair's triangle COUNTS differ
+for 88 of the 256 pairs, because Lorensen-Cline resolves the ambiguous configurations
+independently on each side (the classic source of cracks between cells, a property of the
+published table rather than of this transcription); and a cut point is met once per face,
+not twice, because a cube edge lies in two faces. Both corrections are recorded in the file.
+
+The two survivors outside the table were closed as well, and both are formulas a shape
+assertion cannot see: `circumcenter`'s `by - cy`, reached through `voronoi`, whose vertices
+**are** the circumcentres and whose positions nothing checked; and `dist_point_segment3`'s
+projection parameter `t = (ap.ab)/|ab|^2`, where a sign flip in one term of the dot product
+is invisible whenever that term is zero -- so the new cases make each of the three terms
+carry the answer in turn, and check a slanted segment against a direct minimisation over
+200,000 samples that knows nothing about the projection.
+
+Score after: **37.5% -> 50.0%** raw, and the twelve remaining survivors are **exactly** the
+twelve padding sites, confirmed line by line. Over the reachable set that is **12 of 12**.
 
 
 ### What the corpus found on its first run
