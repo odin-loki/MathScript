@@ -19260,6 +19260,32 @@ bool is_scalar_expression_rhs(const std::string& rhs) {
     if (text.front() == '-' || text.front() == '+') {
         return is_scalar_expression_rhs(text.substr(1));
     }
+    // An right-hand side wrapped in its own parentheses is the SAME expression,
+    // and it was the one form the assignment path rejected. `x = (a+b)+0`,
+    // `x = (a)+(b)` and a bare `(a+b)` all worked; `x = (a+b)` reported
+    // "parse_matrix: expected [ ... ]", because nothing below this point looks
+    // inside the parentheses -- `contains_scalar_operator` only finds operators
+    // at the TOP level, and in `(a+b)` the `+` is not one. Strip them and ask
+    // the same question of what is inside; a matrix literal or matrix call in
+    // parentheses still answers no, because the recursion re-runs every test
+    // above and below.
+    if (const std::string inner = strip_outer_parens(text); inner != text) {
+        if (is_scalar_expression_rhs(inner)) {
+            return true;
+        }
+        // A number in parentheses is that number, so `x = (7)` is a scalar
+        // assignment. The recursion above says no to a bare literal, because an
+        // unparenthesised `x = 7` is handled by the literal path before this
+        // function is consulted at all -- but `(7)` is not a literal and no
+        // other path claims it.
+        //
+        // A bare NAME in parentheses, `x = (y)`, is deliberately not claimed
+        // here: whether it is a scalar assignment depends on what y holds, and
+        // this function is answering from the text alone. It stays with the
+        // matrix path, as it was.
+        double parenthesised_literal = 0.0;
+        return parse_number(inner, parenthesised_literal);
+    }
     if (parse_nullary_scalar_call(text)) {
         return false;
     }

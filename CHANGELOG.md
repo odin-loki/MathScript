@@ -1280,6 +1280,87 @@ kill to a mutant that never ran is the one way this exercise can lie to itself.
 
 **58.3% → 87.5%** (21 of 21 mutants a non-sanitised build can distinguish).
 
+### §8.4 — a right-hand side in its own parentheses was the one form the REPL rejected
+
+`src/interp/repl_engine_internal.cpp`, three passes of 24 mutants at seed 107. The first
+scored **52.4%** (11 of 21 viable) — the lowest first-run figure of the twenty-four files
+measured, on the layer carrying the most tests. The REPL command tests are thorough about
+two things, that a command succeeds and that the matrix it returns has the right shape, and
+every survivor lived in the gap between them.
+
+**Defect.** Chasing the `strip_outer_parens` mutant turned up that `x = (a+b)` did not
+work:
+
+```
+x = (a+b)+0     ok
+x = (a)+(b)     ok
+(a+b)           ok        — evaluated, printed 7
+x = (a+b)       parse_matrix: expected [ ... ]
+```
+
+`is_scalar_expression_rhs` decides whether `x = <rhs>` is a scalar expression by looking for
+operators at the **top level**, and in `(a+b)` the `+` is not one — so the answer was no and
+the text went to the matrix parser, which wanted a `[`. It strips the parentheses and asks
+the same question of what is inside now: `x = (a+b)`, `x = -(a+b)`, `x = ((1)+(2))`,
+`x = (sqrt(4))` and `x = (7)` all work. A parenthesised matrix literal and a parenthesised
+bare name are deliberately left alone — whether `(y)` is a scalar assignment depends on what
+y holds, not on the text — and both are pinned by the new tests.
+
+**Writing a result into the wrong column does not change the shape**, which is why three
+survivors were `out(i, 0) = x;` as `out(i, 1) = x;` — the loop below overwrites column 1
+anyway and column 0 is left at the vector's default zero. The DAE trajectory's time column
+in its `z_traj` block had never been read; `geo_delaunay_2d`'s triangle indices had never
+been looked at, only counted. That one took three attempts: with three points the only
+triangle is `[0, 1, 2]`, whose first vertex *is* zero, and a square's two triangles stay
+distinct with column 0 zeroed. Five points do not — `[2, 0, 4]` collapses to `[0, 0, 4]`, a
+triangle with a repeated vertex.
+
+**A guard with several comparisons on one line is exercised by arguments far from all of
+them.** Each of `graph_astar`'s four endpoint checks is now driven on its own; zero qubits
+(which *is* an integer) and 2.5 qubits (which *is* at least one) are refused by
+`quantum_w_state` and `quantum_ghz_state`; `combo_bracelets(0, k)` is accepted; and an LZ77
+token of length exactly 65535 — the largest a `uint16_t` holds — decodes.
+`stats_two_sample_ttest`'s empty-sample guard is **unreachable** from the REPL:
+`matrix_to_coeff_vector` above it rejects the empty matrix first, recorded rather than
+asserted into a shape it does not have.
+
+**A re-run after a source fix is not a re-run.** The second pass was meant to be the same
+measurement with the tests added, and scored **36.4%** — not a regression, a different
+question. The harness samples character offsets; the fix added two lines, the file went from
+8,339 sites to 8,341, and the same seed over a renumbered list draws a different set.
+**Exactly one of the twenty-four sites is in both samples.** `scripts/mutation_test.py`
+gains `--replay <previous run's output>`, which re-tests exactly the survivors a report
+names — located by the text of the line, the column within it and the declaration it sits
+under, so they survive the file moving underneath them. Where the line text repeats (`if (m
+< 1) {` occurs twice in this file, `if (model.rows() < 2 || model.cols() < 5) {` four
+times) the declaration separates them; where even that does not, the entry is reported as
+unresolved rather than guessed at. Survivor reports now carry an `in:` line naming that
+declaration.
+
+**A serialised model is a format nothing reads back.** The second sample landed in
+`ml_*_to_matrix`/`ml_*_from_matrix` and found six gaps there. The sharpest:
+`ml_svm_from_matrix` reading the kernel code out of column 1 still passes every layout
+check, because column 1 is C and a fitted model's C is 1, which is a legal kernel code — so
+a linear model comes back as an RBF one and every prediction is drawn from a different
+function. Nothing in the suite had asserted an SVM prediction at all. Also closed:
+AdaBoost's seed cell, gradient boosting's shape guard versus its layout guard, Kruskal-Wallis
+writing its degrees of freedom over its p-value (now pinned against the closed form —
+H = 7.2, df = 2, p = exp(-H/2) for three untied groups of three), `bzip2_decompress_vec`'s
+four-byte header boundary, and a one-bin `signal_czt_zoom`. The same header's C and `tol`
+are **equivalent by proof**: `SVM::decision_function`, the only consumer, reads neither.
+
+Seven of the second pass's survivors were a `||` inside the 350-line `fn == "..." ||` chain
+in `is_scalar_expression_rhs`, about 4% of the file's mutable sites. Measured directly,
+dropping `ml_lasso_fit`, `ml_lasso_predict` and `ml_decision_tree_fit` out of that list
+changes nothing, because the matrix-call dispatch upstream claims them first — **equivalent
+by measurement**, and evidence the list is at least partly redundant; it also repeats four
+of its own lines verbatim. Three names is not grounds for deleting 350 lines, so it is
+recorded.
+
+The third pass is the comparable one — same source, same sites, same seed, only the tests
+changed: **36.4% → 63.6%** with fourteen new tests, and every remaining survivor
+equivalent.
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

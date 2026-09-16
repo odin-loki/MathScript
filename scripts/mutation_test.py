@@ -40,6 +40,22 @@ beside `c && d`, or the two `n - 1` in one constructor call, are different mutan
 print identically, and hand-reproducing the wrong one credits a kill to a mutant that
 was never run. The column says which, and the `now:` line says exactly what to write.
 
+A run is reproducible from its seed ONLY while the source is unchanged. The sample is
+drawn from the list of character offsets in the file, so inserting a line renumbers every
+site after it and the same seed then draws a different set: a "re-run" after a fix is a
+second sample, not a before-and-after. `--replay` closes that gap. Point it at a previous
+run's output and it re-tests exactly the survivors that run reported -- located by the
+text of the line they sit on and the column within it, so they are still found after the
+file moves underneath them:
+
+    python3 scripts/mutation_test.py --source src/interp/repl_engine_internal.cpp \
+                                     --target test_repl_commands --replay previous.txt
+
+That is what turns "I wrote a test for this survivor" into "this survivor is dead", which
+is the only claim worth making: a test that does not kill its mutant is the same silence
+with more lines. A survivor whose line has since been edited cannot be located and is
+reported as unresolved rather than quietly dropped.
+
 Sites are found after blanking comments and string literals, so a `<` inside a message
 is not a site. Some sites are still nonsense in context (`<` inside a template argument
 list, `+` in a fold expression); those come back as not viable, which costs a compile
@@ -82,6 +98,25 @@ class Mutation:
         credited to a mutant that was never run.
         """
         return self.offset - (text.rfind("\n", 0, self.offset) + 1)
+
+    def enclosing(self, text: str) -> str:
+        """The nearest declaration above this site, as a second half of its address.
+
+        Line text alone does not identify a line: `if (m < 1) {` occurs twice in
+        `repl_engine_internal.cpp` and `if (model.rows() < 2 || model.cols() < 5) {`
+        occurs four times. What differs is the function they are in, and the cheapest
+        stand-in for that is the last line above them that starts in column 0 and is
+        not a closing brace, a label or a preprocessor directive -- which, in this
+        style, is the signature.
+        """
+        line_start = text.rfind("\n", 0, self.offset) + 1
+        for candidate in reversed(text[:line_start].split("\n")):
+            if not candidate or candidate[0].isspace():
+                continue
+            if candidate[0] in "}#" or candidate.startswith("//"):
+                continue
+            return candidate.strip()
+        return ""
 
     def mutated_line(self, text: str) -> str:
         """The line as the mutant has it -- the thing to reproduce, not infer."""
@@ -225,6 +260,99 @@ def parse_ranges(spec: str) -> list[tuple[int, int]]:
     return ranges
 
 
+SURVIVOR_LINE = re.compile(
+    r"^\s*(?P<path>\S+):(?P<line>\d+):(?P<column>\d+)\s+(?P<kind>\w+)\s+"
+    r"'(?P<was>.*)' -> '(?P<now>.*)'\s*$")
+
+
+def parse_replay(report: str) -> list[dict]:
+    """The survivors a previous run printed, as dicts.
+
+    Reads the report the harness itself writes, so there is nothing to transcribe
+    by hand -- transcription is exactly where a kill gets credited to the wrong
+    mutant. Anything that is not a survivor header followed by its `was:` line is
+    ignored, which lets the whole run log be passed in.
+    """
+    entries: list[dict] = []
+    lines = report.split("\n")
+    for index, line in enumerate(lines):
+        match = SURVIVOR_LINE.match(line)
+        if not match:
+            continue
+        tail = [following.strip() for following in lines[index + 1:index + 3]]
+        enclosing = next((entry[len("in:  "):] for entry in tail
+                          if entry.startswith("in:  ")), None)
+        context = next((entry[len("was: "):] for entry in tail
+                        if entry.startswith("was: ")), None)
+        if context is None:
+            continue
+        entries.append({"path": match["path"],
+                        "line": int(match["line"]),
+                        "column": int(match["column"]),
+                        "kind": match["kind"],
+                        "was": match["was"],
+                        "now": match["now"],
+                        "text": context,
+                        # Reports written before the `in:` line existed do not carry
+                        # one; then the line text is the whole key, and a tie is
+                        # reported rather than guessed.
+                        "enclosing": enclosing})
+    return entries
+
+
+def locate_replayed(text: str, entries: list[dict]) -> tuple[list[Mutation], list[str]]:
+    """Each replayed entry as a site in `text`, plus a note for each one that is not.
+
+    The address a report prints is `line:column`, and the line number is the part
+    that goes stale the moment anything above it changes. The line's TEXT does not,
+    so that is the key here: find the lines that read exactly as the report says the
+    line read, and inside them the site at the recorded column with the recorded
+    mutation. A site that matches in more than one place is as unusable as one that
+    matches nowhere, and both are returned as notes rather than guessed at.
+    """
+    sites = find_sites(text, random.Random(0))
+    by_line: dict[int, list[Mutation]] = {}
+    for site in sites:
+        by_line.setdefault(site.line_of(text), []).append(site)
+
+    lines = text.split("\n")
+    found: list[Mutation] = []
+    unresolved: list[str] = []
+    for entry in entries:
+        matches = [site
+                   for number, raw in enumerate(lines, start=1)
+                   if raw.strip() == entry["text"]
+                   for site in by_line.get(number, ())
+                   if site.kind == entry["kind"]
+                   and text[site.offset:site.offset + site.length] == entry["was"]
+                   and site.replacement == entry["now"]
+                   and site.column_of(text) == entry["column"]
+                   and (entry["enclosing"] is None
+                        or site.enclosing(text) == entry["enclosing"])]
+        where = f"{entry['line']}:{entry['column']} {entry['kind']} " \
+                f"{entry['was']!r} -> {entry['now']!r}"
+        if len(matches) > 1:
+            # `is_scalar_expression_rhs` repeats four of its lines verbatim, so the
+            # enclosing declaration does not always separate them either. A candidate
+            # sitting at exactly the line number the report gave is the one the report
+            # meant unless the file moved out from under it, and if it had moved there
+            # would be nothing at that number to match.
+            here = [site for site in matches if site.line_of(text) == entry["line"]]
+            if len(here) == 1:
+                matches = here
+        if len(matches) == 1:
+            found.append(matches[0])
+        elif not matches:
+            unresolved.append(f"{where}: nothing in {entry['enclosing'] or 'the file'} "
+                              f"now reads {entry['text']!r} with that site -- it was "
+                              f"edited, which is often the point")
+        else:
+            unresolved.append(f"{where}: {len(matches)} lines read {entry['text']!r} "
+                              f"identically; the report cannot say which")
+    found.sort(key=lambda site: site.offset)
+    return found, unresolved
+
+
 def run(command: list[str], timeout: int) -> tuple[int, str]:
     try:
         finished = subprocess.run(command, capture_output=True, text=True, timeout=timeout)
@@ -249,6 +377,12 @@ def main() -> int:
                              "over a four-thousand-line file lands a couple of mutants in "
                              "any one function, which is not a measurement of that "
                              "function; this aims the sample where the question is")
+    parser.add_argument("--replay", default=None,
+                        help="a previous run's output; re-test exactly the survivors it "
+                             "reported instead of drawing a fresh sample. Sites are "
+                             "located by the text of their line, so they survive the file "
+                             "moving underneath them -- which a seed does not. --seed, "
+                             "--lines and --limit do not apply: the sites are named")
     parser.add_argument("--limit", type=int, default=30, help="mutants to try")
     parser.add_argument("--seed", type=int, default=1,
                         help="which mutants get tried; a run is reproducible from it")
@@ -260,8 +394,36 @@ def main() -> int:
 
     source = Path(args.source)
     original = source.read_text()
-    sites = find_sites(original, random.Random(args.seed))
-    if args.lines:
+    if args.replay:
+        report = Path(args.replay).read_text()
+        entries = parse_replay(report)
+        if not entries:
+            print(f"{args.replay} carries no survivor block to replay", file=sys.stderr)
+            return 1
+        elsewhere = sorted({entry["path"] for entry in entries
+                            if Path(entry["path"]).name != source.name})
+        if elsewhere:
+            print(f"{args.replay} reports survivors in {', '.join(elsewhere)}, and "
+                  f"--source is {source}; replaying only what is named for this file "
+                  f"would be a silent half-measurement", file=sys.stderr)
+            return 1
+        sites, unresolved = locate_replayed(original, entries)
+        print(f"{source}: replaying {len(sites)} of {len(entries)} survivors "
+              f"from {args.replay}")
+        for note in unresolved:
+            print(f"  unresolved: {note}")
+        if not sites:
+            print("none of them could be located in the current source", file=sys.stderr)
+            return 1
+        # The sample is the report; a limit drawn from a different run would silently
+        # measure a prefix of it.
+        args.limit = len(sites)
+        if args.lines:
+            print("--lines is ignored when replaying: the sites are already named",
+                  file=sys.stderr)
+    else:
+        sites = find_sites(original, random.Random(args.seed))
+    if args.lines and not args.replay:
         ranges = parse_ranges(args.lines)
         before = len(sites)
         sites = [site for site in sites
@@ -317,8 +479,10 @@ def main() -> int:
                 return name, code
         return "", 0
 
-    print(f"{source}: {len(sites)} sites, trying {min(args.limit, len(sites))} "
-          f"(seed {args.seed}) against {', '.join(targets)}")
+    how = (f"replaying {len(sites)} named survivors" if args.replay
+           else f"{len(sites)} sites, trying {min(args.limit, len(sites))} "
+                f"(seed {args.seed})")
+    print(f"{source}: {how} against {', '.join(targets)}")
     # The baseline may be a cold build of everything the target links, which is a
     # different order of cost from a mutant's rebuild of one translation unit. Giving it
     # the same budget is how the first run of this harness reported "the unmutated tree
@@ -387,6 +551,7 @@ def main() -> int:
                   f":{mutation.column_of(original)}  {mutation.kind}  "
                   f"{original[mutation.offset:mutation.offset + mutation.length]!r}"
                   f" -> {mutation.replacement!r}")
+            print(f"      in:  {mutation.enclosing(original)}")
             print(f"      was: {mutation.context(original)}")
             print(f"      now: {mutation.mutated_line(original)}")
     return 0
