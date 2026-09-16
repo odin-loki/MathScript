@@ -116,7 +116,7 @@ marked *local* was run on this branch's head on an Ubuntu 24.04 container with G
 | 6. Unsafe surface | `build-test-linux` | local, this branch | **33 sites against a baseline of 33**, delta clean |
 | 6a. Vendor checksums | `build-test-linux` | local, this branch | **OK, 5 files** |
 | 7. Packaging | `build-test-linux` | local, this branch | install prefix and `mathscript-1.0.0-Linux.tar.gz`, **smoke OK** |
-| 8. Benchmarks | `benchmark-linux` | **not run on this branch** | the gate compares against a baseline taken on a GitHub-hosted runner; running it here would measure this container. See criterion 8 above for why the gate is five entries wide |
+| 8. Benchmarks | `benchmark-linux` | local, this branch (build and smoke only) | all **28** bench targets build clean and all 28 executables run (`scripts/bench_smoke.sh`). The **regression comparison was not run**: the baseline was taken on a GitHub-hosted runner, so comparing it against this container would measure the container. See criterion 8 above for why the gate is five entries wide |
 | 9. Compliance (plugin) | `plugin-linux` | local, this branch | **42/42**, Clang 18 + LLVM 18 |
 | 9a. Compliance (source) | `compliance` | local, this branch | SPDX **1806/1806**; SBOM current; matrix-call manifest current (**485 handlers**); generated dispatch tests current (**29 sources, 1,583 tests**); test names unique across **33** executables |
 | 10. JIT | `jit-linux` | local, this branch | **2/2**, Clang 18 + LLVM 18 |
@@ -128,10 +128,11 @@ here, and `build-test-windows` is the job that covers it — packaging with NSIS
 limit the target names were shortened for. A green Linux run says nothing about any of
 those.
 
-So the honest summary is that **every criterion that can be checked without GitHub
-Actions or a Windows machine has been checked on this branch's head and passes**, and
-the three that cannot — CI on `main`, the fuzz marathon, and Windows — are the three
-that gate the tag.
+So the honest summary is that **every criterion that can be checked on Linux without
+GitHub Actions has been checked on this branch's head and passes**. What has not:
+CI on `main`, the 24-hour fuzz marathon, anything Windows, and the benchmark
+regression comparison — which could run here but would be comparing two different
+machines, so it would produce a number rather than an answer.
 
 ## Windows
 
