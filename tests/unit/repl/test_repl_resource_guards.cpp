@@ -267,3 +267,62 @@ TEST(ReplResourceGuards, SessionObjectDimensionsAreBounded) {
     ASSERT_TRUE(dim.has_value());
     EXPECT_NE(dim->find('8'), std::string::npos) << *dim;
 }
+
+TEST(ReplResourceGuards, TensorRankVectorsAreBoundedToIntRange) {
+    // Found by the fuzz marathon, second crash of the same rehearsal:
+    // `tensorops_decompose_hosvd(jk2, [1, 0; 0, 1], [1, 1555...555])` -- 39 digits
+    // -- ended the process with a `std::length_error` escaping a library built
+    // with `-fno-exceptions`.
+    //
+    // The handler DID guard the rank: `rank > tensor->shape[mode]` rejects a rank
+    // larger than the mode it truncates. What reached that guard was not the rank
+    // that was written. `parse_bracket_int_vector_literal` converted with a bare
+    // `static_cast<int>`, which is undefined behaviour for a double this far past
+    // `int`'s range, and on x86-64 leaves INT_MIN behind. INT_MIN is not greater
+    // than 2, so an upper-bound guard is exactly the shape of guard such a value
+    // walks through -- and then `truncated_svd_left` asked for a
+    // `std::vector<double>` of 2147483648 elements.
+    //
+    // The conversion is the bug, so the fix is in the parser and not in the three
+    // handlers that call it. The message is pinned because "rejected" is not the
+    // property under test: the old code rejected these too, by crashing.
+    Interpreter interp;
+
+    const auto hosvd = interp.execute(
+        "tensorops_decompose_hosvd(h1, [1, 0; 0, 1], "
+        "[1, 155555555555555555555555555555555555555])");
+    ASSERT_FALSE(hosvd.has_value());
+    EXPECT_NE(ms::format_error(hosvd.error()).find("vector element"), std::string::npos)
+        << ms::format_error(hosvd.error());
+
+    // The same parser feeds the other two, and `decompose_tucker` has the same
+    // `truncated_svd_left` underneath it.
+    for (const char* cmd :
+         {"tensorops_decompose_tucker(h2, [1, 0; 0, 1], "
+          "[1, 155555555555555555555555555555555555555], 10, 1e-6)",
+          "tensorops_decompose_tt(h3, [1, 2, 3, 4, 5, 6, 7, 8], "
+          "[2, 2, 155555555555555555555555555555555555555], 1e-9)",
+          // Each dimension is now inside `int`, so the overflow moves to the
+          // product: `numel` is a signed `long` and this is 1e21. The bound it
+          // is held to is the one it has to satisfy anyway -- the product must
+          // equal the matrix's element count, and that is capped well below this.
+          //
+          // Read this one for what it is. Deleting that bound does not make this
+          // line fail: the wrapped product is 3875520019714212735, which is not 4
+          // either, so the command is still refused and the only difference is
+          // that the refusal came from undefined behaviour. UBSan sees it --
+          // "signed integer overflow: 99999980000001 * 9999999 cannot be
+          // represented in type 'long int'" -- and by default prints and returns
+          // 0, so the sanitizer job does not fail on it either. So this line pins
+          // the behaviour and nothing pins the bound; it is here because the
+          // behaviour is worth pinning, not because it is a regression guard.
+          "tensorops_decompose_tt(h4, [1, 2; 3, 4], [9999999, 9999999, 9999999], 1e-9)"}) {
+        EXPECT_FALSE(interp.execute(cmd).has_value()) << cmd;
+    }
+
+    // A rank vector anyone would actually write is untouched.
+    EXPECT_TRUE(interp.execute("tensorops_decompose_hosvd(ok, [1, 0; 0, 1], [1, 1])").has_value());
+    EXPECT_TRUE(
+        interp.execute("tensorops_decompose_tt(okt, [1, 2, 3, 4, 5, 6, 7, 8], [2, 2, 2], 1e-9)")
+            .has_value());
+}

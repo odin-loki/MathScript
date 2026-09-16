@@ -3005,10 +3005,22 @@ Result<tensorops::Tensor> matrix_to_tensor_shaped(const Matrix<double>& m,
     if (shape.empty()) {
         return std::unexpected(DomainError{fn, "expected non-empty tensor shape"});
     }
+    // The product is bounded as it accumulates rather than after the loop. `numel` is a
+    // signed `long` and the shape vector is as long as the caller cares to write, so
+    // `[9999999, 9999999, 9999999]` overflowed it -- undefined behaviour, and the
+    // comparison below then read whatever was left. The bound it is held to is the one
+    // it has to satisfy anyway: the product is required to equal the matrix's element
+    // count on the next line, and a matrix here holds at most `kMaxReplMatrixElems`, so
+    // anything above that is already a mismatch and there is nothing to learn by
+    // continuing to multiply.
     long numel = 1;
     for (int dim : shape) {
         if (dim < 1) {
             return std::unexpected(DomainError{fn, "expected positive tensor shape dimensions"});
+        }
+        if (numel > static_cast<long>(kMaxReplMatrixElems) / dim) {
+            return std::unexpected(
+                DomainError{fn, "matrix element count must match tensor shape product"});
         }
         numel *= dim;
     }
@@ -20091,7 +20103,21 @@ Result<std::vector<int>> parse_bracket_int_vector_literal(const std::string& tex
         if (value < 1.0 || std::floor(value) != value) {
             return std::unexpected(DomainError{fn, "expected positive integer vector literal"});
         }
-        out.push_back(static_cast<int>(value));
+        // The conversion is `checked_int_argument`'s rather than a bare `static_cast<int>`
+        // because a `static_cast<int>` of a double past `int`'s range is undefined
+        // behaviour, and the callers' own guards are upper bounds that such a value walks
+        // straight through. `tensorops_decompose_hosvd(h, [1, 0; 0, 1], [1, 1555...555])`
+        // -- 39 digits -- reached `decompose_hosvd` with a rank of INT_MIN, which is what
+        // x86-64 leaves behind, and INT_MIN is not greater than the mode dimension of 2,
+        // so "rank exceeds tensor mode dimension" had nothing to reject. It became a
+        // `std::vector<double>(static_cast<size_t>(-2147483648), 0.0)` inside
+        // `truncated_svd_left` and a `std::length_error` out of a library built with
+        // `-fno-exceptions`, i.e. `std::terminate`. Found by the fuzz marathon.
+        auto checked = checked_int_argument(fn, "vector element", value);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        out.push_back(*checked);
     }
     return out;
 }
