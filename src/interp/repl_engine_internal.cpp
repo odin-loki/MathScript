@@ -3604,7 +3604,15 @@ Result<double> eval_info_lz_complexity(const Matrix<double>& seq_m) {
             return std::unexpected(
                 DomainError{"info_lz_complexity", "sequence elements must be integers"});
         }
-        seq.push_back(static_cast<int>(v));
+        // Bounded for the same reason as the combinatorial entries: `static_cast<int>`
+        // of a double past `int`'s range is undefined, and nothing further down would
+        // have noticed. LZ complexity reads these as symbols and only ever compares
+        // them for equality, so a sequence needing labels past 1e7 can relabel.
+        auto checked = checked_int_argument("info_lz_complexity", "sequence element", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        seq.push_back(*checked);
     }
     return info::lz_complexity(seq);
 }
@@ -5379,6 +5387,41 @@ Result<Matrix<double>> eval_control_kalman_update_cov(const Matrix<double>& x_m,
     return nested_to_matrix(out.P);
 }
 
+/// The seven copies of this loop all had the same hole. Each one checked that an entry
+/// was non-negative and integral and then wrote `static_cast<int>(entry)`, which is
+/// undefined behaviour for a double past `int`'s range -- and unlike the size arguments,
+/// nothing downstream was in a position to notice. `combo_next_perm([0, 1555...555])`
+/// -- 39 digits -- did not crash and did not complain; it PRINTED
+///
+///     perm =
+///       [-2147483648.000000]
+///       [0.000000]
+///
+/// which is the same defect as the combo counting functions returning a wrapped value as
+/// though it were the answer, arriving by a different route. `combo_rank_permutation` on
+/// the same input answered 0.
+///
+/// The bound is `kMaxReplIntegerArgument` rather than `INT_MAX` because every caller is
+/// indexing something: these are permutation elements and combination indices over a
+/// vector that holds at most `kMaxReplMatrixElems` entries, so 1e7 is already four times
+/// further than any valid one reaches.
+Result<std::vector<int>> coeffs_to_int_entries(const std::vector<double>& coeffs,
+                                               const char* fn) {
+    std::vector<int> out;
+    out.reserve(coeffs.size());
+    for (const double entry : coeffs) {
+        if (entry < 0.0 || std::floor(entry) != entry) {
+            return std::unexpected(DomainError{fn, "expected non-negative integer entries"});
+        }
+        auto checked = checked_int_argument(fn, "entry", entry);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        out.push_back(*checked);
+    }
+    return out;
+}
+
 Result<double> eval_combo_rank_permutation(const Matrix<double>& v_m) {
     auto v_vec = matrix_to_coeff_vector(v_m, "combo_rank_permutation");
     if (!v_vec) {
@@ -5388,15 +5431,11 @@ Result<double> eval_combo_rank_permutation(const Matrix<double>& v_m) {
         return std::unexpected(
             DomainError{"combo_rank_permutation", "expected non-empty permutation vector"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_rank_permutation", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_rank_permutation");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     const uint64_t rank = combo::rank_permutation(v);
     if (rank == UINT64_MAX) {
         return std::unexpected(
@@ -5501,15 +5540,11 @@ Result<double> eval_combo_rank_combination(const Matrix<double>& v_m, int n) {
         return std::unexpected(
             DomainError{"combo_rank_combination", "expected non-empty combination vector"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_rank_combination", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_rank_combination");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     if (n < 0) {
         return std::unexpected(
             DomainError{"combo_rank_combination", "expected non-negative integer n"});
@@ -7765,15 +7800,11 @@ Result<Matrix<double>> eval_combo_next_perm(const Matrix<double>& v_m) {
         return std::unexpected(
             DomainError{"combo_next_perm", "expected non-empty permutation vector"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_next_perm", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_next_perm");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     combo::next_perm(v);
     return int_vector_to_column(v);
 }
@@ -7787,15 +7818,11 @@ Result<Matrix<double>> eval_combo_prev_perm(const Matrix<double>& v_m) {
         return std::unexpected(
             DomainError{"combo_prev_perm", "expected non-empty permutation vector"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_prev_perm", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_prev_perm");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     combo::prev_perm(v);
     return int_vector_to_column(v);
 }
@@ -8090,15 +8117,7 @@ Result<std::vector<int>> matrix_to_int_coeff_vector(const Matrix<double>& m, con
     if (!coeffs) {
         return std::unexpected(coeffs.error());
     }
-    std::vector<int> out;
-    out.reserve(coeffs->size());
-    for (const double entry : *coeffs) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(DomainError{fn, "expected non-negative integer entries"});
-        }
-        out.push_back(static_cast<int>(entry));
-    }
-    return out;
+    return coeffs_to_int_entries(*coeffs, fn);
 }
 
 Result<Matrix<double>> eval_numthy_convergents(const Matrix<double>& cf_m) {
@@ -8140,15 +8159,11 @@ Result<Matrix<double>> eval_combo_next_comb(const Matrix<double>& v_m, int n) {
         return std::unexpected(
             DomainError{"combo_next_comb", "expected non-negative integer n"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_next_comb", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_next_comb");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     combo::next_comb(v, n);
     return int_vector_to_column(v);
 }
@@ -8166,15 +8181,11 @@ Result<Matrix<double>> eval_combo_prev_comb(const Matrix<double>& v_m, int n) {
         return std::unexpected(
             DomainError{"combo_prev_comb", "expected non-negative integer n"});
     }
-    std::vector<int> v;
-    v.reserve(v_vec->size());
-    for (const double entry : *v_vec) {
-        if (entry < 0.0 || std::floor(entry) != entry) {
-            return std::unexpected(
-                DomainError{"combo_prev_comb", "expected non-negative integer entries"});
-        }
-        v.push_back(static_cast<int>(entry));
+    auto v_checked = coeffs_to_int_entries(*v_vec, "combo_prev_comb");
+    if (!v_checked) {
+        return std::unexpected(v_checked.error());
     }
+    std::vector<int> v = std::move(*v_checked);
     combo::prev_comb(v, n);
     return int_vector_to_column(v);
 }
@@ -11615,7 +11626,13 @@ Result<Matrix<double>> eval_run_backtest(const Matrix<double>& prices_m,
         if (v != std::floor(v)) {
             return std::unexpected(DomainError{fn, "positions must be integers"});
         }
-        positions.push_back(static_cast<int>(v));
+        // Signed -- a position is long or short -- so the bound is on the magnitude.
+        // `checked_int_argument` is what stops `static_cast<int>` being undefined here.
+        auto checked = checked_int_argument(fn, "position", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        positions.push_back(*checked);
     }
     const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
     Matrix<double> out(1, 4, 0.0);
@@ -11650,7 +11667,13 @@ Result<Matrix<double>> eval_run_backtest_equity(const Matrix<double>& prices_m,
         if (v != std::floor(v)) {
             return std::unexpected(DomainError{fn, "positions must be integers"});
         }
-        positions.push_back(static_cast<int>(v));
+        // Signed -- a position is long or short -- so the bound is on the magnitude.
+        // `checked_int_argument` is what stops `static_cast<int>` being undefined here.
+        auto checked = checked_int_argument(fn, "position", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        positions.push_back(*checked);
     }
     const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
     return vector_to_column(bt.equity_curve);
@@ -11680,7 +11703,13 @@ Result<double> eval_run_backtest_sharpe(const Matrix<double>& prices_m,
         if (v != std::floor(v)) {
             return std::unexpected(DomainError{fn, "positions must be integers"});
         }
-        positions.push_back(static_cast<int>(v));
+        // Signed -- a position is long or short -- so the bound is on the magnitude.
+        // `checked_int_argument` is what stops `static_cast<int>` being undefined here.
+        auto checked = checked_int_argument(fn, "position", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        positions.push_back(*checked);
     }
     const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
     return bt.sharpe_ratio;
@@ -11710,7 +11739,13 @@ Result<double> eval_run_backtest_max_drawdown(const Matrix<double>& prices_m,
         if (v != std::floor(v)) {
             return std::unexpected(DomainError{fn, "positions must be integers"});
         }
-        positions.push_back(static_cast<int>(v));
+        // Signed -- a position is long or short -- so the bound is on the magnitude.
+        // `checked_int_argument` is what stops `static_cast<int>` being undefined here.
+        auto checked = checked_int_argument(fn, "position", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        positions.push_back(*checked);
     }
     const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
     return bt.max_drawdown;
@@ -11740,7 +11775,13 @@ Result<double> eval_run_backtest_total_return(const Matrix<double>& prices_m,
         if (v != std::floor(v)) {
             return std::unexpected(DomainError{fn, "positions must be integers"});
         }
-        positions.push_back(static_cast<int>(v));
+        // Signed -- a position is long or short -- so the bound is on the magnitude.
+        // `checked_int_argument` is what stops `static_cast<int>` being undefined here.
+        auto checked = checked_int_argument(fn, "position", v);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        positions.push_back(*checked);
     }
     const auto bt = izaac::backtest::run_backtest(*prices, positions, initial_capital);
     return bt.total_return;

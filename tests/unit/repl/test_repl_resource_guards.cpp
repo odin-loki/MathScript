@@ -326,3 +326,62 @@ TEST(ReplResourceGuards, TensorRankVectorsAreBoundedToIntRange) {
         interp.execute("tensorops_decompose_tt(okt, [1, 2, 3, 4, 5, 6, 7, 8], [2, 2, 2], 1e-9)")
             .has_value());
 }
+
+TEST(ReplResourceGuards, IntegerVectorEntriesAreBoundedToIntRange) {
+    // The `tensorops_decompose_hosvd` crash was the loud member of a family, and
+    // the rest of the family was quiet. Eleven more sites checked that a vector
+    // entry was integral -- some also that it was non-negative -- and then wrote
+    // `static_cast<int>(entry)`, which is undefined behaviour for a double past
+    // `int`'s range. Nothing downstream was in a position to notice, so nothing
+    // crashed. `combo_next_perm([0, 1555...555])` -- 39 digits -- PRINTED
+    //
+    //     perm =
+    //       [-2147483648.000000]
+    //       [0.000000]
+    //
+    // and `combo_rank_permutation` on the same input answered 0. That is the same
+    // defect as the combo counting functions returning a wrapped value as though
+    // it were the answer, reached by a different route: an answer was given, and
+    // it was not an answer to the question asked.
+    //
+    // The messages are pinned because "refused" was never the problem -- these
+    // did not refuse, they replied.
+    Interpreter interp;
+
+    const char* big = "155555555555555555555555555555555555555";
+    for (const std::string cmd :
+         {std::string("combo_next_perm([0, ") + big + "])",
+          std::string("combo_prev_perm([") + big + ", 0])",
+          std::string("combo_next_comb([0, ") + big + "], 5)",
+          std::string("combo_prev_comb([") + big + ", 0], 5)",
+          std::string("combo_rank_permutation([0, ") + big + "])",
+          std::string("combo_rank_combination([0, ") + big + "], 5)",
+          std::string("quantum_grover_search(3, [") + big + "])",
+          std::string("info_lz_complexity([1, ") + big + ", 0])"}) {
+        const auto result = interp.execute(cmd);
+        ASSERT_FALSE(result.has_value()) << cmd << " => " << result.value_or("");
+        EXPECT_NE(ms::format_error(result.error()).find("is too large"), std::string::npos)
+            << cmd << " => " << ms::format_error(result.error());
+    }
+
+    // A position is long or short, so that one is bounded on its magnitude and
+    // the sign has to keep working.
+    ASSERT_TRUE(interp.execute("P = [1; 2; 3]").has_value());
+    ASSERT_TRUE(interp.execute(std::string("Q = [1; ") + big + "; 0]").has_value());
+    const auto backtest = interp.execute("run_backtest(P, Q, 1000)");
+    ASSERT_FALSE(backtest.has_value());
+    EXPECT_NE(ms::format_error(backtest.error()).find("position"), std::string::npos)
+        << ms::format_error(backtest.error());
+    ASSERT_TRUE(interp.execute("R = [1; -1; 0]").has_value());
+    EXPECT_TRUE(interp.execute("run_backtest(P, R, 1000)").has_value());
+
+    // And the vectors anyone would actually write are untouched. `next_perm` of
+    // [0, 1, 2] is [0, 2, 1] and the rank of [2, 0, 1] is 4; a bound that changed
+    // either of those would be a worse bug than the one it replaced.
+    const auto perm = interp.execute("combo_next_perm([0, 1, 2])");
+    ASSERT_TRUE(perm.has_value());
+    EXPECT_NE(perm->find("2.000000"), std::string::npos) << *perm;
+    const auto rank = interp.execute("combo_rank_permutation([2, 0, 1])");
+    ASSERT_TRUE(rank.has_value());
+    EXPECT_NE(rank->find("4"), std::string::npos) << *rank;
+}
