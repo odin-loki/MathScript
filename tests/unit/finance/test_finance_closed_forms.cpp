@@ -621,3 +621,32 @@ TEST(FinanceClosedForms, BondYtmReportsHowFarItGotWhenNoYieldFits) {
     ASSERT_TRUE(ok.has_value());
     EXPECT_NEAR(ok.value(), 0.07, 1e-9);
 }
+
+TEST(FinanceClosedForms, ATreeWithNoStepsIsNotAPrice) {
+    // `binomial_tree` computes dt = T/steps, so zero steps divides by zero: u is
+    // exp(sigma*sqrt(inf)), d is 0, and the risk-neutral probability is inf/inf.
+    // None of that reached the answer, because the single terminal node is
+    // S*pow(u, 0)*pow(d, 0) and `pow(anything, 0)` is 1 -- so the function
+    // returned the UNDISCOUNTED intrinsic value, a number carrying neither the
+    // rate nor the volatility, and called it a price. A refusal is the honest
+    // answer, and in a library that does not throw, a refusal is NaN.
+    EXPECT_TRUE(std::isnan(binomial_call(100.0, 90.0, 1.0, 0.05, 0.2, 0)));
+    EXPECT_TRUE(std::isnan(binomial_put(100.0, 110.0, 1.0, 0.05, 0.2, 0)));
+    EXPECT_TRUE(std::isnan(american_option(100.0, 110.0, 1.0, 0.05, 0.2, false, 0)));
+    EXPECT_TRUE(std::isnan(trinomial_option(100.0, 110.0, 1.0, 0.05, 0.2, 0, true, false)));
+    EXPECT_TRUE(std::isnan(binomial_call(100.0, 90.0, 1.0, 0.05, 0.2, -3)));
+
+    // One step is the smallest tree there is, and it is a closed form: with
+    // dt = 1, u = e^0.2, d = 1/u and p = (e^0.05 - d)/(u - d), only the down
+    // node of the put and the up node of the call are in the money.
+    const double u = std::exp(0.2);
+    const double d = 1.0 / u;
+    const double p = (std::exp(0.05) - d) / (u - d);
+    const double disc = std::exp(-0.05);
+    EXPECT_NEAR(binomial_put(100.0, 110.0, 1.0, 0.05, 0.2, 1),
+                disc * (1.0 - p) * (110.0 - 100.0 * d), 1e-12);
+    // The call's down node, at 100/u = 81.87, is out of the money against a
+    // strike of 90, so only the up node pays.
+    EXPECT_NEAR(binomial_call(100.0, 90.0, 1.0, 0.05, 0.2, 1),
+                disc * p * (100.0 * u - 90.0), 1e-12);
+}

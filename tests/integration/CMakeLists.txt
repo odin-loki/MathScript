@@ -4,7 +4,8 @@
 # whole library. Linking, not compiling, is what dominates a test build, and on an
 # instrumented build it dominates it badly enough that measuring coverage was a
 # nightly event rather than something anyone did before pushing. Grouping by
-# domain runs exactly the same tests through 29 links instead of 573.
+# domain runs exactly the same tests through one link per domain directory -- 31 of
+# them at the time of writing -- instead of 573.
 #
 # The prerequisite was test names unique within a domain. TEST(A, B) expands to a
 # class A_B_Test whose member functions are implicitly inline, so two files in one

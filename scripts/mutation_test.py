@@ -74,6 +74,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
+# `fn == "sqrt"`, `callee == "det"`, `name == "plot"` -- the shape a dispatch
+# branch takes throughout this interpreter.
+DISPATCH_GUARD = re.compile(r'\b(?:fn|callee|name)\s*==\s*"')
+
+
 @dataclass
 class Mutation:
     offset: int
@@ -100,22 +105,32 @@ class Mutation:
         return self.offset - (text.rfind("\n", 0, self.offset) + 1)
 
     def enclosing(self, text: str) -> str:
-        """The nearest declaration above this site, as a second half of its address.
+        """The nearest anchor above this site, as a second half of its address.
 
         Line text alone does not identify a line: `if (m < 1) {` occurs twice in
         `repl_engine_internal.cpp` and `if (model.rows() < 2 || model.cols() < 5) {`
-        occurs four times. What differs is the function they are in, and the cheapest
-        stand-in for that is the last line above them that starts in column 0 and is
-        not a closing brace, a label or a preprocessor directive -- which, in this
-        style, is the signature.
+        occurs four times. What differs is the context, and there are two useful
+        stand-ins for it, whichever is nearer:
+
+        - the dispatch guard the site sits under, `if (fn == "...")` and its
+          spellings. `Interpreter::execute` is thirteen thousand lines of them, and
+          its own signature tells none of its branches apart: twenty-four lines in
+          it read `!parse_number(trim(match[4].str()), T) || ...` identically, one
+          per option pricer, and the guard is the only thing that separates them.
+        - failing that, the last line above starting in column 0 that is not a
+          closing brace, a label or a preprocessor directive -- which, in this
+          style, is the enclosing function's signature.
         """
         line_start = text.rfind("\n", 0, self.offset) + 1
         for candidate in reversed(text[:line_start].split("\n")):
+            stripped = candidate.strip()
+            if DISPATCH_GUARD.search(stripped):
+                return stripped
             if not candidate or candidate[0].isspace():
                 continue
             if candidate[0] in "}#" or candidate.startswith("//"):
                 continue
-            return candidate.strip()
+            return stripped
         return ""
 
     def mutated_line(self, text: str) -> str:
@@ -300,8 +315,9 @@ def parse_replay(report: str) -> list[dict]:
     return entries
 
 
-def locate_replayed(text: str, entries: list[dict]) -> tuple[list[Mutation], list[str]]:
-    """Each replayed entry as a site in `text`, plus a note for each one that is not.
+def locate_replayed(
+        text: str, entries: list[dict]) -> tuple[list[Mutation], list[str], list[str]]:
+    """Each replayed entry as a site in `text`, with notes for the ones that move.
 
     The address a report prints is `line:column`, and the line number is the part
     that goes stale the moment anything above it changes. The line's TEXT does not,
@@ -309,6 +325,11 @@ def locate_replayed(text: str, entries: list[dict]) -> tuple[list[Mutation], lis
     line read, and inside them the site at the recorded column with the recorded
     mutation. A site that matches in more than one place is as unusable as one that
     matches nowhere, and both are returned as notes rather than guessed at.
+
+    Returns (sites, unresolved, relaxed). `relaxed` names the entries that were only
+    found once the enclosing declaration was ignored -- renaming a function moves
+    every site inside it by that key, and dropping them all would report a file as
+    unmeasurable for a rename. Nothing is relaxed silently.
     """
     sites = find_sites(text, random.Random(0))
     by_line: dict[int, list[Mutation]] = {}
@@ -316,21 +337,32 @@ def locate_replayed(text: str, entries: list[dict]) -> tuple[list[Mutation], lis
         by_line.setdefault(site.line_of(text), []).append(site)
 
     lines = text.split("\n")
+
+    def candidates(entry: dict, use_enclosing: bool) -> list[Mutation]:
+        return [site
+                for number, raw in enumerate(lines, start=1)
+                if raw.strip() == entry["text"]
+                for site in by_line.get(number, ())
+                if site.kind == entry["kind"]
+                and text[site.offset:site.offset + site.length] == entry["was"]
+                and site.replacement == entry["now"]
+                and site.column_of(text) == entry["column"]
+                and (not use_enclosing or entry["enclosing"] is None
+                     or site.enclosing(text) == entry["enclosing"])]
+
     found: list[Mutation] = []
     unresolved: list[str] = []
+    relaxed: list[str] = []
     for entry in entries:
-        matches = [site
-                   for number, raw in enumerate(lines, start=1)
-                   if raw.strip() == entry["text"]
-                   for site in by_line.get(number, ())
-                   if site.kind == entry["kind"]
-                   and text[site.offset:site.offset + site.length] == entry["was"]
-                   and site.replacement == entry["now"]
-                   and site.column_of(text) == entry["column"]
-                   and (entry["enclosing"] is None
-                        or site.enclosing(text) == entry["enclosing"])]
+        matches = candidates(entry, use_enclosing=True)
         where = f"{entry['line']}:{entry['column']} {entry['kind']} " \
                 f"{entry['was']!r} -> {entry['now']!r}"
+        if not matches and entry["enclosing"] is not None:
+            widened = candidates(entry, use_enclosing=False)
+            if widened:
+                matches = widened
+                relaxed.append(f"{where}: no longer inside {entry['enclosing']!r}, "
+                               f"matched on the line alone")
         if len(matches) > 1:
             # `is_scalar_expression_rhs` repeats four of its lines verbatim, so the
             # enclosing declaration does not always separate them either. A candidate
@@ -350,7 +382,7 @@ def locate_replayed(text: str, entries: list[dict]) -> tuple[list[Mutation], lis
             unresolved.append(f"{where}: {len(matches)} lines read {entry['text']!r} "
                               f"identically; the report cannot say which")
     found.sort(key=lambda site: site.offset)
-    return found, unresolved
+    return found, unresolved, relaxed
 
 
 def run(command: list[str], timeout: int) -> tuple[int, str]:
@@ -407,9 +439,11 @@ def main() -> int:
                   f"--source is {source}; replaying only what is named for this file "
                   f"would be a silent half-measurement", file=sys.stderr)
             return 1
-        sites, unresolved = locate_replayed(original, entries)
+        sites, unresolved, relaxed = locate_replayed(original, entries)
         print(f"{source}: replaying {len(sites)} of {len(entries)} survivors "
               f"from {args.replay}")
+        for note in relaxed:
+            print(f"  relaxed:    {note}")
         for note in unresolved:
             print(f"  unresolved: {note}")
         if not sites:
@@ -541,7 +575,15 @@ def main() -> int:
     print()
     print(f"viable {viable}, killed {killed + timed_out}, survived {survived}, "
           f"not viable {not_viable}")
-    if viable:
+    if viable and args.replay:
+        # NOT a mutation score. A replay re-tests a hand-picked set -- the
+        # survivors of an earlier run -- so the fraction killed says how many of
+        # those particular findings are now closed. Printing it as a mutation
+        # score would put a number for a biased sample next to numbers for
+        # uniform ones, which is how a percentage starts meaning nothing.
+        print(f"{killed + timed_out} of {viable} replayed survivors are now killed; "
+              f"this is not a mutation score -- the sample was chosen, not drawn")
+    elif viable:
         print(f"mutation score over viable mutants: "
               f"{100.0 * (killed + timed_out) / viable:.1f}%")
     if survivors:

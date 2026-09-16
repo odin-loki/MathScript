@@ -124,6 +124,10 @@ public:
     std::vector<std::pair<std::string, std::string>> list_session_objects() const;
 
 private:
+    /// The whole of `execute`'s reading of one line. `execute` itself is the
+    /// retry around it; see the comment on that wrapper.
+    Result<std::string> execute_impl(const std::string& line);
+
     SessionState state_;
     std::map<std::string, SessionObject> session_objects_;
     std::atomic<bool>* cancel_flag_ = nullptr;

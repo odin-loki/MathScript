@@ -1280,6 +1280,60 @@ kill to a mutant that never ran is the one way this exercise can lie to itself.
 
 **58.3% → 87.5%** (21 of 21 mutants a non-sanitised build can distinguish).
 
+### §8.4 — a binomial tree with no steps returned the undiscounted intrinsic and called it a price
+
+`src/interp/repl_engine.cpp`, the last file on the §8.4 list: 24 mutants at seed 109 over
+11,022 sites against the twenty-five suites that cover it — **15 of 24 viable killed,
+62.5%**, nothing not viable. Nine survivors, all closed, and the closing verified with
+`scripts/mutation_test.py --replay` rather than a second sample.
+
+**Defect — zero steps.** `finance_binomial_put(100, 110, 1, 0.05, 0.2, 0)` returned **10**.
+`binomial_tree` computes `dt = T / steps`, so at zero steps `dt` is infinity, `u` is
+`exp(sigma*sqrt(inf))`, `d` is zero and the risk-neutral probability is `inf/inf`. None of
+that reached the answer, because the single terminal node is `S*pow(u, 0)*pow(d, 0)` and
+`pow(anything, 0)` is 1 — so the function fell through to the **undiscounted intrinsic
+value**, a number carrying neither the rate nor the volatility, where one step gives
+11.3042 and the discounted intrinsic is 9.5123. The mutant that turned `steps < 0` into
+`steps < 1` was not a mutant; it was the fix. Ten REPL guards across
+`finance_binomial_call`, `finance_binomial_put`, `finance_american_option` and
+`finance_trinomial_option` now require a positive step count, and `binomial_tree` and
+`trinomial_option` return NaN below one step — how a `-fno-exceptions` library refuses.
+
+**Defect — a bare call with a matrix literal.** `signal_czt_zoom([1, 0, 0, 0], 0, 1, 1, 4)`
+reported `unknown matrix: [1`, while the same call with an `x = ` in front of it worked:
+`execute` reads a bare call through twelve regexes whose argument groups are `[^,]+`, so an
+argument containing a comma is cut at the first one, whereas the assignment path splits on
+brackets. `execute` is now a retry around its old self — the direct reading first, and only
+on failure, and only for a bare call with a comma inside one of its bracket-aware
+arguments, the assignment path under the `_` that the matrix-constructor fallback already
+uses. Nothing that answers today answers differently, and one typed line is still one line
+of history.
+
+**Eight argument guards nothing had driven.** Each of `numthy_prime_pi`'s and
+`gegenbauer_c`'s two conditions on its own (a negative degree used to return NaN);
+`prob_gamma_pdf` pinned to a value, because reading its abscissa out of the shape argument
+still returns a plausible positive number; `quantum_partial_trace` and `fixed_point` at
+both ends of their arity; and each of the seven `parse_number` calls in
+`finance_american_option` and in the floating-strike lookback estimators driven with one
+bad argument and six good ones.
+
+**Two guards, and only the second one runs.** `gria_settling_time` checks its rule in the
+REPL and again inside `eval_gria_settling_time`, so the first test written for it — asking
+that an out-of-range rule be refused with `rule in [0,255]` — **passed with the outer guard
+deleted**, the inner one answering with the same words. The outer guard's whole
+contribution is its wording, so the wording is what is pinned. The same duplication makes
+`numthy_prime_pi(-1)` and `a = numthy_prime_pi(-1)` report differently, which is recorded
+rather than unified.
+
+**Harness.** `scripts/mutation_test.py` gains `--replay <previous run's output>`: it
+re-tests exactly the survivors a report names, locating each by the text of its line, the
+column within it, and the nearest dispatch guard or declaration above it. A run is
+reproducible from its seed only while the source is unchanged — the sample is drawn from
+character offsets, so a two-line fix renumbers everything after it — and without replay a
+"re-run" after a fix is a second sample rather than a before-and-after. A replay prints how
+many of the named survivors are now killed and says in the same line that this is not a
+mutation score, because the sample was chosen rather than drawn.
+
 ### §8.4 — a right-hand side in its own parentheses was the one form the REPL rejected
 
 `src/interp/repl_engine_internal.cpp`, three passes of 24 mutants at seed 107. The first

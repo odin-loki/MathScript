@@ -1208,6 +1208,16 @@ double barrier_option(double S, double K, double B, double T, double r, double s
 
 static double binomial_tree(double S, double K, double T, double r, double sigma,
                             int steps, bool call, bool american) {
+    // Zero steps is not a coarse tree, it is no tree: `dt` is T/0, `u` is
+    // exp(sigma*sqrt(inf)), and the risk-neutral probability is inf/inf. None of
+    // that reached the answer, because the single terminal node is
+    // S*pow(u, 0)*pow(d, 0) and pow(anything, 0) is 1, so the function returned
+    // the UNDISCOUNTED intrinsic value and called it a price -- 10 for a put
+    // struck at 110 on a spot of 100, where one step gives 11.30. A number that
+    // ignores both the rate and the volatility is worse than a refusal.
+    if (steps < 1) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     double dt = T / steps;
     double u = std::exp(sigma * std::sqrt(dt));
     double d = 1.0 / u;
@@ -1248,6 +1258,11 @@ double american_option(double S, double K, double T, double r, double sigma,
 
 double trinomial_option(double S, double K, double T, double r, double sigma,
                         int n_steps, bool is_call, bool is_american) {
+    // Same as `binomial_tree` above: no steps is no tree, and the intrinsic value
+    // it fell through to is not a price.
+    if (n_steps < 1) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
     double dt = T / n_steps;
     double u = std::exp(sigma * std::sqrt(2.0 * dt));
     double disc = std::exp(-r * dt);

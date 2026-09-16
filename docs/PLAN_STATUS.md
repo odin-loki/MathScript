@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-four files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5%, control 79.2% -> 100.0% (three defects fixed, including a gain margin that was +inf for every plant ever passed in), finance 58.3% -> 87.5% (no defect; six tests that asserted an identity of the line above them), repl_engine_internal 36.4% -> 63.6% on the comparable pair, first sample 52.4% (one defect: a right-hand side in its own parentheses was the one form the REPL rejected) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-five files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5%, control 79.2% -> 100.0% (three defects fixed, including a gain margin that was +inf for every plant ever passed in), finance 58.3% -> 87.5% (no defect; six tests that asserted an identity of the line above them), repl_engine_internal 36.4% -> 63.6% on the comparable pair, first sample 52.4% (one defect: a right-hand side in its own parentheses was the one form the REPL rejected), repl_engine 62.5% with all nine survivors closed and verified by `--replay` (two defects: a binomial tree of zero steps returned the undiscounted intrinsic and called it a price; a bare call with a matrix literal was cut at its first comma) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1863,6 +1863,99 @@ bracket-aware `split_call_args`; the no-assignment path matches a regex whose ar
 groups are `[^,]+`, so an inline matrix literal is cut at its first comma. That regex family
 lives in `repl_engine.cpp`, which is the next file this exercise measures, so it is recorded
 here rather than patched for one command out of the dozens that share it.
+
+Twenty-fifth file, and the last on the list: `src/interp/repl_engine.cpp`, 24 mutants at
+seed 109 over its 11,022 sites, against the twenty-five suites that cover it.
+**15 of 24 viable killed, 62.5%**, with nothing not viable. Nine survivors, all of them
+now closed, and the closing is the first in this exercise to be verified by replay rather
+than by a second sample -- see the note under the twenty-fourth file for why that
+distinction is not pedantry.
+
+#### The mutant that was the fix
+
+`finance_binomial_put(100, 110, 1, 0.05, 0.2, 0)` returned **10**, and the mutant that
+made it an error was `if (steps < 0)` becoming `if (steps < 1)`.
+
+Zero steps is not a coarse tree, it is no tree. `binomial_tree` computes `dt = T / steps`,
+so `dt` is infinity, `u` is `exp(sigma*sqrt(inf))`, `d` is zero and the risk-neutral
+probability `p` is `inf/inf`, which is NaN. **None of that reached the answer**, because
+the one terminal node is `S * pow(u, 0) * pow(d, 0)` and `pow(anything, 0)` is 1 --
+so the function fell through to the undiscounted intrinsic value and returned it as a
+price. Ten in a currency where one step gives 11.3042 and the discounted intrinsic is
+9.5123: a number carrying neither the rate nor the volatility, which is worse than a
+refusal because it looks like an answer.
+
+Ten guards in the REPL said `steps < 0` -- `finance_binomial_call`, `finance_binomial_put`,
+`finance_american_option` and `finance_trinomial_option`, each on the scalar-call, the
+assignment and the bare-call path -- and all ten now say `steps < 1` with a message to
+match. `binomial_tree` and `trinomial_option` refuse below one step in the library too,
+by returning NaN, which is how a `-fno-exceptions` library says no.
+
+#### Eight guards nothing had driven
+
+The rest are the shape this exercise has found in every dispatch layer it has touched: a
+guard naming several conditions on one line, exercised only by arguments comfortably far
+from all of them.
+
+| Survivor | What it took |
+|---|---|
+| `numthy_prime_pi`'s `arg < 0.0 \|\| floor(arg) != arg` | -1 and 2.5, each on its own. As `&&` neither fires, and -1 reaches `numthy::prime_pi` as a count of primes. |
+| `gegenbauer_c`'s same guard | Same two inputs. A negative degree returned **NaN** through one of the two paths, which is how little was watching. |
+| `prob_gamma_pdf`'s `gamma_pdf(args[0], args[1], args[2])` | The first index moved to 1 evaluates the density of the SHAPE instead of of x, and returns a plausible positive number. Killed by a value: f(2; k=3, theta=1) is 4e^-2/2. |
+| `gria_settling_time`'s `rule < 0 \|\| rule > 255` | See below -- this one took two attempts. |
+| `quantum_partial_trace`'s `!call_args \|\| size() != 4` | Three arguments and five. As `&&` the guard is worse than absent: on a failed split it dereferences the failure to ask for a size, and on a good one it accepts any arity and reads `(*call_args)[3]` out of a three-element vector. |
+| `fixed_point`'s `size() < 2 \|\| size() > 4` | Five arguments. The upper bound had never been reached, so it could become 5 and the extra argument would be read as nothing at all. |
+| `finance_american_option`'s seven `parse_number` calls joined by `\|\|` | Six good arguments and one bad one, in each of the seven positions in turn. Any single `\|\|` turned into an `&&` lets one bad argument through and prices the option with whatever that variable was initialised to. |
+| the floating-strike lookback estimators' identical seven-way guard | The same seven, twice, for the call and the put. |
+
+#### Two guards, and only the second one runs
+
+`gria_settling_time` checks its rule in the REPL and again inside
+`eval_gria_settling_time`. The first test written for it asked that an out-of-range rule
+be refused with `rule in [0,255]` -- and **passed with the outer guard deleted**, because
+the inner one answered with a message containing the same words. The outer guard's whole
+contribution is its wording, `expected integer rule in [0,255]` against
+`expected rule in [0,255]`, so the wording is what the test now pins. That is not a
+weaker assertion than a behavioural one; it is the assertion that matches what the line
+does.
+
+The same duplication shows up as an inconsistency worth recording: `numthy_prime_pi(-1)`
+reports `expected non-negative integer argument` and `a = numthy_prime_pi(-1)` reports
+`expected non-negative integer n`, because the bare-call and assignment paths carry
+separate copies of the check. The same call, two diagnoses, depending on whether its
+result is being kept.
+
+#### A bare call with a matrix literal in it
+
+Recorded against this file while measuring the previous one, and fixed here.
+`signal_czt_zoom([1, 0, 0, 0], 0, 1, 1, 4)` reported `unknown matrix: [1`, while the same
+call with an `x = ` in front of it worked. `execute` reads a bare call by matching one of
+twelve regexes -- `unary` through `nonary` -- whose argument groups are `[^,]+`, so an
+argument that contains a comma is cut at the first one. The assignment path splits on
+brackets, with `split_call_args`.
+
+Teaching twelve regexes and the several hundred handlers behind them about brackets is a
+week of mechanical edits with a real chance of changing something that works. Instead
+`execute` is now a wrapper: it tries the reading it always did, and only if that FAILS,
+and only if the line is a bare call at least one of whose bracket-aware arguments contains
+a comma, does it hand the line to the assignment path under the same `_` the
+matrix-constructor fallback already uses. Nothing that answers today answers differently
+-- `stats_mean([1, 2, 3])`, `signal_upsample([1, 2], 2)` and
+`quantum_partial_trace([0.5, 0; 0, 0.5], 2, 1, 0)` keep their answers and their labels,
+because their direct reading succeeds -- and the session's history still records one line
+per line typed. When both readings fail the first one's error is reported, since it is
+about the line as typed; the one exception is when that error IS the truncation, because
+`unknown matrix: [1` names half a matrix literal and the retry's `expected positive
+integer m` names the actual fault.
+
+#### Still open, recorded rather than fixed
+
+- `split_call_args` tracks brackets and quotes but not parentheses, so `f(g(1, 2), 3)`
+  would split into three arguments. No command reaches it that way today -- nested calls
+  are evaluated by the scalar expression reader, which does track parentheses -- so this
+  is a latent edge, not a defect with a reproduction.
+- The duplicated guards above are left duplicated. Removing either copy is a behaviour
+  change to error messages that nothing has asked for, and the pairs are now pinned.
 
 ### What the corpus found on its first run
 

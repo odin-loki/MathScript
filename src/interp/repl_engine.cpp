@@ -5253,9 +5253,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(steps_arg.error());
         }
         const int steps = *steps_arg;
-        if (steps < 0 || args[5] != steps) {
+        if (steps < 1 || args[5] != steps) {
             return std::unexpected(
-                DomainError{"finance_binomial_call", "expected non-negative integer steps"});
+                DomainError{"finance_binomial_call", "expected positive integer steps"});
         }
         return finance::binomial_call(args[0], args[1], args[2], args[3], args[4], steps);
     }
@@ -5265,9 +5265,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(steps_arg.error());
         }
         const int steps = *steps_arg;
-        if (steps < 0 || args[5] != steps) {
+        if (steps < 1 || args[5] != steps) {
             return std::unexpected(
-                DomainError{"finance_binomial_put", "expected non-negative integer steps"});
+                DomainError{"finance_binomial_put", "expected positive integer steps"});
         }
         return finance::binomial_put(args[0], args[1], args[2], args[3], args[4], steps);
     }
@@ -5328,9 +5328,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(steps_arg.error());
         }
         const int steps = *steps_arg;
-        if (steps < 0 || args[6] != steps) {
+        if (steps < 1 || args[6] != steps) {
             return std::unexpected(
-                DomainError{"finance_american_option", "expected non-negative integer steps"});
+                DomainError{"finance_american_option", "expected positive integer steps"});
         }
         return finance::american_option(args[0], args[1], args[2], args[3], args[4], call != 0,
                                         steps);
@@ -5498,9 +5498,9 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return std::unexpected(n_steps_arg.error());
         }
         const int n_steps = *n_steps_arg;
-        if (n_steps < 0 || args[5] != n_steps) {
+        if (n_steps < 1 || args[5] != n_steps) {
             return std::unexpected(
-                DomainError{"finance_trinomial_option", "expected non-negative integer n_steps"});
+                DomainError{"finance_trinomial_option", "expected positive integer n_steps"});
         }
         auto is_call_arg = checked_int_argument(fn, "is_call", args[6]);
         if (!is_call_arg) {
@@ -9070,9 +9070,9 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(steps_checked.error());
                 }
                 const int steps = *steps_checked;
-                if (steps < 0) {
+                if (steps < 1) {
                     return std::unexpected(DomainError{
-                        "finance_binomial_call", "expected non-negative integer steps"});
+                        "finance_binomial_call", "expected positive integer steps"});
                 }
                 return assign_scalar(lhs, finance::binomial_call(S, K, T, r, sigma, steps));
             }
@@ -9104,9 +9104,9 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     return std::unexpected(steps_checked.error());
                 }
                 const int steps = *steps_checked;
-                if (steps < 0) {
+                if (steps < 1) {
                     return std::unexpected(DomainError{
-                        "finance_binomial_put", "expected non-negative integer steps"});
+                        "finance_binomial_put", "expected positive integer steps"});
                 }
                 return assign_scalar(lhs, finance::binomial_put(S, K, T, r, sigma, steps));
             }
@@ -11089,7 +11089,86 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
         return out.str();
 }
 
+namespace {
+
+/// A bare `name(a, b, ...)` at least one of whose arguments contains a comma.
+///
+/// Which is to say: at least one argument is a matrix literal, because
+/// `split_call_args` only leaves a comma inside an argument when it was inside
+/// brackets or quotes. These are exactly the lines the twelve argument-splitting
+/// regexes in `execute_impl` cut in the wrong place, their groups being `[^,]+`.
+bool bare_call_with_a_comma_inside_an_argument(const std::string& cmd) {
+    const std::size_t open = cmd.find('(');
+    if (open == 0 || open == std::string::npos || cmd.empty() || cmd.back() != ')') {
+        return false;
+    }
+    if (std::isdigit(static_cast<unsigned char>(cmd.front()))) {
+        return false;
+    }
+    for (std::size_t i = 0; i < open; ++i) {
+        const char c = cmd[i];
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
+            return false;
+        }
+    }
+    const auto args = split_call_args(cmd);
+    if (!args || args->size() < 2) {
+        return false;
+    }
+    return std::any_of(args->begin(), args->end(), [](const std::string& arg) {
+        return arg.find(',') != std::string::npos;
+    });
+}
+
+}  // namespace
+
 Result<std::string> Interpreter::execute(const std::string& line) {
+    auto direct = execute_impl(line);
+    if (direct) {
+        return direct;
+    }
+    // `execute_impl` reads a bare call by matching one of twelve regexes whose
+    // argument groups are `[^,]+`, so an argument that CONTAINS a comma is cut at
+    // the first one: `signal_czt_zoom([1, 0, 0, 0], 0, 1, 1, 4)` reported
+    // `unknown matrix: [1`, while the same call with an `x = ` in front of it
+    // worked, because the assignment path splits on brackets with
+    // `split_call_args`. Rather than teach twelve regexes and the several hundred
+    // handlers behind them about brackets, hand the line to the reading that
+    // already knows how to split it, under the same `_` the matrix-constructor
+    // fallback in `execute_impl` uses.
+    //
+    // This runs only after the direct reading has FAILED, so no line that works
+    // today changes its answer or its label; and when the retry fails too, the
+    // error reported is the first reading's, because that is the one that was
+    // about the line the user actually typed.
+    const std::string cmd = trim(line);
+    if (!bare_call_with_a_comma_inside_an_argument(cmd)) {
+        return direct;
+    }
+    const std::size_t history_len = state_.history.size();
+    auto retried = execute_impl("_ = " + cmd);
+    // The retry is an implementation detail. The session history records what the
+    // user typed, which the first attempt has already added.
+    if (state_.history.size() > history_len) {
+        state_.history.resize(history_len);
+    }
+    if (retried) {
+        return retried;
+    }
+    // Both readings failed. The first one's error is normally the one to report,
+    // because it is about the line as typed -- but not when it IS the truncation
+    // this wrapper exists for. `unknown matrix: [1` names the first half of a
+    // matrix literal, which is nothing the reader can act on, while the retry
+    // split the arguments correctly and got as far as judging them: for
+    // `signal_czt_zoom([1, 0, 0, 0], 0, 1, 0, 4)` the retry says `expected
+    // positive integer m`, which is the actual fault.
+    if (format_error(direct.error()).find("unknown matrix: [") != std::string::npos) {
+        return std::unexpected(retried.error());
+    }
+    return std::unexpected(direct.error());
+}
+
+Result<std::string> Interpreter::execute_impl(const std::string& line) {
     if (cancel_requested()) {
         return std::string{};
     }
@@ -13885,9 +13964,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(n_steps_checked.error());
             }
             const int n_steps = *n_steps_checked;
-            if (n_steps < 0) {
+            if (n_steps < 1) {
                 return std::unexpected(DomainError{
-                    "finance_trinomial_option", "expected non-negative integer n_steps"});
+                    "finance_trinomial_option", "expected positive integer n_steps"});
             }
             auto is_call_checked = checked_int_argument(fn, "is_call", is_call_d);
             if (!is_call_checked) {
@@ -14255,9 +14334,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(steps_checked.error());
             }
             const int steps = *steps_checked;
-            if (steps < 0) {
+            if (steps < 1) {
                 return std::unexpected(DomainError{
-                    "finance_american_option", "expected non-negative integer steps"});
+                    "finance_american_option", "expected positive integer steps"});
             }
             return format_scalar(
                        finance::american_option(S, K, T, r, sigma, call != 0, steps)) +
@@ -15367,9 +15446,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(steps_checked.error());
             }
             const int steps = *steps_checked;
-            if (steps < 0) {
+            if (steps < 1) {
                 return std::unexpected(
-                    DomainError{"finance_binomial_call", "expected non-negative integer steps"});
+                    DomainError{"finance_binomial_call", "expected positive integer steps"});
             }
             return format_scalar(finance::binomial_call(S, K, T, r, sigma, steps)) + "\n";
         }
@@ -15393,9 +15472,9 @@ Result<std::string> Interpreter::execute(const std::string& line) {
                 return std::unexpected(steps_checked.error());
             }
             const int steps = *steps_checked;
-            if (steps < 0) {
+            if (steps < 1) {
                 return std::unexpected(
-                    DomainError{"finance_binomial_put", "expected non-negative integer steps"});
+                    DomainError{"finance_binomial_put", "expected positive integer steps"});
             }
             return format_scalar(finance::binomial_put(S, K, T, r, sigma, steps)) + "\n";
         }

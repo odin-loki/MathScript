@@ -15,7 +15,7 @@ echo "Current: ${VERSION_LINE:-unknown}"
 echo
 echo "Required before tagging (see docs/RELEASE.md):"
 echo "  [ ] CI green on main (.github/workflows/ci.yml)"
-echo "  [ ] 873 CTest suites passing"
+echo "  [ ] Full CTest catalogue passing (374 suites with MS_BUILD_INTEGRATION=ON, 343 without)"
 echo "  [ ] Coverage >= 90% tag goal (CI gate is 80%; coverage-linux)"
 echo "  [ ] ASan + UBSan clean (sanitizer-linux)"
 echo "  [ ] fuzz-24h.yml: 86400 s x 7 targets, zero crashes"
