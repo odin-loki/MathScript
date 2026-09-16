@@ -24,12 +24,13 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
    (`scripts/check_test_names.py`) because 71 pairs collided during the grouping and 29 of them
    had different bodies: without that check the count would have stayed put while the tests
    silently stopped running.
-3. **Coverage** — CI gate **80%** (`coverage-linux`). Re-measured on this branch's head:
-   **91.5% lines** (84,496 of 92,302) and **97.9% functions** (6,000 of 6,126), on an instrumented
-   Debug build with `MS_BUILD_INTEGRATION=ON`, `MS_LINK_TESTS_SHARED=ON` and **374/374** CTest
-   suites passing. The **90%** tag goal is met, and `scripts/coverage_ratchet.py` passes against
-   the 2026-09-10 baseline on all three metrics — lines −0.10, functions −0.40, branches +0.80,
-   inside the 0.5-point tolerance the baseline file justifies from measurement.
+3. **Coverage** — CI gate **80%** (`coverage-linux`). Re-measured on `main` at `6eed6b43`
+   on 2026-09-16: **91.5% lines** (84,594 of 92,415) and **97.9% functions** (6,008 of 6,134),
+   on an instrumented Debug build with `MS_BUILD_INTEGRATION=ON`, `MS_LINK_TESTS_SHARED=ON`
+   and **374/374** CTest suites passing. The **90%** tag goal is met, and
+   `scripts/coverage_ratchet.py` passes against the 2026-09-10 baseline on all three
+   metrics — lines −0.10, functions −0.40, branches +0.70, inside the 0.5-point
+   tolerance the baseline file justifies from measurement.
 
    Function coverage is the one drifting in the wrong direction, and −0.40 is most of that
    slack. It is inside the gate, and it is worth watching rather than filing away.
@@ -58,9 +59,9 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
    between the two numbers is quoted here.
 
    Branch coverage is measured separately — see criterion 3a, and read it before quoting the 91.5%.
-3a. **Branch coverage** — **58.6%** (90,257 of 154,134 branches), over the same corrected
+3a. **Branch coverage** — **58.5%** (90,189 of 154,138 branches), over the same corrected
    denominator, re-measured with the rest. No CI gate is set for it yet; the ratchet does watch
-   it, and it has moved up 0.8 points since 2026-09-10.
+   it, and it has moved up 0.7 points since 2026-09-10.
 
    This is 34 points below line coverage, and it had never been measured. `coverage_report.sh` asked lcov for
    branch data under `lcov_branch_coverage`, which lcov 2.x renamed to `branch_coverage`; the old name is still
@@ -73,10 +74,17 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
    The gap is the point rather than an embarrassment. This tree's largest files are dispatch chains, and a
    dispatch chain reaches high line coverage with one branch of each test taken — which is exactly what the
    script's own header comment predicted and what nothing was able to confirm. **91.5% line coverage on this
-   codebase means considerably less than it sounds like**, and 58.6% is the number that says where the work is.
+   codebase means considerably less than it sounds like**, and 58.5% is the number that says where the work is.
 
 4. **ASan + UBSan** clean (`sanitizer-linux`; overflows and UB fail the job). Leak detection stays off (`detect_leaks=0`) for process-exit pool/AD graphs. The job builds with `MS_BUILD_INTEGRATION=ON` and `MS_LINK_TESTS_SHARED=ON`, so it carries the whole catalogue, and excludes three suites by name (`test_fuzz_stress`, `test_cuda_matmul`, `test_cuda_stub`). Last local run: **371/371 passing with zero sanitizer reports**. An earlier edition of this file said the sanitizer tree was configured `MS_BUILD_INTEGRATION=OFF` and carried the unit suites only; that has not been true since 2026-08-29.
-5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`). Last local run: real libFuzzer under Clang 18, 7 targets × 10 min seeded from the checked-in corpora = **353 193 095 executions, zero crashes**. The corpus-replay harness (7 targets × 5 seeds × 200 000 mutations = 7 000 000 inputs) is also clean, and the corpora are replayed on every build by the `replay_fuzz_*` CTest suites, so a regression is caught even where no libFuzzer runtime is installed.
+5. **Fuzz** — 24 h × 7 libFuzzer jobs, zero crashes (`fuzz-24h.yml`). Last completed local
+   run: real libFuzzer under Clang 18, 7 targets × 10 min seeded from the checked-in corpora =
+   **353 193 095 executions, zero crashes**. The corpus-replay harness (7 targets × 5 seeds ×
+   200 000 mutations = 7 000 000 inputs) is also clean, and the corpora are replayed on every
+   build by the `replay_fuzz_*` CTest suites, so a regression is caught even where no
+   libFuzzer runtime is installed. The 24 h marathon itself was started on 2026-09-16
+   (`scripts/fuzz_24h_local.sh` on the workstation, and `fuzz-24h.yml` dispatched); it is
+   not yet a result.
 
    Two ways to run the marathon itself. `scripts/fuzz_24h_dispatch.sh` sends it to Actions, one 2-core runner per target. `scripts/fuzz_24h_local.sh` runs all seven at once on a workstation and puts every spare core behind them (`MS_FUZZ_WORKERS` per target, defaulting to a split of the core count); it seeds from the checked-in corpora, writes new coverage back into them, holds the same 2048 MB RSS limit CI uses so an out-of-memory finding reproduces identically, and fails if any target leaves a `crash-`/`oom-`/`leak-`/`timeout-` artifact — including when libFuzzer's own exit code is 0, which happens when a worker rather than the parent finds the input.
 
@@ -98,42 +106,44 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
 ## What has been verified, and where
 
 A tag criterion is only worth what its last measurement is worth, so this table says
-when each one was last run and on what. **CI has not run on this branch since
-2026-09-11** (run 237, commit `02dbdd1`, green): `.github/workflows/ci.yml` fires on
-pushes to `main` and on pull requests targeting `main`, pull request #1 was closed
-without merging, and 12 commits have landed on the branch since. Everything below
-marked *local* was run on this branch's head on an Ubuntu 24.04 container with GCC
-13.3.0, Clang 18.1.3 and LLVM 18 — the same toolchain versions the CI jobs install.
+when each one was last run and on what. `main` at `6eed6b43` was measured on
+2026-09-16: Windows MSVC 2022/2026 on the workstation, and Linux in WSL Ubuntu
+24.04 with GCC 13.3.0, Clang 18 and LLVM 18 — the same toolchain versions the CI
+jobs install. GitHub Actions run [35079998777](https://github.com/odin-loki/MathScript/actions/runs/35079998777)
+on that commit was cancelled after plugin, JIT, fuzz-smoke and compliance
+succeeded; the Windows, Linux, coverage, sanitizer and benchmark jobs did not
+finish there. The local figures below are the ones that did.
 
 | Criterion | Job it mirrors | Last run | Result |
 |---|---|---|---|
-| 1. CI green on `main` | — | never | **The branch is not on `main`.** 178 commits ahead; nothing here has run in CI since 2026-09-11 |
-| 2. Full CTest | `build-test-linux` | local, this branch | **374/374**, Release GCC 13, `MS_BUILD_INTEGRATION=ON`, CUDA and AVX-512 off |
+| 1. CI green on `main` | — | 2026-09-16, run 35079998777 | **cancelled.** Plugin, JIT, fuzz-smoke and compliance succeeded; Windows, Linux, coverage, sanitizer and benchmark were cancelled |
+| 2. Full CTest | `build-test-linux`, `build-test-windows` | local, 2026-09-16 | **374/374** Release GCC 13 in WSL; **374/374** Release MSVC on Windows. `MS_BUILD_INTEGRATION=ON`, CUDA and AVX-512 off |
 | 2a. `-fno-exceptions` syntax gate | `build-test-linux` | local, this branch | the seven files the job names, plus `repl_engine.cpp`, `repl_engine_internal.cpp` and `finance.cpp` |
-| 3. Coverage | `coverage-linux` | local, this branch | **91.5% lines** (84,496 of 92,302), **97.9% functions**, **58.6% branches**, 374/374 suites on the instrumented tree; the ratchet passes on all three |
-| 4. ASan + UBSan | `sanitizer-linux` | local, this branch | **371/371 with zero sanitizer reports**, `MS_BUILD_INTEGRATION=ON`, `MS_LINK_TESTS_SHARED=ON`, `detect_leaks=0:halt_on_error=1`, the three CUDA/stress suites excluded as the job excludes them |
-| 5. Fuzz, 24 h × 7 | `fuzz-24h.yml` | **not run on this branch** | the smoke is clean — 7 targets × 4096 runs seeded from the checked-in corpora, no crash — and the marathon needs GitHub Actions |
+| 3. Coverage | `coverage-linux` | local, 2026-09-16 | **91.5% lines** (84,594 of 92,415), **97.9% functions** (6,008 of 6,134), **58.5% branches** (90,189 of 154,138), 374/374 suites on the instrumented tree; the ratchet passes on all three (lines −0.10, functions −0.40, branches +0.70 vs the 2026-09-10 baseline) |
+| 4. ASan + UBSan | `sanitizer-linux` | local, 2026-09-16 | **371/371 with zero sanitizer reports**, `MS_BUILD_INTEGRATION=ON`, `MS_LINK_TESTS_SHARED=ON`, `detect_leaks=0:halt_on_error=1`, the three CUDA/stress suites excluded as the job excludes them |
+| 5. Fuzz, 24 h × 7 | `fuzz-24h.yml` | started 2026-09-16 | smoke is clean (7 targets × 4096 runs, no crash). The 24 h marathon was started locally (`scripts/fuzz_24h_local.sh`) and dispatched to Actions the same evening; it has not finished |
 | 6. Unsafe surface | `build-test-linux` | local, this branch | **33 sites against a baseline of 33**, delta clean |
 | 6a. Vendor checksums | `build-test-linux` | local, this branch | **OK, 5 files** |
-| 7. Packaging | `build-test-linux` | local, this branch | install prefix and `mathscript-1.0.0-Linux.tar.gz`, **smoke OK** |
-| 8. Benchmarks | `benchmark-linux` | local, this branch (build and smoke only) | all **28** bench targets build clean and all 28 executables run (`scripts/bench_smoke.sh`). The **regression comparison was not run**: the baseline was taken on a GitHub-hosted runner, so comparing it against this container would measure the container. See criterion 8 above for why the gate is five entries wide |
-| 9. Compliance (plugin) | `plugin-linux` | local, this branch | **42/42**, Clang 18 + LLVM 18 |
-| 9a. Compliance (source) | `compliance` | local, this branch | SPDX **1806/1806**; SBOM current; matrix-call manifest current (**485 handlers**); generated dispatch tests current (**29 sources, 1,583 tests**); test names unique across **33** executables |
-| 10. JIT | `jit-linux` | local, this branch | **2/2**, Clang 18 + LLVM 18 |
-| 11. Documentation | — | local, this branch | this file's counts re-measured; see criterion 2 |
+| 7. Packaging | `build-test-linux`, `build-test-windows` | local, 2026-09-16 | Linux install prefix and `mathscript-1.0.0-Linux.tar.gz`, **smoke OK**. Windows install prefix and `mathscript-1.0.0-win64.zip`, **smoke OK**. NSIS/WiX skipped: tools not installed |
+| 8. Benchmarks | `benchmark-linux` | local, 2026-09-16 (build and smoke only) | all **28** bench targets build and run on Windows MSVC and on Linux GCC 13. The **regression comparison was not run**: the baseline was taken on a GitHub-hosted runner. See criterion 8 above for why the gate is five entries wide |
+| 9. Compliance (plugin) | `plugin-linux` | local, 2026-09-16 | **42/42**, Clang 18 + LLVM 18 |
+| 9a. Compliance (source) | `compliance` | local, 2026-09-16 | SPDX **1806/1806**; SBOM current; matrix-call manifest current (**485 handlers**); generated dispatch tests current (**29 sources, 1,583 tests**); test names unique across **33** executables |
+| 10. JIT | `jit-linux` | local, 2026-09-16 | **2/2**, Clang 18 + LLVM 18 |
+| 11. Documentation | — | local, 2026-09-16 | this file's counts re-measured; see criterion 2 |
 
-**Windows MSVC has not been built or tested on this branch at all.** It cannot be from
-here, and `build-test-windows` is the job that covers it — packaging with NSIS and WiX,
-`/bigobj` on the grouped integration binaries, and the MSVC `CMAKE_OBJECT_PATH_MAX`
-limit the target names were shortened for. A green Linux run says nothing about any of
-those.
+Windows MSVC on this commit needed two `M_PI` guards the Linux tree does not
+(`test_special_reference_values`, `test_signal_cheby2_orders`) and a `build.ps1`
+fix so `-Benchmark` finds the globbed `bench_*.cpp` targets. After those, the
+grouped integration binaries, `/bigobj`, and the ZIP package smoke are what this
+workstation can check. NSIS and WiX remain untested here.
 
 [`HANDOFF.md`](HANDOFF.md) is the companion to this table: what is left, what each item
 needs a real machine for, and the exact commands to run it.
 
-So the honest summary is that **every criterion that can be checked on Linux without
-GitHub Actions has been checked on this branch's head and passes**. What has not:
-CI on `main`, the 24-hour fuzz marathon, anything Windows, and the benchmark
+So the honest summary is that **every criterion that can be checked locally has
+been checked on this commit and passes**, including Windows. What has not:
+CI green on `main` (the run that would have said so was cancelled), the 24-hour
+fuzz marathon (started, not finished), NSIS/WiX packaging, and the benchmark
 regression comparison — which could run here but would be comparing two different
 machines, so it would produce a number rather than an answer.
 

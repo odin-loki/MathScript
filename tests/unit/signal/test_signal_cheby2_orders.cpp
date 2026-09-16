@@ -27,11 +27,15 @@
 //   the stopband stays under its target across the band
 //   the design is stable, so the impulse response decays
 
+#define _USE_MATH_DEFINES
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <complex>
 #include <vector>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #include "ms/signal/signal.hpp"
 

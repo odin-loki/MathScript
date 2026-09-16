@@ -6,6 +6,24 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 ## [Unreleased]
 
+### Windows MSVC, and the numbers from 2026-09-16
+
+The Windows Release tree on `main` at `6eed6b43` did not compile. Two new
+suites named `M_PI` without defining it, which MSVC does not, and
+`build.ps1 -Benchmark` still scanned `CMakeLists.txt` for `add_ms_bench(name)`
+after the benches became a glob of `bench_*.cpp`, so it threw before it ran
+any of them. With those two guards and the glob, MSVC built, **374/374** CTest
+suites passed, all **28** benchmark executables smoked, and
+`scripts/package_smoke.ps1` produced `mathscript-1.0.0-win64.zip`. NSIS and WiX
+were not installed.
+
+The Linux tag gates were re-run the same day on WSL Ubuntu 24.04 (GCC 13.3.0,
+Clang 18, LLVM 18) against that commit: Release **374/374**, coverage **91.5% /
+97.9% / 58.5%** with the ratchet inside tolerance, ASan+UBSan **371/371**,
+plugin **42/42**, JIT **2/2**, libFuzzer smoke on all seven targets, CBMC both
+harnesses. See [`docs/RELEASE.md`](docs/RELEASE.md). The 24-hour fuzz marathon
+was started that evening; it is not yet a result.
+
 ### Features completed
 
 Every entry that `docs/RELEASE_DECISIONS.md` listed as a deliberately-deferred

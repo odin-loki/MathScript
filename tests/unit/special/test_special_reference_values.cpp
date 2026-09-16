@@ -26,10 +26,14 @@
 // right one. These compare against closed forms written out here, which is the
 // one comparison that cannot be satisfied by a different function.
 
+#define _USE_MATH_DEFINES
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <limits>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 #include "ms/special/special.hpp"
 

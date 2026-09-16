@@ -122,13 +122,10 @@ if ($Benchmark) {
     $BenchDir = Join-Path $BuildDir "tests\performance"
     $CmakeLists = Join-Path $Root "tests\performance\CMakeLists.txt"
     $SmokeBenches = [System.Collections.Generic.List[string]]::new()
-    foreach ($line in Get-Content $CmakeLists) {
-        if ($line -match '^\s*add_ms_bench\s*\(\s*(\w+)') {
-            $SmokeBenches.Add($Matches[1])
-        }
-    }
+    Get-ChildItem (Join-Path $Root "tests\performance") -Recurse -Filter "bench_*.cpp" |
+        ForEach-Object { [void]$SmokeBenches.Add($_.BaseName) }
     if ($SmokeBenches.Count -eq 0) {
-        throw "No add_ms_bench targets found in $CmakeLists"
+        throw "No bench_*.cpp sources found under tests\performance"
     }
     $smokeSw = [System.Diagnostics.Stopwatch]::StartNew()
     foreach ($bench in $SmokeBenches) {
