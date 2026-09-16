@@ -16,7 +16,20 @@ target_compile_features(ms_simd PUBLIC cxx_std_23)
 # fault, which on a host where the OS has not enabled YMM state means detect_isa()
 # raises SIGILL instead of returning "no AVX here". That is the same defect the
 # XCR0 check exists to prevent, one level further down.
-if(MSVC)
+#
+# The branch order below asks about the TARGET, not the compiler. Testing
+# CMAKE_CXX_COMPILER_ID alone sent -mavx2 -mfma to every aarch64 build GCC
+# and Clang support -- Apple Silicon and ARM Linux, not only WebAssembly.
+if(EMSCRIPTEN)
+    # WebAssembly has one SIMD ISA and it is not x86's. -mavx2 is a hard
+    # error from emcc, which also refuses any -m<x86 isa> flag unless
+    # -msimd128 comes with it. xsimd maps onto wasm128 from this flag alone,
+    # and there is no CPUID path here to keep at baseline.
+    target_compile_options(ms_simd PRIVATE -msimd128)
+elseif(NOT MS_TARGET_X86)
+    # aarch64, arm, riscv, ppc: no x86 ISA flags at all. xsimd selects the
+    # target's own vector ISA (NEON and the rest) without a flag from here.
+elseif(MSVC)
     set_source_files_properties(vector_ops.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     set_source_files_properties(vector_ops.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")

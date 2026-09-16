@@ -3,6 +3,7 @@
 #include "ms/cpu/lapack.hpp"
 
 #include <cmath>
+#include <cstddef>
 
 namespace ms::cpu::lapack {
 

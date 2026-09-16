@@ -77,6 +77,20 @@ if(MS_BUILD_BENCHMARKS)
     FetchContent_MakeAvailable(benchmark)
 endif()
 
+# Is the TARGET x86? Not "is the compiler GCC-like" -- that is the mistake
+# this replaces, and it is what sent -mavx2 -mfma to every aarch64 build
+# GCC and Clang support, Apple Silicon and ARM Linux included, not just
+# WebAssembly. Emscripten is tested first because its toolchain file has
+# reported an x86 CMAKE_SYSTEM_PROCESSOR.
+if(EMSCRIPTEN)
+    set(MS_TARGET_X86 FALSE)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86|x86)$")
+    set(MS_TARGET_X86 TRUE)
+else()
+    set(MS_TARGET_X86 FALSE)
+endif()
+message(STATUS "MathScript: target is x86 = ${MS_TARGET_X86} (processor ${CMAKE_SYSTEM_PROCESSOR})")
+
 add_subdirectory(src)
 
 if(MS_BUILD_TESTS)

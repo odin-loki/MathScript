@@ -18,7 +18,7 @@ set(MS_RUNTIME_CPU_SOURCES
     cpu/lapack_dgesvd.cpp
 )
 
-if(MS_ENABLE_AVX512)
+if(MS_ENABLE_AVX512 AND MS_TARGET_X86)
     list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm.cpp cpu/avx512_sgemm.cpp)
 else()
     list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx512_dgemm_stub.cpp
@@ -52,7 +52,7 @@ target_compile_features(ms_runtime PUBLIC cxx_std_23)
 # before the runtime ISA check -- the dispatcher, and ms::simd::detect_isa itself --
 # stays at baseline, because a detection routine compiled with the instructions it
 # is meant to be deciding about can fault before it returns an answer.
-if(MS_ENABLE_AVX512)
+if(MS_ENABLE_AVX512 AND MS_TARGET_X86)
     if(MSVC)
         set_source_files_properties(cpu/avx512_dgemm.cpp cpu/avx512_sgemm.cpp
                                     PROPERTIES COMPILE_OPTIONS "/arch:AVX512")

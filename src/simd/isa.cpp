@@ -6,10 +6,12 @@
 #include <cstring>
 #include <string>
 
+#if MS_ISA_X86
 #if defined(_MSC_VER)
 #include <intrin.h>
-#elif defined(__GNUC__) || defined(__clang__)
+#else
 #include <cpuid.h>
+#endif
 #endif
 
 namespace ms::simd {
@@ -17,9 +19,9 @@ namespace ms::simd {
 namespace {
 
 void cpuid(int info[4], int leaf, int subleaf = 0) {
-#if defined(_MSC_VER)
+#if MS_ISA_X86 && defined(_MSC_VER)
     __cpuidex(info, leaf, subleaf);
-#elif defined(__GNUC__) || defined(__clang__)
+#elif MS_ISA_X86
     __cpuid_count(leaf, subleaf, info[0], info[1], info[2], info[3]);
 #else
     (void)leaf;
@@ -101,6 +103,11 @@ void apply_isa_ceiling(IsaFeatures& f, const char* level) noexcept {
 
 IsaFeatures detect_isa() {
     IsaFeatures f;
+#if !MS_ISA_X86
+    // Nothing to interrogate: the vector width is fixed at compile time.
+    f.wasm_simd128 = MS_ISA_WASM_SIMD != 0;
+    return f;
+#else
     int info[4] = {0, 0, 0, 0};
     cpuid(info, 0);
     const int max_leaf = info[0];
@@ -142,6 +149,7 @@ IsaFeatures detect_isa() {
         apply_isa_ceiling(f, level);
     }
     return f;
+#endif
 }
 
 std::string isa_summary(const IsaFeatures& features) {
@@ -163,6 +171,9 @@ std::string isa_summary(const IsaFeatures& features) {
     }
     if (features.sse2) {
         s += "SSE2 ";
+    }
+    if (features.wasm_simd128) {
+        s += "WASM SIMD128 ";
     }
     if (s.empty()) {
         return "scalar";
