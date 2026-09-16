@@ -128,6 +128,9 @@ here, and `build-test-windows` is the job that covers it — packaging with NSIS
 limit the target names were shortened for. A green Linux run says nothing about any of
 those.
 
+[`HANDOFF.md`](HANDOFF.md) is the companion to this table: what is left, what each item
+needs a real machine for, and the exact commands to run it.
+
 So the honest summary is that **every criterion that can be checked on Linux without
 GitHub Actions has been checked on this branch's head and passes**. What has not:
 CI on `main`, the 24-hour fuzz marathon, anything Windows, and the benchmark
