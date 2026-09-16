@@ -715,3 +715,24 @@ TEST(DiffGeoTorsion, CubicBezierPlanarVsTwistedRegions) {
     EXPECT_GT(std::abs(tau_twist), 1e-3);
     EXPECT_TRUE(std::isfinite(tau_twist));
 }
+
+// ---- Zero steps ----
+TEST(DiffgeoGeodesic, NoStepsIsTheInitialStateAndNothingIsDividedByZero) {
+    // `ds = s_end / n_steps` sat above the loop that uses it, so a zero step count
+    // divided by zero for a step size the loop never read. `parallel_transport`, in
+    // the same file, already returned before doing that; `geodesic` does now too.
+    const Coords x0{0.0, 0.0};
+    const Coords v0{1.0, 0.0};
+    const auto traj = geodesic(euclidean_2d(), x0, v0, 1.0, 0);
+    ASSERT_EQ(traj.size(), 1u);
+    ASSERT_EQ(traj[0].x.size(), 2u);
+    EXPECT_NEAR(traj[0].x[0], 0.0, 1e-12);
+    EXPECT_NEAR(traj[0].x[1], 0.0, 1e-12);
+    EXPECT_NEAR(traj[0].v[0], 1.0, 1e-12);
+
+    // And a flat-metric geodesic is a straight line, at any step count.
+    const auto walked = geodesic(euclidean_2d(), x0, v0, 1.0, 20);
+    ASSERT_EQ(walked.size(), 21u);
+    EXPECT_NEAR(walked.back().x[0], 1.0, 1e-9);
+    EXPECT_NEAR(walked.back().x[1], 0.0, 1e-12);
+}

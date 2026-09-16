@@ -1189,3 +1189,32 @@ TEST(QuantumQFT, OneQubitIsHadamardOnZero) {
     EXPECT_NEAR(std::abs(out[0]), 1.0 / std::sqrt(2.0), 1e-12);
     EXPECT_NEAR(std::abs(out[1]), 1.0 / std::sqrt(2.0), 1e-12);
 }
+
+// ---- Zero steps ----
+TEST(QuantumSchrodinger, NoStepsIsTheInitialStateAndNothingIsDividedByZero) {
+    // `dt = (t1 - t0) / n_steps` was computed before the loop that uses it, so a
+    // zero step count divided by zero and built an evolution operator out of an
+    // infinity. The loop then did not run, so the ANSWER was right -- the initial
+    // state, alone -- while the arithmetic that produced it was not. The trajectory
+    // is asserted here so that it stays right for the reason it is now right.
+    const DensityMatrix H{{{1.0, 0.0}, {0.0, 0.0}}, {{0.0, 0.0}, {-1.0, 0.0}}};
+    const Ket psi0 = ket_basis(2, 0);
+    const auto traj = schrodinger(H, psi0, 0.0, 1.0, 0);
+    ASSERT_EQ(traj.size(), 1u);
+    ASSERT_EQ(traj[0].size(), 2u);
+    EXPECT_NEAR(traj[0][0].real(), 1.0, 1e-12);
+    EXPECT_NEAR(traj[0][1].real(), 0.0, 1e-12);
+    for (const auto& amplitude : traj[0]) {
+        EXPECT_TRUE(std::isfinite(amplitude.real()));
+        EXPECT_TRUE(std::isfinite(amplitude.imag()));
+    }
+
+    // One step is the smallest evolution there is, and it keeps the norm.
+    const auto one = schrodinger(H, psi0, 0.0, 1.0, 1);
+    ASSERT_EQ(one.size(), 2u);
+    double norm = 0.0;
+    for (const auto& amplitude : one.back()) {
+        norm += std::norm(amplitude);
+    }
+    EXPECT_NEAR(norm, 1.0, 1e-9);
+}

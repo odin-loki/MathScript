@@ -894,6 +894,14 @@ std::vector<Ket> schrodinger(const DensityMatrix& H, const Ket& psi0,
     std::vector<Ket> trajectory;
     trajectory.reserve(n_steps + 1);
     trajectory.push_back(psi0);
+    // No steps is the initial state, and that is what this returned -- but only by
+    // accident: `dt` below is (t1 - t0)/0, the evolution operator was built from an
+    // infinity, and the loop that would have applied it did not run. The answer was
+    // right and the arithmetic was not. `parallel_transport` in src/diffgeo already
+    // returns here rather than computing a step size nobody uses.
+    if (n_steps < 1) {
+        return trajectory;
+    }
     Ket psi = psi0;
     double dt = (t1 - t0) / n_steps;
     auto U = time_evolution_operator(H, dt);

@@ -179,9 +179,16 @@ einstein_tensor(MetricFn g, const Coords& x, double h) {
 std::vector<GeodesicState>
 geodesic(MetricFn g, const Coords& x0, const Coords& v0,
          double s_end, int n_steps, double h) {
+    std::vector<GeodesicState> traj;
+    // Same shape as `parallel_transport` below, which already did this: no steps is the
+    // initial state, and computing `s_end / 0` to reach it -- an infinity the loop never
+    // uses -- is arithmetic nobody asked for.
+    if (n_steps < 1) {
+        traj.push_back({x0, v0});
+        return traj;
+    }
     int n = static_cast<int>(x0.size());
     double ds = s_end / n_steps;
-    std::vector<GeodesicState> traj;
     traj.reserve(static_cast<size_t>(n_steps) + 1);
     Coords x = x0, v = v0;
     Coords acc(n);
