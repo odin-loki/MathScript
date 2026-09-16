@@ -34,14 +34,10 @@ jobs:
 
       - name: Run extended fuzz sessions
         run: |
+          set -euo pipefail
           for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
             fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            CORPUS="tests/fuzz/corpus/${target}"
-            ARGS=(-max_total_time=900 -print_final_stats=1)
-            if [ -d "${CORPUS}" ]; then
-              ARGS+=(-corpus_dir="${CORPUS}")
-            fi
-            ./build-fuzz/tests/fuzz/${target} "${ARGS[@]}"
+            bash scripts/fuzz_session.sh build-fuzz "${target}" 900
           done
 
   fuzz-marathon:
@@ -73,12 +69,8 @@ jobs:
 
       - name: Run marathon fuzz sessions
         run: |
+          set -euo pipefail
           for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
             fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            CORPUS="tests/fuzz/corpus/${target}"
-            ARGS=(-max_total_time=3600 -print_final_stats=1)
-            if [ -d "${CORPUS}" ]; then
-              ARGS+=(-corpus_dir="${CORPUS}")
-            fi
-            ./build-fuzz-marathon/tests/fuzz/${target} "${ARGS[@]}"
+            bash scripts/fuzz_session.sh build-fuzz-marathon "${target}" 3600
           done

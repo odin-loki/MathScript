@@ -98,7 +98,14 @@ leaves a `crash-`/`oom-`/`leak-`/`timeout-` artifact — including when libFuzze
 exit code is 0, which happens when a worker rather than the parent finds the input.
 
 **Done when** all seven targets complete their full budget with no artifact. Commit any
-new corpus entries the run produces; they are the record of what was explored.
+new corpus entries the run produces; they are the record of what was explored — and there
+will now be some, which there were not before. The 2026-09-16 dispatch failed on two
+defects in the job rather than in the library: the workflows passed the corpus as
+`-corpus_dir=`, which is not a libFuzzer flag, so every Actions run started from an empty
+corpus and discarded what it found; and the RSS cap was being filled by AddressSanitizer's
+per-allocation stacks rather than by anything MathScript allocated. Both are fixed in
+`scripts/fuzz_session.sh`, which every fuzz job now calls — read its header before
+changing how any of them is invoked.
 
 **If it finds something:** the crashing input is in `artifacts/<target>/`. Reproduce with
 `./build-fuzz-24h/tests/fuzz/<target> artifacts/<target>/<file>`, fix it, add the input

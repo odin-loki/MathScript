@@ -2,6 +2,15 @@ name: Fuzz 24h
 
 on:
   workflow_dispatch:
+    inputs:
+      seconds:
+        description: >-
+          Budget per target, in seconds. The default is the 86400 the tag
+          criterion asks for; a shorter value rehearses the job itself, which is
+          worth doing after any change to how it is invoked -- the 2026-09-16 run
+          spent seven runner-hours proving that the corpus flag was a no-op.
+        required: false
+        default: "86400"
 
 jobs:
   fuzz-24h:
@@ -38,11 +47,18 @@ jobs:
       - name: Build fuzz target
         run: cmake --build build-fuzz-24h --target ${{ matrix.target }}
 
-      - name: Run 24h fuzz session
-        run: |
-          CORPUS="tests/fuzz/corpus/${{ matrix.target }}"
-          ARGS=(-max_total_time=86400 -print_final_stats=1)
-          if [ -d "${CORPUS}" ]; then
-            ARGS+=(-corpus_dir="${CORPUS}")
-          fi
-          ./build-fuzz-24h/tests/fuzz/${{ matrix.target }} "${ARGS[@]}"
+      # `scripts/fuzz_session.sh` carries the corpus handling, the chunking and
+      # the artifact check, and says at length why each is the way it is. It is
+      # the same script the CI smoke, both nightly sessions and the local
+      # marathon runner use: this job having its own copy of those fifteen lines
+      # is how three of the four came to be wrong.
+      - name: Run fuzz session
+        run: bash scripts/fuzz_session.sh build-fuzz-24h ${{ matrix.target }} "${{ inputs.seconds }}"
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: artifacts/
+          if-no-files-found: ignore

@@ -9,6 +9,7 @@
 #   scripts/fuzz_24h_local.sh                  # 24 h, cores split across targets
 #   MS_FUZZ_SECONDS=3600 scripts/fuzz_24h_local.sh    # a 1 h rehearsal
 #   MS_FUZZ_WORKERS=4 scripts/fuzz_24h_local.sh       # 4 workers per target
+#   MS_FUZZ_CHUNK_SECONDS=1800 scripts/fuzz_24h_local.sh   # longer chunks
 #   MS_FUZZ_BUILD_DIR=build-fuzz scripts/fuzz_24h_local.sh
 #
 # Findings land in tests/fuzz/corpus/<target>/ (new coverage) and in
@@ -18,6 +19,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${MS_FUZZ_BUILD_DIR:-${ROOT}/build-fuzz-24h}"
 SECONDS_PER_TARGET="${MS_FUZZ_SECONDS:-86400}"
+# The budget is spent in fresh processes of this length. See fuzz_session.sh for
+# why: the RSS limit bounds the whole process, and over a long session most of
+# that process is the fuzzer rather than the target.
+CHUNK_SECONDS="${MS_FUZZ_CHUNK_SECONDS:-900}"
 # Match the CI rss limit so an out-of-memory finding reproduces identically.
 RSS_LIMIT_MB="${MS_FUZZ_RSS_LIMIT_MB:-2048}"
 OUT_DIR="${MS_FUZZ_OUT_DIR:-${ROOT}/fuzz-runs/$(date -u +%Y%m%dT%H%M%SZ)}"
@@ -79,18 +84,18 @@ for target in "${TARGETS[@]}"; do
     corpus="${ROOT}/tests/fuzz/corpus/${target}"
     mkdir -p "${corpus}" "${OUT_DIR}/${target}"
 
-    # -artifact_prefix keeps each target's crashing inputs in its own directory.
-    # The corpus directory is passed positionally so libFuzzer both seeds from it
-    # and writes newly interesting inputs back into it.
+    # scripts/fuzz_session.sh carries the corpus handling, the chunking and the
+    # artifact check, and is the same script the four Actions jobs use. This
+    # script had the corpus right and the workflows did not, which is exactly the
+    # argument for there being one copy of it rather than five.
     (
-        cd "${OUT_DIR}/${target}"
-        "${bin}" \
-            -max_total_time="${SECONDS_PER_TARGET}" \
-            -rss_limit_mb="${RSS_LIMIT_MB}" \
-            -workers="${WORKERS}" -jobs="${WORKERS}" \
-            -print_final_stats=1 \
-            -artifact_prefix="${OUT_DIR}/${target}/" \
-            "${corpus}" > "${OUT_DIR}/${target}/run.log" 2>&1
+        MS_FUZZ_RSS_LIMIT_MB="${RSS_LIMIT_MB}" \
+        MS_FUZZ_ARTIFACTS="${OUT_DIR}/${target}" \
+            bash "${ROOT}/scripts/fuzz_session.sh" \
+                "${BUILD_DIR}" "${target}" \
+                "${SECONDS_PER_TARGET}" "${CHUNK_SECONDS}" \
+                -workers="${WORKERS}" -jobs="${WORKERS}" \
+                > "${OUT_DIR}/${target}/run.log" 2>&1
         echo "$?" > "${OUT_DIR}/${target}/exit_code"
     ) &
     pids+=("$!")
