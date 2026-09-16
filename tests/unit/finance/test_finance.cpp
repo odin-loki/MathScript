@@ -248,8 +248,10 @@ TEST(FinanceDigital, CallPutSum) {
     double S = 100, K = 100, T = 1.0, r = 0.05, sigma = 0.2, payout = 1.0;
     double c = digital_option(S, K, T, r, sigma, true, payout);
     double p = digital_option(S, K, T, r, sigma, false, payout);
-    // Both pay discounted payout in one scenario; sum ≈ discounted payout
-    EXPECT_NEAR(c + p, payout * std::exp(-r * T), 0.05);
+    // Not an approximation: the two prices are disc*N(d2) and disc*N(-d2), and
+    // N(x) + N(-x) is 1 by construction of the complementary error function, so
+    // the sum is the discounted payout to the last bit. The tolerance was 0.05.
+    EXPECT_NEAR(c + p, payout * std::exp(-r * T), 1e-12);
 }
 
 TEST(FinanceBlack76, CallMatchesSpotBS) {
@@ -1884,10 +1886,14 @@ TEST(FinanceHeston, PutCallParity) {
     double S = 100.0, K = 105.0, T = 1.0, r = 0.05;
     double v0 = 0.04, kappa = 1.5, theta = 0.04, sigma_v = 0.35, rho = -0.6;
     double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
-    // Put from complementary Heston probabilities: P = K*e^{-rT}*(1-P2) - S*(1-P1).
-    // Equivalently, model-independent put-call parity: P = C - S + K*e^{-rT}.
-    double p = c - S + K * std::exp(-r * T);
+    // This used to compute `p` from `c` and then assert that `c - p` equals the
+    // forward -- an identity of the two lines of arithmetic directly above it,
+    // true whatever heston_call returned, and never once a statement about the
+    // model. Call heston_put, which is the function that claims parity.
+    double p = heston_put(S, K, T, r, v0, kappa, theta, sigma_v, rho);
     EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-10);
+    EXPECT_GT(c, 0.0);
+    EXPECT_GT(p, 0.0);
 }
 
 TEST(FinanceHeston, InTheMoneyExceedsOutOfTheMoney) {
@@ -1918,10 +1924,17 @@ TEST(FinanceHeston, ExpiredReturnsIntrinsic) {
 
 TEST(FinanceHeston, RouahReferenceCall) {
     // Rouah (2013) Ch.1 example: 6-month ATM call, q=0, price ~ 6.8678.
+    //
+    // The tolerance was 0.1, which is four orders of magnitude looser than the
+    // quadrature: re-integrating the same characteristic function with composite
+    // Simpson at 40,000 and 60,000 nodes gives 6.867668871664094, and this
+    // implementation's fixed trapezoid lands within 3e-5 of it. A swap of the
+    // two Heston b coefficients moves this point by 0.0077 -- thirteen times
+    // inside the old band, and outside the one below.
     double S = 100.0, K = 100.0, T = 0.5, r = 0.03;
     double v0 = 0.05, kappa = 5.0, theta = 0.05, sigma_v = 0.5, rho = -0.8;
     double c = heston_call(S, K, T, r, v0, kappa, theta, sigma_v, rho);
-    EXPECT_NEAR(c, 6.8678, 0.1);
+    EXPECT_NEAR(c, 6.867668871664094, 1e-3);
 }
 
 TEST(FinanceHeston, StandardParametersReasonableMagnitude) {
@@ -2029,7 +2042,11 @@ TEST(FinanceSabr, BetaOneNearLognormalWhenVolOfVolZero) {
     double alpha = 0.22, beta = 1.0, rho = 0.0, nu = 0.0;
     double sabr = sabr_call(S, K, T, r, alpha, beta, rho, nu);
     double bs = bs_call(S, K, T, r, alpha);
-    EXPECT_NEAR(sabr, bs, 0.5);
+    // Not "near": with beta = 1 and nu = 0 every correction term in Hagan's
+    // expansion carries a factor of (1 - beta) or of nu, so the implied vol is
+    // alpha exactly and the two prices are the same arithmetic. The old
+    // tolerance of 0.5 was fifteen orders of magnitude of slack on an identity.
+    EXPECT_NEAR(sabr, bs, 1e-12);
 }
 
 TEST(FinanceSabr, ZeroVolOfVolLimit) {
@@ -2054,8 +2071,13 @@ TEST(FinanceSabr, PutCallParity) {
     double S = 100.0, K = 105.0, T = 1.0, r = 0.05;
     double alpha = 0.20, beta = 0.5, rho = -0.3, nu = 0.40;
     double c = sabr_call(S, K, T, r, alpha, beta, rho, nu);
-    double p = c - S + K * std::exp(-r * T);
+    // As in FinanceHeston.PutCallParity, `p` used to be computed from `c` here,
+    // which made the assertion an identity of the line above it rather than a
+    // statement about sabr_put. Call the function whose parity is in question.
+    double p = sabr_put(S, K, T, r, alpha, beta, rho, nu);
     EXPECT_NEAR(c - p, S - K * std::exp(-r * T), 1e-10);
+    EXPECT_GT(c, 0.0);
+    EXPECT_GT(p, 0.0);
 }
 
 TEST(FinanceSabr, StandardParametersReasonableMagnitude) {

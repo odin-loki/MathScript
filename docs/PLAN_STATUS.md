@@ -646,7 +646,7 @@ timeouts.**
 | 8.1 Baseline on real hardware | Done | 91.2% lines, 98.3% functions, 57.3% raw branches, 71.8% over decision lines |
 | 8.2 `src/plugin` tests | Partial | `unsafe_registry` is tested (273 lines of test against 282 of audit bookkeeping that had never run); the Clang AST rules themselves are covered only by the plugin smoke job |
 | 8.3 REPL golden corpus | Done | `tests/repl_corpus/*.ms` with committed stdout and stderr, run through the real `mathscriptc` |
-| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-two files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5%, control 79.2% -> 100.0% (three defects fixed, including a gain margin that was +inf for every plant ever passed in) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
+| 8.4 Mutation testing | Started | `scripts/mutation_test.py`; twenty-three files measured -- compress 80.0%, combo 92.9%, numthy 80.0%, expr 62.5%, latex_parse 70.6%, notation_latex 79.2%, linalg/iterative 54.5%, crypto 85.0%, image 38.1% (detectors, aimed: 52.2% -> 73.9%), lapack_dbdsqr 63.6% -> 95.5%, linalg/decompositions 50.0% -> 62.5%, notation_mathml 66.7% -> 77.8%, ml 65.2% -> 91.3%, graph 66.7% -> 79.2%, symbolic 59.1% (nine survivors located, one closed), special 62.5% -> 79.2%, signal 83.3% -> 95.8%, stats 78.3% -> 87.0%, bignum 77.3% -> 81.8%, geo 37.5% -> 50.0% raw (12 of 12 reachable; half the sample is unreachable table padding), optim 36.4% -> 45.5%, control 79.2% -> 100.0% (three defects fixed, including a gain margin that was +inf for every plant ever passed in), finance 58.3% -> 87.5% (no defect; six tests that asserted an identity of the line above them) -- every survivor either killed by a new test, deleted as uncalled, classified by measurement, or recorded as remaining |
 | 8.5 Property-based testing | Done | seeded invariants over the linalg/FFT core, and the §11 printer round-trips |
 | 8.6 Differential tests vs reference BLAS/LAPACK | Partial | the dgemm kernels have them; the wider LAPACK surface does not |
 | 8.7 Remaining gaps | Open | |
@@ -1612,6 +1612,118 @@ the `margin()` one, and it is not about control theory. **A library function can
 documented output that has never once been computed, and a full-coverage suite will not
 say so, because "is finite or is infinite" passes either way.** The mutation harness found
 it by asking for the only input that could tell two comparisons apart.
+
+Twenty-third file: `src/finance/finance.cpp`, 24 mutants at seed 103 against `test_finance`.
+**14 of 24 viable killed, 58.3%** on a file carrying 286 tests. Not one survivor was a wrong
+line of code. Every one was a line that nothing asserted, and they sort into two groups that
+between them say what goes wrong with a suite built out of shapes.
+
+#### Four models, and three of their test blocks assert an identity of the line above
+
+The survivor that made this visible was `finance.cpp:87`,
+`const double b = (j == 1) ? (kappa - rho * sigma_v) : kappa;`, with the `1` becoming a `2`.
+Heston's two integrands differ in two parameters, `u` and `b`. The mutant swaps `b`
+between them and leaves `u` alone, so neither integrand is either of the two the model
+calls for, and every Heston price in the library changes -- measured independently, by
+**0.148** at one benchmark point and by **1.448** at another. Nothing failed. Why not:
+
+- `FinanceHeston.PutCallParity` computed `double p = c - S + K * std::exp(-r * T);` and then
+  asserted that `c - p` equals `S - K*exp(-r*T)`. That is an identity of the line directly
+  above it, true whatever `heston_call` returned. **It never called `heston_put`.**
+  `FinanceSabr.PutCallParity` was the same test with different names.
+- `FinanceHeston.ZeroVolLimitMatchesBlackScholes` drives `sigma_v = 1e-14`, which the
+  implementation **special-cases before the integrator runs**. The quadrature the test appears
+  to be about never executes.
+- `FinanceHeston.RouahReferenceCall` is the one test that knew a number, and its tolerance
+  was **0.1** against a published 6.8678. The mutant moves that point by 0.0077 -- thirteen
+  times inside the band.
+- `FinanceSabr.BetaOneNearLognormalWhenVolOfVolZero` allowed **0.5** on an identity: with
+  beta = 1 and nu = 0 every correction term in Hagan's expansion carries a factor of
+  (1 - beta) or of nu, so the implied vol is alpha exactly and the two prices are the same
+  arithmetic. Fifteen orders of magnitude of slack.
+- `FinanceDigital.CallPutSum` allowed **0.05** on `N(d2) + N(-d2) == 1`.
+- `FinanceBarrier.KnockInOutParityCall` and `...Put` do state the right contract -- but for
+  one combination each, and the two chosen combinations (down call with K >= B, up put with
+  K < B) select the **same pair of expressions**, `c.C` and `c.A - c.C`. Two of sixteen.
+
+All of those are tightened, the two parity tests now call the function whose parity is in
+question, and the Heston and SABR prices are pinned against references computed from an
+independent quadrature -- composite Simpson at 40,000 and 60,000 nodes over [1e-8, 200] and
+[1e-8, 300], agreeing to 1e-13. This implementation's fixed trapezoid lands within 2.8e-5.
+
+Measuring the zero-vol-of-vol limit properly turned up something worth recording. The
+approach to Black-Scholes is quadratic in `sigma_v`, and it stops being quadratic where the
+integrator's own error takes over. Against `bs_call(100,100,1,0.05,0.2)`:
+
+| sigma_v | gap | ratio to the previous | quadratic prediction |
+|---|---|---|---|
+| 0.3 | 1.75966e-1 | | |
+| 0.1 | 2.09842e-2 | 8.39 | 9.00 |
+| 0.03 | 1.91543e-3 | 10.96 | 11.11 |
+| 0.01 | 2.24702e-4 | 8.52 | 9.00 |
+| 0.003 | 3.22350e-5 | 6.97 | 11.11 |
+| 0.001 | 1.53133e-5 | 2.10 | 9.00 |
+
+Below about 0.003 the trapezoid's discretisation error, ~1.5e-5 at these parameters, exceeds
+the model's remaining `sigma_v^2` term and the sequence flattens. That floor belongs to this
+integrator, not to Heston, and the test says so rather than choosing a tolerance that hides it.
+
+#### Seven survivors are in branches no admissible input in the suite could reach
+
+Finding the input for each is the rest of the work. Six of the seven are killed by it; the
+seventh, Merton's expansion budget, turns out to be equivalent and is settled below.
+
+| Survivor | Why nothing reached it |
+|---|---|
+| `:546` `bond_ytm`'s post-loop midpoint | The bisection returns as soon as the price matches to 1e-10, which it always did. Reaching the fallback needs a bond quoted at a scale where no double-precision yield reproduces the price that closely: at a face value of 1e7 the spacing between representable prices is about 2e-9, too coarse for the loop's exit and comfortably inside the fallback's 1e-6. **Killed.** |
+| `:525` `bond_ytm`'s expansion ceiling | The upper end of the bracket doubles up to sixty times, and the failure it reports carries `p_hi - price`. Sixty doublings reach a yield of 1.15e18, so exhausting them needs a bond whose cash flows survive it -- a face value near 1e20. **Killed**, by reading the `ConvergenceFail` payload, which nothing had ever read. |
+| `:336` Merton's bracket expansion | `f(V) = call(V, D) - E` is negative at `V = E`, because a call is worth less than its underlying; and at `V = E + D` the call is worth at least `(E+D) - D*e^(-rT)`, which is at least `E` **for any non-negative rate**. The bracket always straddles, so the expansion loop was dead code by a put-call inequality. A negative rate breaks it: 1 in equity against 100 of debt at -2% over forty years takes three expansions, and that case is a test now. The mutant on this line reduces the budget from twenty doublings to nineteen, which is a different question -- see below. |
+| `:1465` and `:1475`, the Monte-Carlo preamble | Six comparisons on one guard line and one `(n_paths + 1) / 2`, and every test passed values far from all of them -- so moving a bound from 0 to 1 turned a one-path run, a one-step run, or a unit spot, strike, horizon or volatility into a silent zero, and dropping the `+ 1` quietly priced 62 of 64 paths while still dividing by 64. **Killed**, with assertions that are not statistical: a fixed-strike lookback call's path maximum is at least the spot, so its payoff is at least `S - K` whatever the draws are. |
+| `:1192` the down-and-in call with a strike below the barrier | Sixteen expressions, two of them ever compared to anything. **Killed** by the contract that covers all sixteen at once and is exact: `in + out == vanilla` in every one of the eight combinations. |
+| `:571` `irr`'s `\|f\| < 1e-10` | A stream with a single non-zero entry has no internal rate -- the NPV is that entry at every rate and the derivative is identically zero -- so the function must report failure. Written as `<=` it accepts an NPV of exactly the tolerance and hands back the GUESS as a rate. **Killed** by asserting that no single-entry stream has a rate. |
+
+#### Three survive, and each is settled rather than left open
+
+- **`:225`, one `||` in SABR's fifteen-term validation chain.** Making
+  `!isfinite(T) || !isfinite(r)` into `&&` lets a non-finite `T` through the guard --
+  and the price still comes back NaN, because the arithmetic that follows produces one:
+  `F = S*exp(r*T)` is NaN, Hagan's expansion is NaN, and the `!isfinite(sigma)` check at
+  the end catches it. Checked under `-fsanitize=address,undefined` for all three `||` on
+  the line: clean, same answer. The guard is a fast path, not the thing that makes the
+  contract true. **Equivalent by measurement.** The contract itself was almost entirely
+  unasserted, though -- two of fifteen positions -- and every position is asserted now.
+- **`:336`, Merton's expansion budget.** `for (int expand = 0; ...)` becoming
+  `expand = 1` leaves nineteen doublings instead of twenty. Measured: the deepest single
+  solve in the regime the tests drive uses **three**, and sweeping the horizon across the
+  whole transition (T from 40 to 41 years at -50%, 201 samples) finds **no** value where
+  nineteen and twenty give different answers -- by the time twenty would be needed, the
+  root has moved past what twenty can reach and both sides fail. **Equivalent by
+  measurement.**
+- **`:841`, `for (int j = 0; j < n; ++j)` in `solve_cov_system`.** As `<=` it writes
+  `K[i][n]`, which the next line overwrites anyway, and READS `cov_matrix[i*n + n]` --
+  out of bounds on the last row. Invisible to a plain build; compiled alone under
+  `-fsanitize=address,undefined` and driven over the same entry points the suite drives,
+  it is a **heap-buffer-overflow that AddressSanitizer catches**, which is to say the
+  sanitizer job already covers it and the ordinary job never could.
+
+Score after: **58.3% -> 87.5%**, with the three above classified rather than counted
+as gaps: 21 of 21 mutants that a non-sanitised build can distinguish.
+
+#### The harness now prints a column
+
+Three times across the twenty-three files, a survivor was reproduced by hand and the
+hand-written mutant turned out to be a different one: `a && b` beside `c && d`, the two
+`n - 1` in one constructor call, two `>` in one condition. A line and an operator are not
+an address, and crediting a kill to a mutant that was never run is the one way this
+exercise can lie to itself. `scripts/mutation_test.py` now reports each survivor as
+`file:line:column` and prints the line twice -- as written, and as the mutant has it --
+so there is nothing left to infer:
+
+```
+  src/finance/finance.cpp:1192:59  arithmetic  '+' -> '-'
+      was: return strike_ge_barrier ? c.C : c.A - c.B + c.D;
+      now: return strike_ge_barrier ? c.C : c.A - c.B - c.D;
+```
 
 ### What the corpus found on its first run
 

@@ -1219,6 +1219,67 @@ provably equivalent — extra columns appended to a minor are never read.
 the same line, `peak_value >= yf`, is equivalent by proof — when the peak equals the final
 value the assignment computes the zero the field already held.
 
+### §8.4 — four models, and three of their test blocks assert an identity of the line above
+
+`src/finance/finance.cpp` scored **58.3%** (14 of 24 viable) on a file carrying 286 tests.
+Not one survivor was a wrong line of code; every one was a line that nothing asserted.
+
+The survivor that made the pattern visible was
+`const double b = (j == 1) ? (kappa - rho*sigma_v) : kappa;` with the `1` becoming a `2`.
+Heston's two integrands differ in two parameters, `u` and `b`. The mutant swaps `b`
+between them and leaves `u` alone, so neither integrand is either of the two the model
+calls for, and every Heston price changes — measured independently, by **0.148** at one
+benchmark point and **1.448** at another. Nothing failed, and the reasons are worth listing:
+
+- `FinanceHeston.PutCallParity` computed `p = c - S + K*exp(-rT)` and then asserted that
+  `c - p` equals `S - K*exp(-rT)`. That is an identity of the line directly above it, true
+  whatever `heston_call` returned. **It never called `heston_put`.** `FinanceSabr.PutCallParity`
+  was the same test with different names. Both now call the function whose parity is claimed.
+- `FinanceHeston.ZeroVolLimitMatchesBlackScholes` drives `sigma_v = 1e-14`, which the
+  implementation **special-cases before the integrator runs** — the quadrature the test
+  appears to be about never executes.
+- `FinanceHeston.RouahReferenceCall` knew a number and allowed **0.1** around it; the mutant
+  moves that point by 0.0077.
+- `FinanceSabr.BetaOneNearLognormalWhenVolOfVolZero` allowed **0.5** on an exact identity
+  (beta = 1, nu = 0 collapses Hagan's expansion to alpha itself).
+- `FinanceDigital.CallPutSum` allowed **0.05** on `N(d2) + N(-d2) == 1`.
+- `FinanceBarrier.KnockInOutParityCall`/`...Put` state the right contract, but for one
+  combination each — and the two chosen combinations select the **same pair of expressions**
+  out of the sixteen `barrier_option` can return.
+
+Heston and SABR prices are now pinned against references from an independent quadrature
+(composite Simpson at 40,000 and 60,000 nodes, agreeing to 1e-13), the Greeks are asserted as
+values rather than signs, and in-out parity is asserted for all eight barrier combinations.
+
+Measuring the zero-vol-of-vol limit properly turned up a real boundary: the approach to
+Black-Scholes is quadratic in `sigma_v` (gap ratios 8.39, 10.96 and 8.52 against theoretical
+9.00, 11.11 and 9.00) **until about `sigma_v = 0.003`**, below which the fixed trapezoid's own
+error — ~1.5e-5 at these parameters — exceeds the model's remaining term and the sequence
+flattens. The test records the floor instead of choosing a tolerance that hides it.
+
+Five more survivors were branches no admissible input in the suite could reach, and each is
+now reached: `bond_ytm`'s post-loop midpoint (needs a bond quoted at a scale where no
+double-precision yield matches the price to 1e-10) and its sixty-doubling ceiling (needs cash
+flows that survive a yield of 1.15e18); Merton's bracket expansion, which a put-call
+inequality makes **dead code for every non-negative rate**; the Monte-Carlo guard line and its
+antithetic `(n_paths + 1) / 2`; and the down-and-in call with a strike below the barrier.
+
+Three survivors are settled rather than closed. One `||` in SABR's validation chain is a
+fast path only — remove a disjunct and the arithmetic still returns NaN, verified clean
+under `-fsanitize=address,undefined`. Merton's expansion budget of twenty doublings is
+never within seventeen of being exhausted in any reachable regime, and sweeping the
+horizon across the whole transition finds no value where nineteen and twenty differ. The
+third, an off-by-one read in `solve_cov_system`, is a real **heap-buffer-overflow that
+AddressSanitizer catches** and a plain build cannot: the sanitizer job already covers it.
+
+`scripts/mutation_test.py` now reports each survivor as `file:line:column` and prints the
+line both as written and as the mutant has it. Three times across twenty-three files a
+survivor was hand-reproduced as a *different* mutant on the same line — `a && b` beside
+`c && d`, two `n - 1` in one constructor call, two `>` in one condition — and crediting a
+kill to a mutant that never ran is the one way this exercise can lie to itself.
+
+**58.3% → 87.5%** (21 of 21 mutants a non-sanitised build can distinguish).
+
 ### §11.2 — reading the subset back
 
 `parse_latex` and `parse_latex_matrix` accept everything the printer can emit, under

@@ -34,6 +34,12 @@ true` turned into `return false`. They are applied one at a time, and the file i
 restored after each, including on Ctrl-C: a harness that leaves a mutated tree behind
 is worse than no harness.
 
+Each survivor is reported as `file:line:column`, with the line printed twice -- as it
+is written and as the mutant has it. A line and an operator are not an address: `a && b`
+beside `c && d`, or the two `n - 1` in one constructor call, are different mutants that
+print identically, and hand-reproducing the wrong one credits a kill to a mutant that
+was never run. The column says which, and the `now:` line says exactly what to write.
+
 Sites are found after blanking comments and string literals, so a `<` inside a message
 is not a site. Some sites are still nonsense in context (`<` inside a template argument
 list, `+` in a fold expression); those come back as not viable, which costs a compile
@@ -66,6 +72,24 @@ class Mutation:
         start = text.rfind("\n", 0, self.offset) + 1
         end = text.find("\n", self.offset)
         return text[start:end if end != -1 else len(text)].strip()
+
+    def column_of(self, text: str) -> int:
+        """0-based column, so a line carrying several sites can be told apart.
+
+        A line and an operator are not an address. `a && b` beside `c && d`, or
+        the two `n - 1` in one constructor call, are different mutants that print
+        identically, and reproducing the wrong one by hand is how a kill gets
+        credited to a mutant that was never run.
+        """
+        return self.offset - (text.rfind("\n", 0, self.offset) + 1)
+
+    def mutated_line(self, text: str) -> str:
+        """The line as the mutant has it -- the thing to reproduce, not infer."""
+        mutated = (text[:self.offset] + self.replacement
+                   + text[self.offset + self.length:])
+        start = mutated.rfind("\n", 0, self.offset) + 1
+        end = mutated.find("\n", self.offset)
+        return mutated[start:end if end != -1 else len(mutated)].strip()
 
 
 def blank_strings_and_comments(text: str) -> str:
@@ -359,10 +383,12 @@ def main() -> int:
     if survivors:
         print("\nSURVIVORS -- each is a line that ran and that nothing asserted:")
         for mutation in survivors:
-            print(f"  {source}:{mutation.line_of(original)}  {mutation.kind}  "
+            print(f"  {source}:{mutation.line_of(original)}"
+                  f":{mutation.column_of(original)}  {mutation.kind}  "
                   f"{original[mutation.offset:mutation.offset + mutation.length]!r}"
                   f" -> {mutation.replacement!r}")
-            print(f"      {mutation.context(original)}")
+            print(f"      was: {mutation.context(original)}")
+            print(f"      now: {mutation.mutated_line(original)}")
     return 0
 
 
