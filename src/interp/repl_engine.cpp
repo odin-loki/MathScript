@@ -539,6 +539,21 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
             return std::unexpected(
                 DomainError{fn, "expected positive integer input_dim and memory_dim"});
         }
+        // `CellMemory` allocates two `Matrix<double>(memory_dim, 1)` in its member
+        // initialisers, so memory_dim is a DIMENSION and not a parameter. Without a
+        // bound, `cellmemory_new(cm, 2, 4555555555555555, [...])` asked new[] for
+        // 36 petabytes and ended the process -- found by the 24-hour fuzz marathon
+        // once its corpus was actually being loaded, and the same shape as the
+        // fourteen size arguments bounded earlier. input_dim allocates nothing here,
+        // but `cellmemory_step` requires an input matrix of exactly that many rows,
+        // which above this cap is a matrix the REPL cannot hold: a value that can
+        // never be used is a mistake worth reporting at the point it is made.
+        std::size_t memory_rows = 0;
+        std::size_t input_rows = 0;
+        if (!repl_dims_allowed(memory_dim_d, 1.0, memory_rows, input_rows) ||
+            !repl_dims_allowed(input_dim_d, 1.0, input_rows, memory_rows)) {
+            return std::unexpected(DomainError{fn, kReplMatrixTooLarge});
+        }
         std::vector<double> time_scales{1.0};
         if (call_args->size() == 4) {
             auto parsed_scales =
@@ -723,6 +738,19 @@ std::optional<Result<std::string>> Interpreter::try_session_object_command(
                 fn,
                 "expected positive integer input_dim, output_dim, n_experts and positive "
                 "learning_rate"});
+        }
+        // `DifModel` allocates `weights_(output_dim, input_dim)`, so what has to fit is
+        // the PRODUCT -- two independent caps would admit 1000 by 1000. Unbounded,
+        // either dimension at 4.5e15 asked new[] for 72 petabytes. Same finding as
+        // `cellmemory_new` above, same marathon.
+        std::size_t weight_rows = 0;
+        std::size_t weight_cols = 0;
+        if (!repl_dims_allowed(output_dim_d, input_dim_d, weight_rows, weight_cols)) {
+            return std::unexpected(DomainError{fn, kReplMatrixTooLarge});
+        }
+        auto n_experts_checked = checked_int_argument(fn, "n_experts", n_experts_d);
+        if (!n_experts_checked) {
+            return std::unexpected(n_experts_checked.error());
         }
         cypha::DifConfig cfg;
         cfg.input_dim = static_cast<size_t>(input_dim_d);

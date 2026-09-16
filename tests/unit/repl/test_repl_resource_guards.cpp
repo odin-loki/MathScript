@@ -236,3 +236,34 @@ TEST(ReplResourceGuards, TreeEnsembleSizesAreBounded) {
     EXPECT_TRUE(interp.execute("ok = ml_random_forest_fit(V4, Y4, 4, 2)").has_value());
     EXPECT_TRUE(interp.execute("ok2 = ml_isolation_forest_fit(V4, 4, 2, 42)").has_value());
 }
+
+TEST(ReplResourceGuards, SessionObjectDimensionsAreBounded) {
+    // Found by the 24-hour fuzz marathon, and only once its corpus was actually
+    // being loaded: `cellmemory_new(cm, 2, 4555555555555555, [0.1,31, 107])`
+    // asked `new[]` for 36 petabytes and ended the process. Both constructors
+    // checked that their dimensions were positive integers and stopped there.
+    //
+    // `CellMemory` allocates two `Matrix<double>(memory_dim, 1)`; `DifModel`
+    // allocates `weights_(output_dim, input_dim)`, so what has to fit there is
+    // the PRODUCT -- 1000 by 1000 is a million elements and is refused, which
+    // two independent caps of 262144 would have let through.
+    Interpreter interp;
+
+    for (const char* cmd : {"cellmemory_new(a, 2, 4555555555555555, [0.1, 31, 107])",
+                            "cellmemory_new(b, 4555555555555555, 2, [1])",
+                            "cellmemory_new(c, 2, 1e18)",
+                            "difmodel_new(d, 4555555555555555, 2, 4, 0.1)",
+                            "difmodel_new(e, 2, 4555555555555555, 4, 0.1)",
+                            "difmodel_new(f, 1000, 1000, 4, 0.1)",
+                            "difmodel_new(g, 2, 2, 1e18, 0.1)"}) {
+        EXPECT_FALSE(interp.execute(cmd).has_value()) << cmd;
+    }
+
+    // The sizes anybody would actually ask for still work, and the object that
+    // comes back remembers what it was given.
+    ASSERT_TRUE(interp.execute("cellmemory_new(ok, 2, 8, [1])").has_value());
+    EXPECT_TRUE(interp.execute("difmodel_new(okd, 3, 2, 4, 0.1)").has_value());
+    const auto dim = interp.execute("cellmemory_memory_dim(ok)");
+    ASSERT_TRUE(dim.has_value());
+    EXPECT_NE(dim->find('8'), std::string::npos) << *dim;
+}
