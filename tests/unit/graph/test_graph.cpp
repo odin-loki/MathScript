@@ -2574,3 +2574,40 @@ TEST(GraphColoring, PathIsTwoColourable) {
             EXPECT_NE(colors[v], colors[u]);
     EXPECT_EQ(chromatic_number_approx(G), 2);
 }
+
+// A graph with no vertices. Three of these walked off the end of a vector sized by
+// n_vertices() because they start at vertex 0 without asking whether there is one:
+// `mst_prim` writes `key[start]`, `euler_circuit` pushes 0 and reads `idx[0]`,
+// `hamiltonian_path` writes `visited[0]`. The REPL reaches all three, and the nightly
+// fuzz session found the first of them in 94 seconds with `graph_mst_prim([])` -- an
+// empty matrix literal is a graph with no vertices.
+//
+// Each of these three assertions kills its own guard: remove any one of the three
+// `n <= 0` checks and this test segfaults rather than failing.
+TEST(Graph, AnEmptyGraphHasNoVertexZero) {
+    const Graph empty(0);
+    ASSERT_EQ(empty.n_vertices(), 0);
+
+    EXPECT_TRUE(mst_prim(empty, 0).empty());
+    EXPECT_TRUE(euler_circuit(empty).empty());
+    const auto path = hamiltonian_path(empty);
+    ASSERT_TRUE(path.has_value());
+    EXPECT_TRUE(path->empty());
+
+    // `start` is an index too, and nothing was checking it either.
+    Graph triangle(3);
+    triangle.add_edge(0, 1, 1.0);
+    triangle.add_edge(1, 2, 2.0);
+    triangle.add_edge(0, 2, 4.0);
+    EXPECT_TRUE(mst_prim(triangle, 3).empty());
+    EXPECT_TRUE(mst_prim(triangle, -1).empty());
+
+    // And a start that is in range still builds the tree: 0-1 at 1 and 1-2 at 2, not
+    // the 4 across the top. A guard that returned {} for everything would pass every
+    // line above.
+    const auto mst = mst_prim(triangle, 0);
+    ASSERT_EQ(mst.size(), 2u);
+    double total = 0.0;
+    for (const auto& e : mst) total += e.weight;
+    EXPECT_DOUBLE_EQ(total, 3.0);
+}

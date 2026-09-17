@@ -706,6 +706,16 @@ std::vector<Edge> mst_kruskal(const Graph& G) {
 
 std::vector<Edge> mst_prim(const Graph& G, int start) {
     int n = G.n_vertices();
+    // `key[start] = 0.0` below took both the graph and the index on trust. A fuzz
+    // session found the first half of that from the REPL with `graph_mst_prim([])`:
+    // an empty matrix literal is a graph with no vertices, `key` is then empty, and
+    // the write segfaults. The index half is reachable by any caller in C++.
+    //
+    // An empty graph has an empty spanning forest, so `{}` is the answer rather than
+    // a refusal. For an out-of-range `start` it is the only answer available -- this
+    // returns a vector, not a `Result`, and `{}` is what the rest of this file already
+    // uses for "there is nothing to return".
+    if (n <= 0 || start < 0 || start >= n) return {};
     std::vector<double> key(n, INF);
     std::vector<int> parent(n, -1);
     std::vector<bool> in_mst(n, false);
@@ -2682,6 +2692,10 @@ std::vector<double> adjacency_spectrum(const Graph& G) {
 
 std::vector<int> euler_circuit(const Graph& G) {
     int n = G.n_vertices();
+    // Hierholzer starts at vertex 0, and on an empty graph there is not one: `stk.push(0)`
+    // followed by `idx[0]` reads past the end. Same family as `mst_prim` above, same
+    // answer -- a graph with no vertices has no circuit to walk.
+    if (n <= 0) return {};
     // Check if Euler circuit exists
     for (int v = 0; v < n; ++v)
         if (G.neighbors(v).size() % 2 != 0) return {};
@@ -2785,6 +2799,11 @@ EulerianResult eulerian_path(const Graph& G) {
 
 Result<std::vector<int>> hamiltonian_path(const Graph& G) {
     int n = G.n_vertices();
+    // `visited[0] = true` on a graph with no vertex 0. The backtracking below defines
+    // success as `path.size() == n`, which an empty path already satisfies when n is 0,
+    // so the empty path is the consistent answer rather than the "no Hamiltonian path"
+    // error -- that error means the search finished and found nothing.
+    if (n <= 0) return std::vector<int>{};
     std::vector<int> path;
     std::vector<bool> visited(n, false);
     path.push_back(0); visited[0] = true;
