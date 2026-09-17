@@ -1173,7 +1173,12 @@ std::vector<uint8_t> hmac_sha256(std::span<const uint8_t> key,
     if (key.size() > block_size) {
         auto kh = sha256(key);
         std::memcpy(k.data(), kh.data(), kh.size());
-    } else {
+    } else if (!key.empty()) {
+        // `memcpy` is undefined when either pointer is null, INCLUDING for a length of
+        // zero, and `std::span<const uint8_t>{}.data()` is null. An empty HMAC key is a
+        // legitimate thing to pass -- RFC 2104 allows it -- so the call has to be
+        // skipped rather than the key refused. `k` is already zero-initialised, which
+        // is exactly what zero-padding an empty key produces.
         std::memcpy(k.data(), key.data(), key.size());
     }
 
@@ -1204,7 +1209,12 @@ std::vector<uint8_t> hmac_sha512(std::span<const uint8_t> key,
     if (key.size() > block_size) {
         auto kh = sha512(key);
         std::memcpy(k.data(), kh.data(), kh.size());
-    } else {
+    } else if (!key.empty()) {
+        // `memcpy` is undefined when either pointer is null, INCLUDING for a length of
+        // zero, and `std::span<const uint8_t>{}.data()` is null. An empty HMAC key is a
+        // legitimate thing to pass -- RFC 2104 allows it -- so the call has to be
+        // skipped rather than the key refused. `k` is already zero-initialised, which
+        // is exactly what zero-padding an empty key produces.
         std::memcpy(k.data(), key.data(), key.size());
     }
 

@@ -323,7 +323,15 @@ Ket grover_search(int n_qubits, const std::vector<int>& marked_indices, int n_it
 }
 
 int grover_optimal_iterations(int n_qubits, int n_marked) {
-    if (n_qubits <= 0 || n_marked <= 0) return 0;
+    // `1 << n_qubits` is undefined once the exponent reaches the width of `int`, and
+    // this took `n_qubits` on trust. The REPL's malformed sweep reaches it at 10000000:
+    //
+    //     runtime error: shift exponent 10000000 is too large for 32-bit type 'int'
+    //
+    // 30 is the last exponent that leaves a positive `int`, and 2^30 amplitudes is
+    // 8 GB of state vector, so the bound refuses nothing that could have been run.
+    // Returning 0 is what this function already does for an input it cannot answer for.
+    if (n_qubits <= 0 || n_qubits > 30 || n_marked <= 0) return 0;
     const int N = 1 << n_qubits;
     if (n_marked >= N) return 0;
     const double ratio = static_cast<double>(N) / static_cast<double>(n_marked);
