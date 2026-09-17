@@ -571,3 +571,43 @@ TEST(ReplResourceGuards, FloatToIntegerConversionsAreBoundedBeforeTheCast) {
     EXPECT_TRUE(interp.execute("signal_downsample([1;2;3;4], 2)").has_value());
     EXPECT_TRUE(interp.execute("signal_median_filter([1;5;2;8;3], 3)").has_value());
 }
+
+TEST(ReplResourceGuards, GriaEntropyBinsAreBoundedByTheHistogramTheyAllocate) {
+    // Found by the REPL-only fuzz session in 57 seconds:
+    //
+    //     gria_entropy([,22,3], 66666666666666664)
+    //     AddressSanitizer: requested allocation size 0x766c7d748355540
+    //       #8 ms::gria::entropy(...)  gria.cpp:31
+    //
+    // `bins` is the LENGTH of the histogram `gria::entropy` allocates. It was checked
+    // for sign and integrality -- which 6.7e16 passes, being a positive integer -- and
+    // then cast to `size_t` and handed to `std::vector<double>(bins)`.
+    //
+    // Same family as `axiom_evolve` and `cellmemory_new`: a size argument reaching an
+    // allocation with only its sign checked. `gria_entropy` is a special case inside
+    // `execute_impl`, which is why the registry sweeps went past it.
+    Interpreter interp;
+
+    // First, and cheap: just past the cap. With the bound reverted this allocates
+    // 2.4 MB and SUCCEEDS, so the mutant fails here in microseconds rather than
+    // asking the allocator for 5e17 doubles.
+    const auto over = interp.execute("gria_entropy([1,2,3], 300000)");
+    ASSERT_FALSE(over.has_value()) << over.value_or("");
+    ASSERT_NE(ms::format_error(over.error()).find("is too large"), std::string::npos)
+        << ms::format_error(over.error());
+
+    const auto huge = interp.execute("gria_entropy([,22,3], 66666666666666664)");
+    EXPECT_FALSE(huge.has_value()) << huge.value_or("");
+
+    // The boundary is inclusive, and the entropy is still the entropy: three distinct
+    // values in three occupied bins is log2(3), whatever the bin count above them.
+    const auto at_cap = interp.execute("gria_entropy([1,2,3], 262144)");
+    ASSERT_TRUE(at_cap.has_value()) << ms::format_error(at_cap.error());
+    EXPECT_NE(at_cap->find("1.58496"), std::string::npos) << *at_cap;
+
+    // The documented example and the default both still answer.
+    const auto four = interp.execute("gria_entropy([1,2,2,3,3,3], 4)");
+    ASSERT_TRUE(four.has_value());
+    EXPECT_NE(four->find("1.459148"), std::string::npos) << *four;
+    EXPECT_TRUE(interp.execute("gria_entropy([1,2,2,3,3,3])").has_value());
+}

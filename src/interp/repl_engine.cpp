@@ -13452,6 +13452,25 @@ Result<std::string> Interpreter::execute_impl(const std::string& line) {
                         return std::unexpected(
                             DomainError{fn, "expected positive integer bins"});
                     }
+                    // `bins` is the LENGTH of the histogram `gria::entropy` allocates, and
+                    // it was checked for sign and integrality and then cast. A fuzz session
+                    // found it in 57 seconds:
+                    //
+                    //     gria_entropy([,22,3], 66666666666666664)
+                    //     AddressSanitizer: requested allocation size 0x766c7d748355540
+                    //       #8 ms::gria::entropy(...)  gria.cpp:31
+                    //
+                    // The bound is the same 262144 every other allocation the REPL makes
+                    // answers to. A histogram wants fewer bins than it has samples, and a
+                    // sample vector here cannot exceed that number either, so this refuses
+                    // nothing a histogram could have been built from.
+                    if (bins_d > static_cast<double>(kMaxReplMatrixElems)) {
+                        return std::unexpected(DomainError{
+                            fn, "bins " + describe_count(bins_d) +
+                                    " is too large; the histogram is that many doubles, so "
+                                    "it is bounded at " +
+                                    describe_count(static_cast<double>(kMaxReplMatrixElems))});
+                    }
                     bins = static_cast<size_t>(bins_d);
                 }
                 return format_scalar(gria::entropy(*data, bins)) + "\n";
