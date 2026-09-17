@@ -5,11 +5,29 @@ on:
     - cron: "0 4 * * 0"
   workflow_dispatch:
 
+# Both jobs fan out over the seven targets instead of looping over them in one
+# runner. The extended job could not finish as written: seven sequential 900s
+# sessions is 105 minutes, it built all seven targets first (10-15 minutes), and
+# `timeout-minutes` was 120. The budget per target and the ceiling on the job
+# were set independently and nobody multiplied. A matrix makes the two
+# independent again -- one build and one session per runner -- and turns 105
+# minutes of wall-clock into 15.
 jobs:
   fuzz-extended:
-    name: libFuzzer extended (Linux Clang)
+    name: libFuzzer extended (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_special_fns
+          - fuzz_matrix_ops
+          - fuzz_repl_input
+          - fuzz_sym_parser
+          - fuzz_poly_ops
+          - fuzz_bignum
+          - fuzz_mpi_message
     env:
       MS_CI_LINUX_FLAGS: >-
         -DMS_BUILD_TESTS=ON
@@ -26,25 +44,38 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-fuzz -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
 
-      - name: Build fuzz targets
-        run: >
-          cmake --build build-fuzz --target
-          fuzz_special_fns fuzz_matrix_ops fuzz_repl_input
-          fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message
+      - name: Build fuzz target
+        run: cmake --build build-fuzz --target ${{ matrix.target }}
 
-      - name: Run extended fuzz sessions
-        run: |
-          set -euo pipefail
-          for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
-            fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            bash scripts/fuzz_session.sh build-fuzz "${target}" 900
-          done
+      - name: Run extended fuzz session
+        run: bash scripts/fuzz_session.sh build-fuzz ${{ matrix.target }} 900
+
+      # Without this the crashing input dies with the runner and all that is
+      # left is the base64 in the log.
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-extended-artifacts-${{ matrix.target }}
+          path: artifacts/
+          if-no-files-found: ignore
 
   fuzz-marathon:
-    name: libFuzzer marathon (manual dispatch)
+    name: libFuzzer marathon (${{ matrix.target }})
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 480
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_special_fns
+          - fuzz_matrix_ops
+          - fuzz_repl_input
+          - fuzz_sym_parser
+          - fuzz_poly_ops
+          - fuzz_bignum
+          - fuzz_mpi_message
     env:
       MS_CI_LINUX_FLAGS: >-
         -DMS_BUILD_TESTS=ON
@@ -61,16 +92,16 @@ jobs:
       - name: Configure
         run: cmake -S . -B build-fuzz-marathon -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
 
-      - name: Build fuzz targets
-        run: >
-          cmake --build build-fuzz-marathon --target
-          fuzz_special_fns fuzz_matrix_ops fuzz_repl_input
-          fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message
+      - name: Build fuzz target
+        run: cmake --build build-fuzz-marathon --target ${{ matrix.target }}
 
-      - name: Run marathon fuzz sessions
-        run: |
-          set -euo pipefail
-          for target in fuzz_special_fns fuzz_matrix_ops fuzz_repl_input \
-            fuzz_sym_parser fuzz_poly_ops fuzz_bignum fuzz_mpi_message; do
-            bash scripts/fuzz_session.sh build-fuzz-marathon "${target}" 3600
-          done
+      - name: Run marathon fuzz session
+        run: bash scripts/fuzz_session.sh build-fuzz-marathon ${{ matrix.target }} 3600
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-marathon-artifacts-${{ matrix.target }}
+          path: artifacts/
+          if-no-files-found: ignore
