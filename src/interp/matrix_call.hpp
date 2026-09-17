@@ -152,6 +152,40 @@ inline Result<std::uint64_t> checked_u64_argument(const std::string& fn, const c
     return static_cast<std::uint64_t>(value);
 }
 
+/// 2^63, exactly representable as a double and one past the last value an `int64_t`
+/// holds. A double is convertible to `int64_t` exactly when it is `>= -2^63` and `<` this.
+constexpr double kTwoPow63 = 9223372036854775808.0;
+
+/// The largest double that is also an `int64_t`. Doubles are spaced 2^10 apart up here,
+/// so it is 2^63 - 1024 and not 2^63 - 1, which rounds straight back to 2^63. The low end
+/// needs no such adjustment: -2^63 is exactly representable and is the minimum.
+constexpr double kMaxI64AsDouble = 9223372036854774784.0;
+constexpr double kMinI64AsDouble = -9223372036854775808.0;
+static_assert(kMaxI64AsDouble < kTwoPow63);
+
+/// An integer argument the command takes as an `int64_t`, signed.
+///
+/// The same undefined conversion as the two above, at a range wide enough that it looks
+/// unreachable and is not. `numthy_convergents` took its continued-fraction coefficients
+/// through a `static_cast<int64_t>` guarded only by `std::floor(entry) != entry`, so a
+/// 39-digit coefficient converted to whatever the hardware left behind and was reported
+/// as the first convergent. The recurrence underneath it is careful -- `numthy::convergents`
+/// uses `checked_mul` and `checked_add` and stops when they overflow -- which is exactly
+/// why the bad value survived to be printed rather than being caught downstream.
+inline Result<std::int64_t> checked_i64_argument(const std::string& fn, const char* what,
+                                                 double value) {
+    if (!std::isfinite(value) || value != std::floor(value)) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected an integer ") + what});
+    }
+    if (value < kMinI64AsDouble || value > kMaxI64AsDouble) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(std::abs(value)) +
+                    " does not fit in 64 bits"});
+    }
+    return static_cast<std::int64_t>(value);
+}
+
 /// The largest `unsigned`, exact as a double. Also the ceiling for anything stored as a
 /// 32-bit half of a wider value.
 constexpr double kMaxU32AsDouble = 4294967295.0;

@@ -8107,7 +8107,13 @@ Result<std::vector<int64_t>> matrix_to_int64_coeff_vector(const Matrix<double>& 
             return std::unexpected(
                 DomainError{fn, "expected integer continued-fraction coefficients"});
         }
-        out.push_back(static_cast<int64_t>(entry));
+        // The int64 member of the same family: `static_cast<int64_t>` of a double past
+        // `int64_t`'s range is undefined, and the only guard above is the fraction test.
+        auto checked = checked_i64_argument(fn, "coefficient", entry);
+        if (!checked) {
+            return std::unexpected(checked.error());
+        }
+        out.push_back(*checked);
     }
     return out;
 }

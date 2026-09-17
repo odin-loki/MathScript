@@ -387,3 +387,36 @@ TEST(ReplResourceGuards, IntegerVectorEntriesAreBoundedToIntRange) {
     ASSERT_TRUE(rank.has_value());
     EXPECT_NE(rank->find("4"), std::string::npos) << *rank;
 }
+
+TEST(ReplResourceGuards, ContinuedFractionCoefficientsMustFitInInt64) {
+    // The int64 member of the same family, and the one that looks unreachable
+    // because the range is so wide. `matrix_to_int64_coeff_vector` guarded only
+    // `std::floor(entry) != entry` and then wrote `static_cast<int64_t>(entry)`,
+    // which is undefined for a double past 2^63.
+    //
+    // What makes this one worth a test of its own is that the code underneath is
+    // careful: `numthy::convergents` runs its recurrence through `checked_mul`
+    // and `checked_add` and stops the moment either overflows. So the bad value
+    // was never going to be caught downstream -- it was the FIRST convergent,
+    // h_0 = cf[0], reported before the recurrence starts.
+    Interpreter interp;
+
+    const auto bad = interp.execute(
+        "numthy_convergents([155555555555555555555555555555555555555; 7])");
+    ASSERT_FALSE(bad.has_value());
+    EXPECT_NE(ms::format_error(bad.error()).find("does not fit in 64 bits"), std::string::npos)
+        << ms::format_error(bad.error());
+
+    // 2^63 itself is one past the end and has to go; 2^62 is an ordinary value.
+    EXPECT_FALSE(interp.execute("numthy_convergents([9223372036854775808; 7])").has_value());
+    EXPECT_TRUE(interp.execute("numthy_convergents([4611686018427387904; 7])").has_value());
+
+    // And the coefficients anybody would actually write still give the answer.
+    // [3; 7; 15; 1] is the start of pi's continued fraction, so the convergents
+    // are 3/1, 22/7, 333/106, 355/113.
+    const auto pi = interp.execute("numthy_convergents([3; 7; 15; 1])");
+    ASSERT_TRUE(pi.has_value());
+    for (const char* expected : {"22", "7", "333", "106", "355", "113"}) {
+        EXPECT_NE(pi->find(expected), std::string::npos) << expected << " in:\n" << *pi;
+    }
+}
