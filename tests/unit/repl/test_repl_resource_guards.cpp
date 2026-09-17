@@ -459,3 +459,45 @@ TEST(ReplResourceGuards, DiscreteLogIsBoundedByItsBabyStepTable) {
     ASSERT_TRUE(back.has_value());
     EXPECT_NE(back->find("5"), std::string::npos) << *back;
 }
+
+TEST(ReplResourceGuards, AxiomEvolveIsBoundedByPopulationTimesGenerations) {
+    // The marathon's second finding. A 34-digit population_size went through
+    // `static_cast<size_t>`, which has nothing to convert at 8.16e33, and reached
+    // `population_.resize` in `Axiom::Axiom`:
+    //
+    //     terminate called after throwing an instance of 'std::length_error'
+    //       what():  vector::_M_default_append
+    //
+    // `axiom_evolve` is neither a matrix call nor a session-object constructor -- it
+    // is a special case inside `execute_assignment` -- which is why the sweeps that
+    // found the other fourteen went past it.
+    //
+    // The two arguments MULTIPLY: one random tree per individual at construction,
+    // then the whole population once per generation. So this is a `WorkBudget` rather
+    // than two independent caps, and the assertion below that matters most is the
+    // second one -- a population of 100,000 is refused not on its own account but
+    // because the DEFAULT 25 generations no longer fit beside it.
+    Interpreter interp;
+    ASSERT_TRUE(interp.execute("D = [0, 1, 0; 1, 0, 1]").has_value());
+
+    // First, and deliberately: with the budget reverted this one SUCCEEDS in about
+    // half a second, so the mutant fails here and returns rather than going on to
+    // the 34-digit case, which would abort the test binary instead.
+    const auto product = interp.execute("p = axiom_evolve(D, 100000)");
+    ASSERT_FALSE(product.has_value());
+    ASSERT_NE(ms::format_error(product.error()).find("max_generations"), std::string::npos)
+        << ms::format_error(product.error());
+
+    const auto huge = interp.execute("q = axiom_evolve(D, 8155555555555555555555555555555550)");
+    ASSERT_FALSE(huge.has_value());
+    EXPECT_NE(ms::format_error(huge.error()).find("population_size"), std::string::npos)
+        << ms::format_error(huge.error());
+
+    // The defaults and the sizes anyone would write are untouched, and the command
+    // still answers rather than merely declining to crash.
+    const auto plain = interp.execute("a = axiom_evolve(D)");
+    ASSERT_TRUE(plain.has_value()) << ms::format_error(plain.error());
+    EXPECT_TRUE(interp.execute("b = axiom_evolve(D, 20, 25)").has_value());
+    EXPECT_TRUE(interp.execute("c = axiom_evolve(D, 1000, 100)").has_value());
+    EXPECT_GT(interp.state().scalars.count("a"), 0u);
+}

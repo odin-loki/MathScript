@@ -7210,26 +7210,53 @@ Result<std::string> Interpreter::execute_assignment(const std::string& cmd) {
                     if (!data) {
                         return std::unexpected(data.error());
                     }
-                    size_t population_size = 20;
-                    size_t max_generations = 25;
+                    // Both of these were checked for being positive integers and then
+                    // converted with `static_cast<size_t>`, which for a double past
+                    // `size_t`'s range has nothing to convert. A fuzz marathon reached
+                    // `population_.resize` in `Axiom::Axiom` with a 34-digit
+                    // population_size and `std::length_error` escaped a library built
+                    // with `-fno-exceptions`:
+                    //
+                    //   axiom_evolve([0, 1, 0, ], 8155555555555555555555555555555550)
+                    //   terminate called after throwing an instance of 'std::length_error'
+                    //     what():  vector::_M_default_append
+                    //
+                    // They also MULTIPLY, which is why this is a `WorkBudget` and not two
+                    // independent caps: the constructor builds one random tree per
+                    // individual and `evolve` runs the population once per generation.
+                    // Measured at 5.8 us per individual -- 1,000 in 13 ms, 10,000 in 67 ms,
+                    // 100,000 in 580 ms, 300,000 in 1.74 s -- so the four seconds in
+                    // `kMaxReplSimulationWorkNanos` buys about 690,000 individual-generations
+                    // between them. The defaults are charged too, at 20 x 25 = 500 of it;
+                    // taking the population from the budget first and then finding the
+                    // default 25 generations no longer fits is the answer, not an oversight.
+                    double pop_d = 20.0;
+                    double gen_d = 25.0;
                     if (call_args->size() >= 2) {
-                        double pop_d = 0.0;
                         if (!parse_number(trim_copy(call_args->at(1)), pop_d) || pop_d < 1.0 ||
                             std::floor(pop_d) != pop_d) {
                             return std::unexpected(DomainError{
                                 "axiom_evolve", "expected positive integer population_size"});
                         }
-                        population_size = static_cast<size_t>(pop_d);
                     }
                     if (call_args->size() == 3) {
-                        double gen_d = 0.0;
                         if (!parse_number(trim_copy(call_args->at(2)), gen_d) || gen_d < 1.0 ||
                             std::floor(gen_d) != gen_d) {
                             return std::unexpected(DomainError{
                                 "axiom_evolve", "expected positive integer max_generations"});
                         }
-                        max_generations = static_cast<size_t>(gen_d);
                     }
+                    WorkBudget budget("axiom_evolve", 5800.0, kMaxReplSimulationWorkNanos);
+                    auto pop_checked = budget.take("population_size", pop_d);
+                    if (!pop_checked) {
+                        return std::unexpected(pop_checked.error());
+                    }
+                    auto gen_checked = budget.take("max_generations", gen_d);
+                    if (!gen_checked) {
+                        return std::unexpected(gen_checked.error());
+                    }
+                    const auto population_size = static_cast<size_t>(*pop_checked);
+                    const auto max_generations = static_cast<size_t>(*gen_checked);
                     auto value = eval_axiom_evolve_call(*data, population_size, max_generations);
                     if (!value) {
                         return std::unexpected(value.error());
