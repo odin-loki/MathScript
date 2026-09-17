@@ -334,9 +334,21 @@ jobs:
       - name: Build
         run: cmake --build build-sanitizer
 
+      # UBSAN_OPTIONS is here because the job is called "AddressSanitizer + UBSan"
+      # and only the first half of that could fail. UBSan's default is to print a
+      # diagnostic and CARRY ON RETURNING 0, so every undefined-behaviour finding
+      # this job made went into the log and the job went green over the top of it.
+      # ASAN_OPTIONS does not cover it -- the two runtimes read separate variables,
+      # and `halt_on_error=1` in the one above had no effect on the other.
+      #
+      # Measured before turning it on, because a gate that arrives red teaches
+      # people to ignore it: the whole suite, all 371 tests under this exact
+      # configuration, reports zero `runtime error:` lines. The tree is clean now
+      # and this is what keeps it that way.
       - name: Test
         env:
           ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
         run: >
           ctest --test-dir build-sanitizer --output-on-failure
           -E "test_fuzz_stress|test_cuda_matmul|test_cuda_stub"

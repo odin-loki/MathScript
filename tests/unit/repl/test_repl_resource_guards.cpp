@@ -312,10 +312,12 @@ TEST(ReplResourceGuards, TensorRankVectorsAreBoundedToIntRange) {
           // either, so the command is still refused and the only difference is
           // that the refusal came from undefined behaviour. UBSan sees it --
           // "signed integer overflow: 99999980000001 * 9999999 cannot be
-          // represented in type 'long int'" -- and by default prints and returns
-          // 0, so the sanitizer job does not fail on it either. So this line pins
-          // the behaviour and nothing pins the bound; it is here because the
-          // behaviour is worth pinning, not because it is a regression guard.
+          // represented in type 'long int'" -- and UBSan's default is to print and
+          // return 0, so the sanitizer job went green over the top of it. This line
+          // pins the behaviour; what pins the BOUND is
+          // `UBSAN_OPTIONS: halt_on_error=1` on the sanitizer job in
+          // .github/workflows/ci.yml, which is what makes that diagnostic a
+          // failure. Delete the bound and this test fails there, not here.
           "tensorops_decompose_tt(h4, [1, 2; 3, 4], [9999999, 9999999, 9999999], 1e-9)"}) {
         EXPECT_FALSE(interp.execute(cmd).has_value()) << cmd;
     }
