@@ -11,6 +11,15 @@ on:
           spent seven runner-hours proving that the corpus flag was a no-op.
         required: false
         default: "86400"
+      targets:
+        description: >-
+          JSON array of the targets to run. The default is all seven. Narrowing it to
+          one -- ["fuzz_repl_input"] -- is how a single target gets a long budget
+          without spending seven runners on it, which matters because that target is
+          the one still finding things.
+        required: false
+        default: >-
+          ["fuzz_special_fns","fuzz_matrix_ops","fuzz_repl_input","fuzz_sym_parser","fuzz_poly_ops","fuzz_bignum","fuzz_mpi_message"]
 
 jobs:
   fuzz-24h:
@@ -20,14 +29,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - fuzz_special_fns
-          - fuzz_matrix_ops
-          - fuzz_repl_input
-          - fuzz_sym_parser
-          - fuzz_poly_ops
-          - fuzz_bignum
-          - fuzz_mpi_message
+        target: ${{ fromJSON(inputs.targets) }}
     env:
       MS_CI_LINUX_FLAGS: >-
         -DMS_BUILD_TESTS=ON
