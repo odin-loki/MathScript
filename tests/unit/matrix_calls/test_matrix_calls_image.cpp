@@ -331,3 +331,108 @@ TEST(MatrixCallBadOperandAt_image, radon_arg1) {
 TEST(MatrixCallBadOperandAt_image, watershed_arg1) {
     expect_bad_operand_at("watershed", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_image, adapthisteq_empty) {
+    expect_degenerate_operand_survives("adapthisteq", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, bilateral_empty) {
+    expect_degenerate_operand_survives("bilateral", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, boxfilter_empty) {
+    expect_degenerate_operand_survives("boxfilter", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, canny_empty) {
+    expect_degenerate_operand_survives("canny", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, histeq_empty) {
+    expect_degenerate_operand_survives("histeq", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, laplacian_empty) {
+    expect_degenerate_operand_survives("laplacian", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, prewitt_empty) {
+    expect_degenerate_operand_survives("prewitt", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, radon_empty) {
+    expect_degenerate_operand_survives("radon", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, rgb2gray_empty) {
+    expect_degenerate_operand_survives("rgb2gray", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, rgb2hsv_empty) {
+    expect_degenerate_operand_survives("rgb2hsv", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, roberts_empty) {
+    expect_degenerate_operand_survives("roberts", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, scharr_empty) {
+    expect_degenerate_operand_survives("scharr", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, sharpen_empty) {
+    expect_degenerate_operand_survives("sharpen", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, shi_tomasi_empty) {
+    expect_degenerate_operand_survives("shi_tomasi", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, slic_empty) {
+    expect_degenerate_operand_survives("slic", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, sobel_empty) {
+    expect_degenerate_operand_survives("sobel", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, sobel_x_empty) {
+    expect_degenerate_operand_survives("sobel_x", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, sobel_y_empty) {
+    expect_degenerate_operand_survives("sobel_y", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, threshold_binary_empty) {
+    expect_degenerate_operand_survives("threshold_binary", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, threshold_otsu_empty) {
+    expect_degenerate_operand_survives("threshold_otsu", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_image, watershed_empty) {
+    expect_degenerate_operand_survives("watershed", 2,
+                                       {0, 1}, "[]");
+}

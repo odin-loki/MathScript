@@ -287,3 +287,88 @@ TEST(MatrixCallBadOperandAt_stats, stats_multiple_regression_arg1) {
 TEST(MatrixCallBadOperandAt_stats, stats_wilcoxon_signed_rank_arg1) {
     expect_bad_operand_at("stats_wilcoxon_signed_rank", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_stats, stats_arfit_empty) {
+    expect_degenerate_operand_survives("stats_arfit", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_bartlett_empty) {
+    expect_degenerate_operand_survives("stats_bartlett", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_bootstrap_ci_empty) {
+    expect_degenerate_operand_survives("stats_bootstrap_ci", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_fligner_empty) {
+    expect_degenerate_operand_survives("stats_fligner", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_friedman_empty) {
+    expect_degenerate_operand_survives("stats_friedman", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_jarque_bera_empty) {
+    expect_degenerate_operand_survives("stats_jarque_bera", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_kde_empty) {
+    expect_degenerate_operand_survives("stats_kde", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_ks_2sample_empty) {
+    expect_degenerate_operand_survives("stats_ks_2sample", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_levene_empty) {
+    expect_degenerate_operand_survives("stats_levene", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_linear_regression_empty) {
+    expect_degenerate_operand_survives("stats_linear_regression", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_ljung_box_empty) {
+    expect_degenerate_operand_survives("stats_ljung_box", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_mann_whitney_u_empty) {
+    expect_degenerate_operand_survives("stats_mann_whitney_u", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_multiple_regression_empty) {
+    expect_degenerate_operand_survives("stats_multiple_regression", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_one_way_anova_empty) {
+    expect_degenerate_operand_survives("stats_one_way_anova", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_pacf_empty) {
+    expect_degenerate_operand_survives("stats_pacf", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_shapiro_wilk_empty) {
+    expect_degenerate_operand_survives("stats_shapiro_wilk", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_stats, stats_wilcoxon_signed_rank_empty) {
+    expect_degenerate_operand_survives("stats_wilcoxon_signed_rank", 2,
+                                       {0, 1}, "[]");
+}

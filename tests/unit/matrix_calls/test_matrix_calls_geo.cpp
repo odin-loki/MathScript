@@ -278,3 +278,88 @@ TEST(MatrixCallUndefinedOperand_geo, geo_voronoi) {
 TEST(MatrixCallBadOperandAt_geo, geo_bspline_eval_arg1) {
     expect_bad_operand_at("geo_bspline_eval", 4, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_geo, geo_bezier_deriv_empty) {
+    expect_degenerate_operand_survives("geo_bezier_deriv", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_bezier_eval_empty) {
+    expect_degenerate_operand_survives("geo_bezier_eval", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_bezier_subdivide_empty) {
+    expect_degenerate_operand_survives("geo_bezier_subdivide", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_bspline_eval_empty) {
+    expect_degenerate_operand_survives("geo_bspline_eval", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_catmull_rom_empty) {
+    expect_degenerate_operand_survives("geo_catmull_rom", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_convex_hull_empty) {
+    expect_degenerate_operand_survives("geo_convex_hull", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_convex_hull_3d_empty) {
+    expect_degenerate_operand_survives("geo_convex_hull_3d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_delaunay_2d_empty) {
+    expect_degenerate_operand_survives("geo_delaunay_2d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_kdtree_3d_knn_empty) {
+    expect_degenerate_operand_survives("geo_kdtree_3d_knn", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_kdtree_3d_range_empty) {
+    expect_degenerate_operand_survives("geo_kdtree_3d_range", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_kdtree_knn_empty) {
+    expect_degenerate_operand_survives("geo_kdtree_knn", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_kdtree_range_empty) {
+    expect_degenerate_operand_survives("geo_kdtree_range", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_lower_hull_empty) {
+    expect_degenerate_operand_survives("geo_lower_hull", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_min_bounding_rect_empty) {
+    expect_degenerate_operand_survives("geo_min_bounding_rect", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_triangulate_polygon_empty) {
+    expect_degenerate_operand_survives("geo_triangulate_polygon", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_upper_hull_empty) {
+    expect_degenerate_operand_survives("geo_upper_hull", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_geo, geo_voronoi_empty) {
+    expect_degenerate_operand_survives("geo_voronoi", 1,
+                                       {0}, "[]");
+}

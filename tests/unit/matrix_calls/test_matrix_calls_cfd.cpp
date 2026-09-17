@@ -244,3 +244,48 @@ TEST(MatrixCallBadOperandAt_cfd, cfd_upwind_step_2d_arg1) {
 TEST(MatrixCallBadOperandAt_cfd, cfd_upwind_step_3d_arg1) {
     expect_bad_operand_at("cfd_upwind_step_3d", 9, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_run_advection_empty) {
+    expect_degenerate_operand_survives("cfd_run_advection", 5,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_run_advection_2d_empty) {
+    expect_degenerate_operand_survives("cfd_run_advection_2d", 6,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_run_advection_3d_empty) {
+    expect_degenerate_operand_survives("cfd_run_advection_3d", 7,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_square_pulse_empty) {
+    expect_degenerate_operand_survives("cfd_square_pulse", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_square_pulse_2d_empty) {
+    expect_degenerate_operand_survives("cfd_square_pulse_2d", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_square_pulse_3d_empty) {
+    expect_degenerate_operand_survives("cfd_square_pulse_3d", 7,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_upwind_step_1d_empty) {
+    expect_degenerate_operand_survives("cfd_upwind_step_1d", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_upwind_step_2d_empty) {
+    expect_degenerate_operand_survives("cfd_upwind_step_2d", 5,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_cfd, cfd_upwind_step_3d_empty) {
+    expect_degenerate_operand_survives("cfd_upwind_step_3d", 6,
+                                       {0, 1}, "[]");
+}

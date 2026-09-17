@@ -230,3 +230,68 @@ TEST(MatrixCallBadOperandAt_pde, pde_wave_1d_arg1) {
 TEST(MatrixCallBadOperandAt_pde, pde_wave_2d_arg1) {
     expect_bad_operand_at("pde_wave_2d", 7, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_pde, pde_advection_1d_empty) {
+    expect_degenerate_operand_survives("pde_advection_1d", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_advection_1d_lax_wendroff_empty) {
+    expect_degenerate_operand_survives("pde_advection_1d_lax_wendroff", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_burgers_1d_empty) {
+    expect_degenerate_operand_survives("pde_burgers_1d", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_heat_1d_empty) {
+    expect_degenerate_operand_survives("pde_heat_1d", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_heat_1d_cn_empty) {
+    expect_degenerate_operand_survives("pde_heat_1d_cn", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_heat_2d_empty) {
+    expect_degenerate_operand_survives("pde_heat_2d", 6,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_heat_2d_cn_adi_empty) {
+    expect_degenerate_operand_survives("pde_heat_2d_cn_adi", 6,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_helmholtz_2d_empty) {
+    expect_degenerate_operand_survives("pde_helmholtz_2d", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_poisson_1d_empty) {
+    expect_degenerate_operand_survives("pde_poisson_1d", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_poisson_2d_empty) {
+    expect_degenerate_operand_survives("pde_poisson_2d", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_reaction_diffusion_1d_empty) {
+    expect_degenerate_operand_survives("pde_reaction_diffusion_1d", 6,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_wave_1d_empty) {
+    expect_degenerate_operand_survives("pde_wave_1d", 6,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_pde, pde_wave_2d_empty) {
+    expect_degenerate_operand_survives("pde_wave_2d", 7,
+                                       {0, 1}, "[]");
+}

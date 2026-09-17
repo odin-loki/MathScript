@@ -144,3 +144,38 @@ TEST(MatrixCallBadOperandAt_core, sparse_from_coo_arg4) {
 TEST(MatrixCallBadOperandAt_core, sparse_spmv_arg1) {
     expect_bad_operand_at("sparse_spmv", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_core, mat_col_empty) {
+    expect_degenerate_operand_survives("mat_col", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, mat_reshape_empty) {
+    expect_degenerate_operand_survives("mat_reshape", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, mat_row_empty) {
+    expect_degenerate_operand_survives("mat_row", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, mat_submatrix_empty) {
+    expect_degenerate_operand_survives("mat_submatrix", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, sparse_add_empty) {
+    expect_degenerate_operand_survives("sparse_add", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, sparse_spmv_empty) {
+    expect_degenerate_operand_survives("sparse_spmv", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_core, sparse_to_dense_empty) {
+    expect_degenerate_operand_survives("sparse_to_dense", 1,
+                                       {0}, "[]");
+}

@@ -356,3 +356,103 @@ TEST(MatrixCallBadOperandAt_poly, poly_partial_fractions_arg1) {
 TEST(MatrixCallBadOperandAt_poly, poly_sylvester_arg1) {
     expect_bad_operand_at("poly_sylvester", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_poly, poly_cheb_expand_empty) {
+    expect_degenerate_operand_survives("poly_cheb_expand", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_deriv_empty) {
+    expect_degenerate_operand_survives("poly_deriv", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_div_quot_empty) {
+    expect_degenerate_operand_survives("poly_div_quot", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_eval_at_empty) {
+    expect_degenerate_operand_survives("poly_eval_at", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_factor_empty) {
+    expect_degenerate_operand_survives("poly_factor", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_factor_rational_empty) {
+    expect_degenerate_operand_survives("poly_factor_rational", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_fit_empty) {
+    expect_degenerate_operand_survives("poly_fit", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_gcd_empty) {
+    expect_degenerate_operand_survives("poly_gcd", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_interp_hermite_empty) {
+    expect_degenerate_operand_survives("poly_interp_hermite", 3,
+                                       {0, 1, 2}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_interp_newton_empty) {
+    expect_degenerate_operand_survives("poly_interp_newton", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_lagrange_empty) {
+    expect_degenerate_operand_survives("poly_lagrange", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_lcm_empty) {
+    expect_degenerate_operand_survives("poly_lcm", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_mod_empty) {
+    expect_degenerate_operand_survives("poly_mod", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_monic_empty) {
+    expect_degenerate_operand_survives("poly_monic", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_partial_fractions_empty) {
+    expect_degenerate_operand_survives("poly_partial_fractions", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_rational_roots_empty) {
+    expect_degenerate_operand_survives("poly_rational_roots", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_reverse_empty) {
+    expect_degenerate_operand_survives("poly_reverse", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_roots_empty) {
+    expect_degenerate_operand_survives("poly_roots", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_squarefree_empty) {
+    expect_degenerate_operand_survives("poly_squarefree", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_poly, poly_sylvester_empty) {
+    expect_degenerate_operand_survives("poly_sylvester", 2,
+                                       {0, 1}, "[]");
+}

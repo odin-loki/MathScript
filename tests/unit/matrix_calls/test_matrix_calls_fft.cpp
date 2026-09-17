@@ -210,3 +210,63 @@ TEST(MatrixCallUndefinedOperand_fft, ifft2) {
 TEST(MatrixCallUndefinedOperand_fft, ifftshift) {
     expect_undefined_operand_propagates("ifftshift", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_fft, dft_magnitude_empty) {
+    expect_degenerate_operand_survives("dft_magnitude", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_dct2_empty) {
+    expect_degenerate_operand_survives("fft_dct2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_dft_empty) {
+    expect_degenerate_operand_survives("fft_dft", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_dst2_empty) {
+    expect_degenerate_operand_survives("fft_dst2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_fft2_empty) {
+    expect_degenerate_operand_survives("fft_fft2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_goertzel_empty) {
+    expect_degenerate_operand_survives("fft_goertzel", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_idct2_empty) {
+    expect_degenerate_operand_survives("fft_idct2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_ifft_empty) {
+    expect_degenerate_operand_survives("fft_ifft", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fft_rfft_empty) {
+    expect_degenerate_operand_survives("fft_rfft", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, fftshift_empty) {
+    expect_degenerate_operand_survives("fftshift", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, ifft2_empty) {
+    expect_degenerate_operand_survives("ifft2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fft, ifftshift_empty) {
+    expect_degenerate_operand_survives("ifftshift", 1,
+                                       {0}, "[]");
+}

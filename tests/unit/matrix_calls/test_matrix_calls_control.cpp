@@ -637,3 +637,138 @@ TEST(MatrixCallBadOperandAt_control, control_step_response_arg1) {
 TEST(MatrixCallBadOperandAt_control, control_tf2ss_arg1) {
     expect_bad_operand_at("control_tf2ss", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_control, control_bode_empty) {
+    expect_degenerate_operand_survives("control_bode", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_empty) {
+    expect_degenerate_operand_survives("control_c2d", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_b_empty) {
+    expect_degenerate_operand_survives("control_c2d_b", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_euler_empty) {
+    expect_degenerate_operand_survives("control_c2d_euler", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_tf_empty) {
+    expect_degenerate_operand_survives("control_c2d_tf", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_tf_tustin_empty) {
+    expect_degenerate_operand_survives("control_c2d_tf_tustin", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_c2d_tustin_empty) {
+    expect_degenerate_operand_survives("control_c2d_tustin", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_ctrb_empty) {
+    expect_degenerate_operand_survives("control_ctrb", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_ctrb_gram_empty) {
+    expect_degenerate_operand_survives("control_ctrb_gram", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_d2c_empty) {
+    expect_degenerate_operand_survives("control_d2c", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_d2c_euler_empty) {
+    expect_degenerate_operand_survives("control_d2c_euler", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_d2c_tf_empty) {
+    expect_degenerate_operand_survives("control_d2c_tf", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_d2c_tf_tustin_empty) {
+    expect_degenerate_operand_survives("control_d2c_tf_tustin", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_d2c_tustin_empty) {
+    expect_degenerate_operand_survives("control_d2c_tustin", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_feedback_empty) {
+    expect_degenerate_operand_survives("control_feedback", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_impulse_response_empty) {
+    expect_degenerate_operand_survives("control_impulse_response", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_kalman_predict_empty) {
+    expect_degenerate_operand_survives("control_kalman_predict", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_kalman_predict_cov_empty) {
+    expect_degenerate_operand_survives("control_kalman_predict_cov", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_kalman_update_empty) {
+    expect_degenerate_operand_survives("control_kalman_update", 5,
+                                       {0, 1, 2, 3, 4}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_kalman_update_cov_empty) {
+    expect_degenerate_operand_survives("control_kalman_update_cov", 5,
+                                       {0, 1, 2, 3, 4}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_obsv_empty) {
+    expect_degenerate_operand_survives("control_obsv", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_obsv_gram_empty) {
+    expect_degenerate_operand_survives("control_obsv_gram", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_parallel_empty) {
+    expect_degenerate_operand_survives("control_parallel", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_series_empty) {
+    expect_degenerate_operand_survives("control_series", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_ss2tf_empty) {
+    expect_degenerate_operand_survives("control_ss2tf", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_step_response_empty) {
+    expect_degenerate_operand_survives("control_step_response", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_control, control_tf2ss_empty) {
+    expect_degenerate_operand_survives("control_tf2ss", 2,
+                                       {0, 1}, "[]");
+}

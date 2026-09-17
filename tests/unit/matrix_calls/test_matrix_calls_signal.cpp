@@ -287,3 +287,78 @@ TEST(MatrixCallBadOperandAt_signal, signal_xcorr_arg1) {
 TEST(MatrixCallBadOperandAt_signal, signal_xcov_arg1) {
     expect_bad_operand_at("signal_xcov", 3, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_signal, signal_autocorr_empty) {
+    expect_degenerate_operand_survives("signal_autocorr", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_coherence_empty) {
+    expect_degenerate_operand_survives("signal_coherence", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_conv2_empty) {
+    expect_degenerate_operand_survives("signal_conv2", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_deconv_empty) {
+    expect_degenerate_operand_survives("signal_deconv", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_envelope_empty) {
+    expect_degenerate_operand_survives("signal_envelope", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_hilbert_empty) {
+    expect_degenerate_operand_survives("signal_hilbert", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_instantaneous_phase_empty) {
+    expect_degenerate_operand_survives("signal_instantaneous_phase", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_lms_empty) {
+    expect_degenerate_operand_survives("signal_lms", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_lms_weights_empty) {
+    expect_degenerate_operand_survives("signal_lms_weights", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_resample_empty) {
+    expect_degenerate_operand_survives("signal_resample", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_savgol_empty) {
+    expect_degenerate_operand_survives("signal_savgol", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_sosfilt_empty) {
+    expect_degenerate_operand_survives("signal_sosfilt", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_unwrap_empty) {
+    expect_degenerate_operand_survives("signal_unwrap", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_xcorr_empty) {
+    expect_degenerate_operand_survives("signal_xcorr", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_signal, signal_xcov_empty) {
+    expect_degenerate_operand_survives("signal_xcov", 3,
+                                       {0, 1}, "[]");
+}

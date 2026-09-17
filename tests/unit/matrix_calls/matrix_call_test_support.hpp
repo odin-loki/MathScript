@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <variant>
@@ -157,6 +158,46 @@ inline void expect_bad_operand_at(const char* callee, std::size_t arity,
     EXPECT_FALSE(is_unsupported(r))
         << callee << " rejected " << arity << " argument(s), which the manifest "
         << "records as an accepted arity";
+}
+
+/// A degenerate but well-formed operand is answered or refused, never walked off.
+///
+/// The three properties above all use operands that cannot resolve, so they stop at
+/// the boundary. This one gets past it: `[]` parses, resolves, and reaches the
+/// handler as a matrix with no elements. Three graph algorithms went straight
+/// through their guards on it and segfaulted -- `mst_prim` wrote `key[start]`,
+/// `euler_circuit` read `idx[0]`, `hamiltonian_path` wrote `visited[0]`, each of
+/// them starting at vertex 0 of a graph that has none. A nightly fuzz session found
+/// the first in 94 seconds; the other two had never been reached.
+///
+/// Be clear about what this asserts, because it is deliberately weak. A handler may
+/// answer for an empty matrix and it may refuse one; both are correct and this
+/// cannot tell them apart. The outcome it detects is the third one, where the
+/// process does not come back, and a test that crashes fails no matter what it was
+/// about to assert. `describe` is called so that a handler returning something
+/// malformed is dereferenced here rather than nowhere.
+///
+/// One shape, not several. An out-of-band sweep of all 485 handlers at 1x1, a 1x3
+/// row, a 2x1 column and a matrix carrying `inf` -- 1,940 probes -- found nothing,
+/// so generating those would be 1,940 tests defending a boundary no handler has
+/// ever crossed. The empty matrix is the shape that broke three of them.
+inline void expect_degenerate_operand_survives(const char* callee, std::size_t arity,
+                                               const std::vector<std::size_t>& matrix_positions,
+                                               const char* shape) {
+    Interpreter interp;
+    MatrixCallAssign assign;
+    assign.target = "__ms_dispatch_target";
+    assign.callee = callee;
+    assign.args.reserve(arity);
+    for (std::size_t i = 0; i < arity; ++i) {
+        const bool is_matrix =
+            std::find(matrix_positions.begin(), matrix_positions.end(), i) !=
+            matrix_positions.end();
+        assign.args.push_back(is_matrix ? shape : "1");
+    }
+    const auto r = dispatch_matrix_call(interp, assign);
+    EXPECT_FALSE(describe(r).empty())
+        << callee << " with " << shape << " in every matrix position";
 }
 
 } // namespace ms::interp::testing

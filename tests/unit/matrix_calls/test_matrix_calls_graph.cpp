@@ -518,3 +518,173 @@ TEST(MatrixCallUndefinedOperand_graph, graph_transitive_closure) {
 TEST(MatrixCallUndefinedOperand_graph, graph_tsp_heuristic) {
     expect_undefined_operand_propagates("graph_tsp_heuristic", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_graph, graph_adjacency_spectrum_empty) {
+    expect_degenerate_operand_survives("graph_adjacency_spectrum", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_articulation_points_empty) {
+    expect_degenerate_operand_survives("graph_articulation_points", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_bellman_ford_empty) {
+    expect_degenerate_operand_survives("graph_bellman_ford", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_betweenness_empty) {
+    expect_degenerate_operand_survives("graph_betweenness", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_biconnected_components_empty) {
+    expect_degenerate_operand_survives("graph_biconnected_components", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_bridges_empty) {
+    expect_degenerate_operand_survives("graph_bridges", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_closeness_empty) {
+    expect_degenerate_operand_survives("graph_closeness", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_connected_components_empty) {
+    expect_degenerate_operand_survives("graph_connected_components", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_degree_centrality_empty) {
+    expect_degenerate_operand_survives("graph_degree_centrality", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_dijkstra_empty) {
+    expect_degenerate_operand_survives("graph_dijkstra", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_eccentricity_empty) {
+    expect_degenerate_operand_survives("graph_eccentricity", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_eigenvector_centrality_empty) {
+    expect_degenerate_operand_survives("graph_eigenvector_centrality", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_euler_circuit_empty) {
+    expect_degenerate_operand_survives("graph_euler_circuit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_eulerian_path_empty) {
+    expect_degenerate_operand_survives("graph_eulerian_path", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_floyd_warshall_empty) {
+    expect_degenerate_operand_survives("graph_floyd_warshall", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_greedy_colour_empty) {
+    expect_degenerate_operand_survives("graph_greedy_colour", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_hamiltonian_path_empty) {
+    expect_degenerate_operand_survives("graph_hamiltonian_path", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_k_core_decomposition_empty) {
+    expect_degenerate_operand_survives("graph_k_core_decomposition", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_katz_centrality_empty) {
+    expect_degenerate_operand_survives("graph_katz_centrality", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_kuratowski_subgraph_empty) {
+    expect_degenerate_operand_survives("graph_kuratowski_subgraph", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_laplacian_empty) {
+    expect_degenerate_operand_survives("graph_laplacian", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_louvain_empty) {
+    expect_degenerate_operand_survives("graph_louvain", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_max_weight_matching_empty) {
+    expect_degenerate_operand_survives("graph_max_weight_matching", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_maximum_matching_empty) {
+    expect_degenerate_operand_survives("graph_maximum_matching", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_min_arborescence_empty) {
+    expect_degenerate_operand_survives("graph_min_arborescence", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_mst_kruskal_empty) {
+    expect_degenerate_operand_survives("graph_mst_kruskal", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_mst_prim_empty) {
+    expect_degenerate_operand_survives("graph_mst_prim", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_normalised_laplacian_empty) {
+    expect_degenerate_operand_survives("graph_normalised_laplacian", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_pagerank_empty) {
+    expect_degenerate_operand_survives("graph_pagerank", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_planar_embedding_empty) {
+    expect_degenerate_operand_survives("graph_planar_embedding", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_scc_empty) {
+    expect_degenerate_operand_survives("graph_scc", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_topological_sort_empty) {
+    expect_degenerate_operand_survives("graph_topological_sort", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_transitive_closure_empty) {
+    expect_degenerate_operand_survives("graph_transitive_closure", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_graph, graph_tsp_heuristic_empty) {
+    expect_degenerate_operand_survives("graph_tsp_heuristic", 1,
+                                       {0}, "[]");
+}

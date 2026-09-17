@@ -34,3 +34,8 @@ TEST(MatrixCallArity_crypto, crypto_from_hex_rejects_2) {
 TEST(MatrixCallUndefinedOperand_crypto, crypto_bytes_to_hex) {
     expect_undefined_operand_propagates("crypto_bytes_to_hex", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_crypto, crypto_bytes_to_hex_empty) {
+    expect_degenerate_operand_survives("crypto_bytes_to_hex", 1,
+                                       {0}, "[]");
+}

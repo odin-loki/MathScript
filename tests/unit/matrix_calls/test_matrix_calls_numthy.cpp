@@ -122,3 +122,8 @@ TEST(MatrixCallArity_numthy, numthy_stern_brocot_rejects_2) {
 TEST(MatrixCallUndefinedOperand_numthy, numthy_convergents) {
     expect_undefined_operand_propagates("numthy_convergents", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_numthy, numthy_convergents_empty) {
+    expect_degenerate_operand_survives("numthy_convergents", 1,
+                                       {0}, "[]");
+}

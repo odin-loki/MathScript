@@ -194,3 +194,43 @@ TEST(MatrixCallBadOperandAt_finance, run_backtest_arg1) {
 TEST(MatrixCallBadOperandAt_finance, run_backtest_equity_arg1) {
     expect_bad_operand_at("run_backtest_equity", 3, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_finance, finance_bl_implied_returns_empty) {
+    expect_degenerate_operand_survives("finance_bl_implied_returns", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, finance_bl_posterior_returns_empty) {
+    expect_degenerate_operand_survives("finance_bl_posterior_returns", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, finance_bl_posterior_returns_default_omega_empty) {
+    expect_degenerate_operand_survives("finance_bl_posterior_returns_default_omega", 5,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, finance_efficient_frontier_empty) {
+    expect_degenerate_operand_survives("finance_efficient_frontier", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, finance_max_sharpe_empty) {
+    expect_degenerate_operand_survives("finance_max_sharpe", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, finance_min_variance_portfolio_empty) {
+    expect_degenerate_operand_survives("finance_min_variance_portfolio", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, run_backtest_empty) {
+    expect_degenerate_operand_survives("run_backtest", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_finance, run_backtest_equity_empty) {
+    expect_degenerate_operand_survives("run_backtest_equity", 3,
+                                       {0, 1}, "[]");
+}

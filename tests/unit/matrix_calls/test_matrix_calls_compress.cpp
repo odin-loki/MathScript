@@ -320,3 +320,103 @@ TEST(MatrixCallBadOperandAt_compress, arithmetic_decode_vec_arg1) {
 TEST(MatrixCallBadOperandAt_compress, huffman_decode_vec_arg1) {
     expect_bad_operand_at("huffman_decode_vec", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_compress, ans_decode_vec_empty) {
+    expect_degenerate_operand_survives("ans_decode_vec", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, ans_encode_vec_empty) {
+    expect_degenerate_operand_survives("ans_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, arithmetic_decode_vec_empty) {
+    expect_degenerate_operand_survives("arithmetic_decode_vec", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, arithmetic_encode_vec_empty) {
+    expect_degenerate_operand_survives("arithmetic_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, bwt_decode_vec_empty) {
+    expect_degenerate_operand_survives("bwt_decode_vec", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, bwt_encode_vec_empty) {
+    expect_degenerate_operand_survives("bwt_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, bzip2_compress_vec_empty) {
+    expect_degenerate_operand_survives("bzip2_compress_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, bzip2_decompress_vec_empty) {
+    expect_degenerate_operand_survives("bzip2_decompress_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, compress_bits_to_bytes_empty) {
+    expect_degenerate_operand_survives("compress_bits_to_bytes", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, compress_bytes_to_bits_empty) {
+    expect_degenerate_operand_survives("compress_bytes_to_bits", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, delta_decode_vec_empty) {
+    expect_degenerate_operand_survives("delta_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, delta_encode_vec_empty) {
+    expect_degenerate_operand_survives("delta_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, huffman_decode_vec_empty) {
+    expect_degenerate_operand_survives("huffman_decode_vec", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, huffman_encode_vec_empty) {
+    expect_degenerate_operand_survives("huffman_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, rle_decode_vec_empty) {
+    expect_degenerate_operand_survives("rle_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, rle_encode_vec_empty) {
+    expect_degenerate_operand_survives("rle_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, run_length_decode_vec_empty) {
+    expect_degenerate_operand_survives("run_length_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, run_length_encode_vec_empty) {
+    expect_degenerate_operand_survives("run_length_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, wavelet_compress_vec_empty) {
+    expect_degenerate_operand_survives("wavelet_compress_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_compress, wavelet_decompress_vec_empty) {
+    expect_degenerate_operand_survives("wavelet_decompress_vec", 1,
+                                       {0}, "[]");
+}

@@ -571,3 +571,183 @@ TEST(MatrixCallBadOperandAt_repl, iradon_arg1) {
 TEST(MatrixCallBadOperandAt_repl, lsq_arg1) {
     expect_bad_operand_at("lsq", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_repl, golomb_rice_decode_vec_empty) {
+    expect_degenerate_operand_survives("golomb_rice_decode_vec", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, golomb_rice_encode_vec_empty) {
+    expect_degenerate_operand_survives("golomb_rice_encode_vec", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, gray2rgb_empty) {
+    expect_degenerate_operand_survives("gray2rgb", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, harris_empty) {
+    expect_degenerate_operand_survives("harris", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, hough_circles_empty) {
+    expect_degenerate_operand_survives("hough_circles", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, hough_lines_empty) {
+    expect_degenerate_operand_survives("hough_lines", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, hsv2rgb_empty) {
+    expect_degenerate_operand_survives("hsv2rgb", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, idst2_empty) {
+    expect_degenerate_operand_survives("idst2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imadjust_empty) {
+    expect_degenerate_operand_survives("imadjust", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imbothat_empty) {
+    expect_degenerate_operand_survives("imbothat", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imclose_empty) {
+    expect_degenerate_operand_survives("imclose", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imcrop_empty) {
+    expect_degenerate_operand_survives("imcrop", 5,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imdilate_empty) {
+    expect_degenerate_operand_survives("imdilate", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imerode_empty) {
+    expect_degenerate_operand_survives("imerode", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imfilter_empty) {
+    expect_degenerate_operand_survives("imfilter", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imflip_empty) {
+    expect_degenerate_operand_survives("imflip", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imgaussfilt_empty) {
+    expect_degenerate_operand_survives("imgaussfilt", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imgradient_morph_empty) {
+    expect_degenerate_operand_survives("imgradient_morph", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imhist_empty) {
+    expect_degenerate_operand_survives("imhist", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imopen_empty) {
+    expect_degenerate_operand_survives("imopen", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, impad_empty) {
+    expect_degenerate_operand_survives("impad", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imresize_empty) {
+    expect_degenerate_operand_survives("imresize", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imrotate90_empty) {
+    expect_degenerate_operand_survives("imrotate90", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, imtophat_empty) {
+    expect_degenerate_operand_survives("imtophat", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, iradon_empty) {
+    expect_degenerate_operand_survives("iradon", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, kruskal_wallis_empty) {
+    expect_degenerate_operand_survives("kruskal_wallis", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, label_components_empty) {
+    expect_degenerate_operand_survives("label_components", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, laplacian_of_gaussian_empty) {
+    expect_degenerate_operand_survives("laplacian_of_gaussian", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, lsq_empty) {
+    expect_degenerate_operand_survives("lsq", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, lz77_decode_vec_empty) {
+    expect_degenerate_operand_survives("lz77_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, lz77_encode_vec_empty) {
+    expect_degenerate_operand_survives("lz77_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, lzw_decode_vec_empty) {
+    expect_degenerate_operand_survives("lzw_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, lzw_encode_vec_empty) {
+    expect_degenerate_operand_survives("lzw_encode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, medfilt2_empty) {
+    expect_degenerate_operand_survives("medfilt2", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, mtf_decode_vec_empty) {
+    expect_degenerate_operand_survives("mtf_decode_vec", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_repl, mtf_encode_vec_empty) {
+    expect_degenerate_operand_survives("mtf_encode_vec", 1,
+                                       {0}, "[]");
+}

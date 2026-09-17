@@ -929,3 +929,258 @@ TEST(MatrixCallBadOperandAt_ml, ml_svm_fit_arg1) {
 TEST(MatrixCallBadOperandAt_ml, ml_svm_predict_arg1) {
     expect_bad_operand_at("ml_svm_predict", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_ml, ml_adaboost_fit_empty) {
+    expect_degenerate_operand_survives("ml_adaboost_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_adaboost_predict_empty) {
+    expect_degenerate_operand_survives("ml_adaboost_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_agglomerative_fit_empty) {
+    expect_degenerate_operand_survives("ml_agglomerative_fit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_confusion_matrix_empty) {
+    expect_degenerate_operand_survives("ml_confusion_matrix", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_dbscan_fit_empty) {
+    expect_degenerate_operand_survives("ml_dbscan_fit", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_decision_tree_fit_empty) {
+    expect_degenerate_operand_survives("ml_decision_tree_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_decision_tree_predict_empty) {
+    expect_degenerate_operand_survives("ml_decision_tree_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_elastic_net_fit_empty) {
+    expect_degenerate_operand_survives("ml_elastic_net_fit", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_elastic_net_predict_empty) {
+    expect_degenerate_operand_survives("ml_elastic_net_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_gmm_fit_empty) {
+    expect_degenerate_operand_survives("ml_gmm_fit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_gmm_predict_empty) {
+    expect_degenerate_operand_survives("ml_gmm_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_gmm_predict_proba_empty) {
+    expect_degenerate_operand_survives("ml_gmm_predict_proba", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_gradient_boosting_fit_empty) {
+    expect_degenerate_operand_survives("ml_gradient_boosting_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_gradient_boosting_predict_empty) {
+    expect_degenerate_operand_survives("ml_gradient_boosting_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_isolation_forest_fit_empty) {
+    expect_degenerate_operand_survives("ml_isolation_forest_fit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_isolation_forest_score_empty) {
+    expect_degenerate_operand_survives("ml_isolation_forest_score", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_kmeans_fit_empty) {
+    expect_degenerate_operand_survives("ml_kmeans_fit", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_kmeans_predict_empty) {
+    expect_degenerate_operand_survives("ml_kmeans_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_knn_fit_empty) {
+    expect_degenerate_operand_survives("ml_knn_fit", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_knn_predict_empty) {
+    expect_degenerate_operand_survives("ml_knn_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_lasso_fit_empty) {
+    expect_degenerate_operand_survives("ml_lasso_fit", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_lasso_predict_empty) {
+    expect_degenerate_operand_survives("ml_lasso_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_lda_fit_empty) {
+    expect_degenerate_operand_survives("ml_lda_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_lda_predict_empty) {
+    expect_degenerate_operand_survives("ml_lda_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_lda_transform_empty) {
+    expect_degenerate_operand_survives("ml_lda_transform", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_linear_fit_empty) {
+    expect_degenerate_operand_survives("ml_linear_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_linear_predict_empty) {
+    expect_degenerate_operand_survives("ml_linear_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_logistic_fit_empty) {
+    expect_degenerate_operand_survives("ml_logistic_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_logistic_predict_empty) {
+    expect_degenerate_operand_survives("ml_logistic_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_mat_transpose_empty) {
+    expect_degenerate_operand_survives("ml_mat_transpose", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_minmax_scaler_fit_empty) {
+    expect_degenerate_operand_survives("ml_minmax_scaler_fit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_minmax_scaler_transform_empty) {
+    expect_degenerate_operand_survives("ml_minmax_scaler_transform", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_naive_bayes_fit_empty) {
+    expect_degenerate_operand_survives("ml_naive_bayes_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_naive_bayes_predict_empty) {
+    expect_degenerate_operand_survives("ml_naive_bayes_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_pca_fit_empty) {
+    expect_degenerate_operand_survives("ml_pca_fit", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_pca_fit_transform_empty) {
+    expect_degenerate_operand_survives("ml_pca_fit_transform", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_pca_transform_empty) {
+    expect_degenerate_operand_survives("ml_pca_transform", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_precision_recall_curve_empty) {
+    expect_degenerate_operand_survives("ml_precision_recall_curve", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_qda_fit_empty) {
+    expect_degenerate_operand_survives("ml_qda_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_qda_predict_empty) {
+    expect_degenerate_operand_survives("ml_qda_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_random_forest_fit_empty) {
+    expect_degenerate_operand_survives("ml_random_forest_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_random_forest_predict_empty) {
+    expect_degenerate_operand_survives("ml_random_forest_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_ridge_fit_empty) {
+    expect_degenerate_operand_survives("ml_ridge_fit", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_ridge_predict_empty) {
+    expect_degenerate_operand_survives("ml_ridge_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_roc_curve_empty) {
+    expect_degenerate_operand_survives("ml_roc_curve", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_spectral_clustering_empty) {
+    expect_degenerate_operand_survives("ml_spectral_clustering", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_standard_scaler_fit_empty) {
+    expect_degenerate_operand_survives("ml_standard_scaler_fit", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_standard_scaler_transform_empty) {
+    expect_degenerate_operand_survives("ml_standard_scaler_transform", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_svm_fit_empty) {
+    expect_degenerate_operand_survives("ml_svm_fit", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_svm_predict_empty) {
+    expect_degenerate_operand_survives("ml_svm_predict", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_ml, ml_tsne_fit_empty) {
+    expect_degenerate_operand_survives("ml_tsne_fit", 1,
+                                       {0}, "[]");
+}

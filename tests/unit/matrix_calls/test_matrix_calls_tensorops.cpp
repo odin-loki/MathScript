@@ -46,3 +46,13 @@ TEST(MatrixCallBadOperandAt_tensorops, tensorops_einsum_arg1) {
 TEST(MatrixCallBadOperandAt_tensorops, tensorops_matmul_arg1) {
     expect_bad_operand_at("tensorops_matmul", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_tensorops, tensorops_einsum_empty) {
+    expect_degenerate_operand_survives("tensorops_einsum", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_tensorops, tensorops_matmul_empty) {
+    expect_degenerate_operand_survives("tensorops_matmul", 2,
+                                       {0, 1}, "[]");
+}

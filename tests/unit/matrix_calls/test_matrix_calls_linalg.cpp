@@ -670,3 +670,183 @@ TEST(MatrixCallBadOperandAt_linalg, solve_sylvester_arg2) {
 TEST(MatrixCallBadOperandAt_linalg, tfqmr_arg1) {
     expect_bad_operand_at("tfqmr", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_linalg, bicgstab_empty) {
+    expect_degenerate_operand_survives("bicgstab", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, bidiag_empty) {
+    expect_degenerate_operand_survives("bidiag", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, cg_empty) {
+    expect_degenerate_operand_survives("cg", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, chol_empty) {
+    expect_degenerate_operand_survives("chol", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, cosm_empty) {
+    expect_degenerate_operand_survives("cosm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, diag_empty) {
+    expect_degenerate_operand_survives("diag", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, eig_empty) {
+    expect_degenerate_operand_survives("eig", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, expm_empty) {
+    expect_degenerate_operand_survives("expm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, funm_empty) {
+    expect_degenerate_operand_survives("funm", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, gmres_empty) {
+    expect_degenerate_operand_survives("gmres", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, hess_empty) {
+    expect_degenerate_operand_survives("hess", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, inv_empty) {
+    expect_degenerate_operand_survives("inv", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, jacobi_empty) {
+    expect_degenerate_operand_survives("jacobi", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, kron_empty) {
+    expect_degenerate_operand_survives("kron", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, ldl_empty) {
+    expect_degenerate_operand_survives("ldl", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, logm_empty) {
+    expect_degenerate_operand_survives("logm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, lsmr_empty) {
+    expect_degenerate_operand_survives("lsmr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, lsqr_empty) {
+    expect_degenerate_operand_survives("lsqr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, matmul_empty) {
+    expect_degenerate_operand_survives("matmul", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, minres_empty) {
+    expect_degenerate_operand_survives("minres", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, null_empty) {
+    expect_degenerate_operand_survives("null", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, orth_empty) {
+    expect_degenerate_operand_survives("orth", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, pinv_empty) {
+    expect_degenerate_operand_survives("pinv", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, precond_diag_empty) {
+    expect_degenerate_operand_survives("precond_diag", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, precond_ssor_empty) {
+    expect_degenerate_operand_survives("precond_ssor", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, qmr_empty) {
+    expect_degenerate_operand_survives("qmr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, repmat_empty) {
+    expect_degenerate_operand_survives("repmat", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, schur_empty) {
+    expect_degenerate_operand_survives("schur", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, sinm_empty) {
+    expect_degenerate_operand_survives("sinm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, solve_empty) {
+    expect_degenerate_operand_survives("solve", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, solve_sylvester_empty) {
+    expect_degenerate_operand_survives("solve_sylvester", 3,
+                                       {0, 1, 2}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, sqrtm_empty) {
+    expect_degenerate_operand_survives("sqrtm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, tfqmr_empty) {
+    expect_degenerate_operand_survives("tfqmr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, transpose_empty) {
+    expect_degenerate_operand_survives("transpose", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, tril_empty) {
+    expect_degenerate_operand_survives("tril", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_linalg, triu_empty) {
+    expect_degenerate_operand_survives("triu", 1,
+                                       {0}, "[]");
+}

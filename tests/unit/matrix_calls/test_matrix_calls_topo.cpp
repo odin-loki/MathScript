@@ -166,3 +166,53 @@ TEST(MatrixCallBadOperandAt_topo, topo_betti_curve_arg1) {
 TEST(MatrixCallBadOperandAt_topo, topo_witness_complex_arg1) {
     expect_bad_operand_at("topo_witness_complex", 4, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_topo, topo_alpha_complex_empty) {
+    expect_degenerate_operand_survives("topo_alpha_complex", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_betti_curve_empty) {
+    expect_degenerate_operand_survives("topo_betti_curve", 3,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_cech_complex_empty) {
+    expect_degenerate_operand_survives("topo_cech_complex", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_pairwise_distances_empty) {
+    expect_degenerate_operand_survives("topo_pairwise_distances", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_persistence_landscape_empty) {
+    expect_degenerate_operand_survives("topo_persistence_landscape", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_select_landmarks_empty) {
+    expect_degenerate_operand_survives("topo_select_landmarks", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_simplicial_betti_empty) {
+    expect_degenerate_operand_survives("topo_simplicial_betti", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_simplicial_counts_empty) {
+    expect_degenerate_operand_survives("topo_simplicial_counts", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_vietoris_rips_empty) {
+    expect_degenerate_operand_survives("topo_vietoris_rips", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_topo, topo_witness_complex_empty) {
+    expect_degenerate_operand_survives("topo_witness_complex", 3,
+                                       {0, 1}, "[]");
+}

@@ -152,6 +152,34 @@ def render_domain(domain: str, handlers: list[dict]) -> tuple[str, int]:
             lines.append("")
             count += 1
 
+    # An empty matrix in every position the handler resolves. Unlike the three
+    # properties above, this operand RESOLVES: `[]` parses to a matrix with no
+    # elements and reaches the handler body, where three graph algorithms indexed
+    # vertex 0 of a graph that has none and segfaulted. The nightly fuzz session
+    # found one of the three; the other two had never been reached by anything.
+    #
+    # Only handlers that resolve their first argument get one, for the same reason
+    # the undefined-operand test skips the others: a handler that ignores its
+    # arguments proves nothing here.
+    for h in handlers:
+        if not h["resolves_first"]:
+            continue
+        arities = [a for a in h["arities"] if a >= 1]
+        if not arities:
+            continue
+        arity = min(arities)
+        positions = sorted(p for p in h.get("resolve_positions", []) if p < arity)
+        if not positions:
+            positions = [0]
+        sym = ident(h["callee"])
+        pos_list = ", ".join(str(p) for p in positions)
+        lines.append(f'TEST(MatrixCallDegenerateOperand_{suite}, {sym}_empty) {{')
+        lines.append(f'    expect_degenerate_operand_survives("{h["callee"]}", {arity},')
+        lines.append(f'                                       {{{pos_list}}}, "[]");')
+        lines.append("}")
+        lines.append("")
+        count += 1
+
     return "\n".join(lines).rstrip("\n") + "\n", count
 
 

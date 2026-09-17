@@ -159,3 +159,13 @@ TEST(MatrixCallUndefinedOperand_combo, combo_next_perm) {
 TEST(MatrixCallUndefinedOperand_combo, combo_prev_perm) {
     expect_undefined_operand_propagates("combo_prev_perm", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_combo, combo_next_perm_empty) {
+    expect_degenerate_operand_survives("combo_next_perm", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_combo, combo_prev_perm_empty) {
+    expect_degenerate_operand_survives("combo_prev_perm", 1,
+                                       {0}, "[]");
+}

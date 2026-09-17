@@ -217,3 +217,58 @@ TEST(MatrixCallBadOperandAt_distributed, dist_solve_arg1) {
 TEST(MatrixCallBadOperandAt_distributed, dist_tfqmr_arg1) {
     expect_bad_operand_at("dist_tfqmr", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_bicgstab_empty) {
+    expect_degenerate_operand_survives("dist_bicgstab", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_cg_empty) {
+    expect_degenerate_operand_survives("dist_cg", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_gmres_empty) {
+    expect_degenerate_operand_survives("dist_gmres", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_jacobi_empty) {
+    expect_degenerate_operand_survives("dist_jacobi", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_lsmr_empty) {
+    expect_degenerate_operand_survives("dist_lsmr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_lsqr_empty) {
+    expect_degenerate_operand_survives("dist_lsqr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_matmul_empty) {
+    expect_degenerate_operand_survives("dist_matmul", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_minres_empty) {
+    expect_degenerate_operand_survives("dist_minres", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_qmr_empty) {
+    expect_degenerate_operand_survives("dist_qmr", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_solve_empty) {
+    expect_degenerate_operand_survives("dist_solve", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_distributed, dist_tfqmr_empty) {
+    expect_degenerate_operand_survives("dist_tfqmr", 2,
+                                       {0, 1}, "[]");
+}

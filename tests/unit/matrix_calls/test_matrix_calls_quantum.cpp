@@ -358,3 +358,93 @@ TEST(MatrixCallBadOperandAt_quantum, quantum_schrodinger_final_arg1) {
 TEST(MatrixCallBadOperandAt_quantum, quantum_time_evolve_psi_arg1) {
     expect_bad_operand_at("quantum_time_evolve_psi", 3, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_anticommutator_empty) {
+    expect_degenerate_operand_survives("quantum_anticommutator", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_commutator_empty) {
+    expect_degenerate_operand_survives("quantum_commutator", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_dagger_empty) {
+    expect_degenerate_operand_survives("quantum_dagger", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_density_matrix_empty) {
+    expect_degenerate_operand_survives("quantum_density_matrix", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_eigenspectrum_empty) {
+    expect_degenerate_operand_survives("quantum_eigenspectrum", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_ground_state_empty) {
+    expect_degenerate_operand_survives("quantum_ground_state", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_hadamard_empty) {
+    expect_degenerate_operand_survives("quantum_hadamard", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_ket_normalise_empty) {
+    expect_degenerate_operand_survives("quantum_ket_normalise", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_ket_superposition_empty) {
+    expect_degenerate_operand_survives("quantum_ket_superposition", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_ket_tensor_product_empty) {
+    expect_degenerate_operand_survives("quantum_ket_tensor_product", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_matmul_dm_empty) {
+    expect_degenerate_operand_survives("quantum_matmul_dm", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_op_apply_empty) {
+    expect_degenerate_operand_survives("quantum_op_apply", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_partial_trace_empty) {
+    expect_degenerate_operand_survives("quantum_partial_trace", 4,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_schmidt_bases_empty) {
+    expect_degenerate_operand_survives("quantum_schmidt_bases", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_schmidt_decomposition_empty) {
+    expect_degenerate_operand_survives("quantum_schmidt_decomposition", 3,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_schrodinger_empty) {
+    expect_degenerate_operand_survives("quantum_schrodinger", 5,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_schrodinger_final_empty) {
+    expect_degenerate_operand_survives("quantum_schrodinger_final", 5,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_quantum, quantum_time_evolve_psi_empty) {
+    expect_degenerate_operand_survives("quantum_time_evolve_psi", 3,
+                                       {0, 1}, "[]");
+}

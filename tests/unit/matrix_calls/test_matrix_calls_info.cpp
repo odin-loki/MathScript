@@ -23,3 +23,8 @@ TEST(MatrixCallArity_info, info_channel_capacity_input_rejects_2) {
 TEST(MatrixCallUndefinedOperand_info, info_channel_capacity_input) {
     expect_undefined_operand_propagates("info_channel_capacity_input", 1);
 }
+
+TEST(MatrixCallDegenerateOperand_info, info_channel_capacity_input_empty) {
+    expect_degenerate_operand_survives("info_channel_capacity_input", 1,
+                                       {0}, "[]");
+}

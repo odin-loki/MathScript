@@ -303,3 +303,58 @@ TEST(MatrixCallBadOperandAt_fem, fem_solve_arg1) {
 TEST(MatrixCallBadOperandAt_fem, fem_solve_3d_arg1) {
     expect_bad_operand_at("fem_solve_3d", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_fem, assemble_stiffness_2d_empty) {
+    expect_degenerate_operand_survives("assemble_stiffness_2d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, assemble_stiffness_3d_empty) {
+    expect_degenerate_operand_survives("assemble_stiffness_3d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_apply_dirichlet_empty) {
+    expect_degenerate_operand_survives("fem_apply_dirichlet", 4,
+                                       {0, 1, 2, 3}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_load_1d_empty) {
+    expect_degenerate_operand_survives("fem_load_1d", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_load_2d_empty) {
+    expect_degenerate_operand_survives("fem_load_2d", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_load_3d_empty) {
+    expect_degenerate_operand_survives("fem_load_3d", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_solve_empty) {
+    expect_degenerate_operand_survives("fem_solve", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_solve_3d_empty) {
+    expect_degenerate_operand_survives("fem_solve_3d", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_stiffness_1d_empty) {
+    expect_degenerate_operand_survives("fem_stiffness_1d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_stiffness_2d_empty) {
+    expect_degenerate_operand_survives("fem_stiffness_2d", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_fem, fem_stiffness_3d_empty) {
+    expect_degenerate_operand_survives("fem_stiffness_3d", 1,
+                                       {0}, "[]");
+}

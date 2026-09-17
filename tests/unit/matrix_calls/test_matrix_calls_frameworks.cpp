@@ -229,3 +229,38 @@ TEST(MatrixCallBadOperandAt_frameworks, izaac_encrypt_arg1) {
 TEST(MatrixCallBadOperandAt_frameworks, izaac_vrf_prove_arg1) {
     expect_bad_operand_at("izaac_vrf_prove", 2, 1);
 }
+
+TEST(MatrixCallDegenerateOperand_frameworks, cellai_hebbian_update_empty) {
+    expect_degenerate_operand_survives("cellai_hebbian_update", 4,
+                                       {0, 1, 2}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, gria_ca_step_empty) {
+    expect_degenerate_operand_survives("gria_ca_step", 2,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, gria_divergence_trajectory_empty) {
+    expect_degenerate_operand_survives("gria_divergence_trajectory", 4,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, izaac_decrypt_empty) {
+    expect_degenerate_operand_survives("izaac_decrypt", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, izaac_encrypt_empty) {
+    expect_degenerate_operand_survives("izaac_encrypt", 2,
+                                       {0, 1}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, izaac_fuzz_mutate_empty) {
+    expect_degenerate_operand_survives("izaac_fuzz_mutate", 1,
+                                       {0}, "[]");
+}
+
+TEST(MatrixCallDegenerateOperand_frameworks, izaac_vrf_prove_empty) {
+    expect_degenerate_operand_survives("izaac_vrf_prove", 2,
+                                       {0, 1}, "[]");
+}
