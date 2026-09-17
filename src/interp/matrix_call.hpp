@@ -309,6 +309,51 @@ inline Result<double> checked_prime_index(const std::string& fn, double n) {
     return n;
 }
 
+/// A modulus bounded by the baby-step table the command builds to search it.
+///
+/// `numthy_discrete_log(g, h, p)` is baby-step giant-step: it fills an
+/// `unordered_map` with about sqrt(p) entries and then walks about sqrt(p) more. All
+/// three arguments were bounded at `kMaxU64AsDouble`, which is the REPRESENTABILITY
+/// bound -- the largest value that is a `uint64_t` -- and says nothing about whether
+/// the command can answer for it. The 2026-09-17 fuzz marathon spent 1,625 seconds
+/// inside a single call before libFuzzer's own timeout ended the process:
+///
+///     numthy_discrete_log(0, 8, 015532559262904483840)
+///
+/// sqrt(1.55e19) is 3.9e9 table entries. That is about 62 GB before it is a wait, so
+/// the run would have died of memory had it not died of time first.
+///
+/// Measured here, building the table and walking it:
+///
+///     p = 1e10    sqrt(p) = 1e5      31 ms
+///     p = 1e12    sqrt(p) = 1e6     726 ms
+///     p = 1e14    sqrt(p) = 1e7     7.4 s
+///     p = 1e16    sqrt(p) = 1e8     40 s and still going
+///
+/// which is about 700 ns per table entry. The quarter-second the REPL is willing to
+/// disappear for buys 357,142 of them, so the bound on p is that SQUARED. Bounding p
+/// itself at anything in `kMaxReplIntegerArgument`'s range would have been far
+/// stricter than the cost justifies: the work is sub-linear in p, and this is the
+/// first argument in the REPL where that is true.
+inline Result<std::uint64_t> checked_baby_step_modulus(const std::string& fn, const char* what,
+                                                       double value) {
+    constexpr double kNanosPerBabyStep = 700.0;
+    const double entries = std::floor(kMaxReplCommandWorkNanos / kNanosPerBabyStep);
+    const double cap = entries * entries;
+    if (!std::isfinite(value) || value != std::floor(value) || value < 0.0) {
+        return std::unexpected(
+            DomainError{fn, std::string("expected non-negative integer ") + what});
+    }
+    if (value > cap) {
+        return std::unexpected(DomainError{
+            fn, std::string(what) + " " + describe_count(value) +
+                    " is too large; this builds a table of about sqrt(" + what +
+                    ") entries and then walks as many again, so it is bounded at " +
+                    describe_count(cap)});
+    }
+    return static_cast<std::uint64_t>(value);
+}
+
 /// A result whose LENGTH one argument names outright.
 ///
 /// The commonest shape in the REPL, and a family of them was found in one run once

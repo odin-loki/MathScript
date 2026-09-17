@@ -3275,7 +3275,9 @@ Result<double> eval_numthy_discrete_log(double g_d, double h_d, double p_d) {
     if (!h_u) {
         return std::unexpected(h_u.error());
     }
-    auto p_u = checked_u64_argument("numthy_discrete_log", "p", p_d, kMaxU64AsDouble);
+    // `p` drives the cost and the other two do not: g and h only matter modulo p, so
+    // their magnitude buys no work. See `checked_baby_step_modulus` for the numbers.
+    auto p_u = checked_baby_step_modulus("numthy_discrete_log", "p", p_d);
     if (!p_u) {
         return std::unexpected(p_u.error());
     }

@@ -420,3 +420,42 @@ TEST(ReplResourceGuards, ContinuedFractionCoefficientsMustFitInInt64) {
         EXPECT_NE(pi->find(expected), std::string::npos) << expected << " in:\n" << *pi;
     }
 }
+
+TEST(ReplResourceGuards, DiscreteLogIsBoundedByItsBabyStepTable) {
+    // The fuzz marathon's finding, and the first of these that was not a crash.
+    // `numthy_discrete_log(0, 8, 015532559262904483840)` spent 1,625 seconds inside
+    // one call before libFuzzer's own timeout ended the process. Nothing was wrong
+    // with the arithmetic: baby-step giant-step fills a table of about sqrt(p)
+    // entries, and sqrt(1.55e19) is 3.9e9 of them -- about 62 GB, so it would have
+    // died of memory had it not died of time first.
+    //
+    // All three arguments were bounded at `kMaxU64AsDouble`, which is the largest
+    // value that IS a uint64 and says nothing about whether the command can answer
+    // for it. `p` is now bounded by what the table costs; `g` and `h` are not,
+    // because they only matter modulo p and buy no work.
+    //
+    // The order below is deliberate. The first assertion uses a modulus just past
+    // the cap, so reverting the bound fails it in about a third of a second and
+    // returns; putting the 39-digit case first would instead make the mutant run
+    // for hours.
+    Interpreter interp;
+
+    const auto over = interp.execute("numthy_discrete_log(2, 5, 200000000000)");
+    ASSERT_FALSE(over.has_value());
+    ASSERT_NE(ms::format_error(over.error()).find("bounded at"), std::string::npos)
+        << ms::format_error(over.error());
+
+    const auto huge = interp.execute("numthy_discrete_log(0, 8, 15532559262904483840)");
+    ASSERT_FALSE(huge.has_value());
+    EXPECT_NE(ms::format_error(huge.error()).find("sqrt(p)"), std::string::npos)
+        << ms::format_error(huge.error());
+
+    // A modulus anyone would actually use still answers, and answers correctly:
+    // 2^292379 = 5 (mod 1000003), which the guard cannot fake.
+    const auto ok = interp.execute("numthy_discrete_log(2, 5, 1000003)");
+    ASSERT_TRUE(ok.has_value()) << ms::format_error(ok.error());
+    EXPECT_NE(ok->find("292379"), std::string::npos) << *ok;
+    const auto back = interp.execute("numthy_mod_pow(2, 292379, 1000003)");
+    ASSERT_TRUE(back.has_value());
+    EXPECT_NE(back->find("5"), std::string::npos) << *back;
+}
