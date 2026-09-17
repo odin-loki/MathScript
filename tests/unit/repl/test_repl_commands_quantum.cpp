@@ -5723,3 +5723,48 @@ TEST(ReplCommandsTest, quantum_partial_trace_noassign) {
         "expected positive integer d1, d2 and subsystem 0 or 1");
 }
 
+
+// |a><b| is not square unless a and b are the same length, and
+// `density_matrix_to_matrix` took the column count from `rho.size()`, which is the
+// ROW count. Nineteen of its twenty callers pass something genuinely square -- a gate,
+// a commutator, a partial trace -- so only `quantum_outer` reached past the end, and
+// only when the bra is shorter than the ket. A nightly fuzz session found it as
+// `quantum_outer([1;;10; 0; ],[0;0])`: AddressSanitizer reports a heap-buffer-overflow,
+// and without a sanitizer the REPL exits 0 and prints whatever followed each row.
+//
+// The assertion is on the VALUES and not just on surviving, because in a Release build
+// surviving is what the defect did. 1,2,3 outer 4,5 is 3x2 and its entries are the
+// products, so a version that read past the rows cannot produce this by accident.
+TEST(ReplCommandsTest, quantum_outer_of_different_lengths_is_rectangular) {
+    Interpreter interp;
+    expect_ok(interp, "M = quantum_outer([1; 2; 3], [4; 5])");
+
+    // The SHAPE is the assertion that matters and the values alone are not it. With
+    // the column count taken from `rho.size()` this is 3x3, and its first two columns
+    // still read "4.000000, 5.000000" and so on -- only the third is past the end.
+    // A substring check on the products passes against the defect; `mat_cols` does not.
+    const auto cols = interp.execute("mat_cols(M)");
+    ASSERT_TRUE(cols.has_value());
+    EXPECT_NE(cols->find("2"), std::string::npos)
+        << "expected 2 columns, got: " << *cols;
+    const auto rows = interp.execute("mat_rows(M)");
+    ASSERT_TRUE(rows.has_value());
+    EXPECT_NE(rows->find("3"), std::string::npos) << *rows;
+
+    const auto rect = interp.execute("quantum_outer([1; 2; 3], [4; 5])");
+    ASSERT_TRUE(rect.has_value()) << ms::format_error(rect.error());
+    for (const char* entry : {"4.000000, 5.000000", "8.000000, 10.000000",
+                              "12.000000, 15.000000"}) {
+        EXPECT_NE(rect->find(entry), std::string::npos) << entry << " in:\n" << *rect;
+    }
+
+    // The exact input the fuzzer wrote, kept because the parse of `[1;;10; 0; ]` is
+    // part of what made the lengths differ.
+    const auto found = interp.execute("quantum_outer([1;;10; 0; ],[0;0])");
+    EXPECT_TRUE(found.has_value()) << ms::format_error(found.error());
+
+    // A square outer product is unchanged: |0><0| is the projector onto |0>.
+    const auto square = interp.execute("quantum_outer([1; 0], [1; 0])");
+    ASSERT_TRUE(square.has_value());
+    EXPECT_NE(square->find("1.000000, 0.000000"), std::string::npos) << *square;
+}

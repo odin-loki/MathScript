@@ -2973,11 +2973,34 @@ Result<quantum::DensityMatrix> matrix_to_density_matrix(const Matrix<double>& m,
     return rho;
 }
 
+/// A `DensityMatrix` is a vector of rows and nothing makes it square.
+///
+/// This read `rho[i][j]` for every `j` below `rho.size()`, which is the ROW COUNT, and
+/// nineteen of its twenty callers get away with that because what they pass really is
+/// square -- a gate, a commutator, a partial trace. `quantum::outer(ket, bra)` is not:
+/// it builds `ket.size()` rows of `bra.size()` columns, because |a><b| for a 3-vector
+/// and a 2-vector is a perfectly ordinary 3x2 operator. With a shorter bra than ket,
+/// every row was read past its end.
+///
+/// A fuzz session found it as
+///
+///     quantum_outer([1;;10; 0; ],[0;0])
+///     ERROR: AddressSanitizer: heap-buffer-overflow
+///
+/// and it is worth noting that the REPL exits 0 on that input without a sanitizer: the
+/// values read were whatever followed each row, and they were printed as the operator.
+///
+/// The fix is the answer as well as the guard. Taking the width from the rows returns
+/// the 3x2 operator that |a><b| actually is, where before there was no shape it could
+/// have returned. The `min` is for a ragged `rho`, which nothing in tree produces but
+/// which the type permits.
 Matrix<double> density_matrix_to_matrix(const quantum::DensityMatrix& rho) {
-    const size_t n = rho.size();
-    Matrix<double> m(n, n);
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < n; ++j) {
+    const size_t rows = rho.size();
+    const size_t cols = rows == 0 ? 0 : rho[0].size();
+    Matrix<double> m(rows, cols);
+    for (size_t i = 0; i < rows; ++i) {
+        const size_t width = std::min(cols, rho[i].size());
+        for (size_t j = 0; j < width; ++j) {
             m(i, j) = rho[i][j].real();
         }
     }
