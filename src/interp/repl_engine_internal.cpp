@@ -7232,12 +7232,22 @@ Result<Matrix<double>> eval_signal_downsample(const Matrix<double>& x_m, int n) 
 }
 
 Result<int> require_positive_int_arg(double v, const char* fn, const char* arg_name) {
-    const int n = static_cast<int>(v);
-    if (n < 1 || v != n) {
+    // The cast came FIRST and the guard read its result. For a double past `int` that
+    // result does not exist, and on x86-64 the conversion happens to yield INT_MIN, so
+    // `n < 1` rejected the input BY ACCIDENT -- right outcome, undefined means, and
+    // nothing obliges the next compiler to keep the accident. `checked_int_argument`'s
+    // comment describes exactly this shape; the range is decided on the double here,
+    // before any conversion.
+    //
+    // The upper bound is `kMaxReplIntegerArgument` rather than INT_MAX for the reason
+    // that constant exists: these are resampling factors and filter lengths over a
+    // vector that holds at most 262144 elements, so 1e7 is already two orders past any
+    // factor that leaves anything behind.
+    if (!std::isfinite(v) || v != std::floor(v) || v < 1.0 || v > kMaxReplIntegerArgument) {
         return std::unexpected(DomainError{
             fn, std::string("expected positive integer ") + arg_name});
     }
-    return n;
+    return static_cast<int>(v);
 }
 
 Result<Matrix<double>> eval_signal_decimate(const Matrix<double>& x_m, int q) {
@@ -7457,11 +7467,15 @@ Result<Matrix<double>> eval_signal_median_filter(const Matrix<double>& x_m, int 
 }
 
 Result<Matrix<double>> eval_signal_median_filter_w(const Matrix<double>& x_m, double window_d) {
-    const int window_length = static_cast<int>(window_d);
-    if (window_length < 1 || window_d != window_length) {
+    // Same cast-before-check as `require_positive_int_arg` above, same fix. The work
+    // bound is already downstream in `eval_signal_median_filter`'s `WorkBudget`; what
+    // was missing here was only a defined conversion to hand it.
+    if (!std::isfinite(window_d) || window_d != std::floor(window_d) || window_d < 1.0 ||
+        window_d > kMaxReplIntegerArgument) {
         return std::unexpected(DomainError{
             "signal_median_filter", "expected positive integer window_length"});
     }
+    const int window_length = static_cast<int>(window_d);
     return eval_signal_median_filter(x_m, window_length);
 }
 
@@ -12977,6 +12991,22 @@ Result<double> eval_stats_vif(const Matrix<double>& X_m, double j_d, const char*
     }
     if (j_d < 0.0 || j_d != std::floor(j_d)) {
         return std::unexpected(DomainError{fn, "expected non-negative integer column index j"});
+    }
+    // An index has to name a column, and this one never had to. Two things followed
+    // from that, both of them answers rather than refusals:
+    //
+    //     X = [1, 2; 3, 4; 5, 7]
+    //     stats_vif(X, 5)                 0          -- X has two columns
+    //     stats_vif(X, 8155...550)        76         -- the same as stats_vif(X, 0)
+    //
+    // The second is why the bound goes here and not merely at `size_t`'s range:
+    // `static_cast<size_t>` of 8.16e33 is undefined, and on gcc-13 it lands on 0, so a
+    // 34-digit column index silently answered for column 0. Comparing on the DOUBLE,
+    // against the width the matrix actually has, closes both.
+    if (j_d >= static_cast<double>(X_m.cols())) {
+        return std::unexpected(DomainError{
+            fn, "column index j " + describe_count(j_d) + " is out of range; X has " +
+                    describe_count(static_cast<double>(X_m.cols())) + " columns"});
     }
     const auto j = static_cast<size_t>(j_d);
     std::vector<std::vector<double>> X(X_m.rows(), std::vector<double>(X_m.cols()));

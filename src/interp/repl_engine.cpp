@@ -3093,60 +3093,60 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
             return rgamma(arg);
         }
         if (fn == "combo_factorial") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_factorial", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::factorial(*n));
         }
         if (fn == "combo_catalan") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_catalan", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::catalan_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::catalan_num(*n));
         }
         if (fn == "combo_bell") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_bell", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(*n));
         }
         if (fn == "combo_bell_num") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_bell_num", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::bell_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::bell_num(*n));
         }
         if (fn == "combo_motzkin") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_motzkin", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::motzkin_num(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::motzkin_num(*n));
         }
         if (fn == "combo_subfactorial") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_subfactorial", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::subfactorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::subfactorial(*n));
         }
         if (fn == "combo_double_factorial") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_double_factorial", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::double_factorial(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::double_factorial(*n));
         }
         if (fn == "combo_involutions") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"combo_involutions", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, combo::involutions(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, combo::involutions(*n));
         }
         if (fn == "info_channel_capacity_bsc") {
             return info::channel_capacity_bsc(arg);
@@ -3239,11 +3239,11 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
 
 
         if (fn == "numthy_partition") {
-            if (arg < 0.0 || std::floor(arg) != arg) {
-                return std::unexpected(
-                    DomainError{"numthy_partition", "expected non-negative integer n"});
+            auto n = checked_counting_index(fn, arg);
+            if (!n) {
+                return std::unexpected(n.error());
             }
-            return combo_count_value(fn, numthy::partition(static_cast<uint32_t>(arg)));
+            return combo_count_value(fn, numthy::partition(*n));
         }
         if (fn == "numthy_num_divisors") {
             if (arg < 0.0 || std::floor(arg) != arg) {
@@ -23856,26 +23856,46 @@ Result<std::string> Interpreter::execute_impl(const std::string& line) {
                 return std::unexpected(
                     DomainError{fn, "expected non-negative integer argument"});
             }
+            // The BARE form of the nine assigned forms elsewhere in this file, and it
+            // carried the same `static_cast<uint32_t>` past the same missing bound. Its
+            // symptom was not a crash: `combo_factorial(8155555555555555555555555555555550)`
+            // answered 1, because on gcc-13 that conversion lands on 0 and 0! is 1.
+            //
+            // Only the `uint32_t` users are bounded here. The `numthy_isprime` family
+            // below takes a full `uint64_t` and checks it with `checked_u64_argument`,
+            // so folding this into the shared check above would refuse values those
+            // commands can answer for.
+            std::uint32_t counting_n = 0;
+            if (fn == "combo_factorial" || fn == "combo_catalan" || fn == "combo_bell" ||
+                fn == "combo_bell_num" || fn == "combo_involutions" ||
+                fn == "combo_motzkin" || fn == "combo_subfactorial" ||
+                fn == "combo_double_factorial" || fn == "numthy_partition") {
+                auto checked = checked_counting_index(fn, n_d);
+                if (!checked) {
+                    return std::unexpected(checked.error());
+                }
+                counting_n = *checked;
+            }
             if (fn == "combo_factorial") {
-                return combo_count_text(fn, combo::factorial(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::factorial(counting_n));
             }
             if (fn == "combo_catalan") {
-                return combo_count_text(fn, combo::catalan_num(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::catalan_num(counting_n));
             }
             if (fn == "combo_bell" || fn == "combo_bell_num") {
-                return combo_count_text(fn, combo::bell_num(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::bell_num(counting_n));
             }
             if (fn == "combo_involutions") {
-                return combo_count_text(fn, combo::involutions(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::involutions(counting_n));
             }
             if (fn == "combo_motzkin") {
-                return combo_count_text(fn, combo::motzkin_num(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::motzkin_num(counting_n));
             }
             if (fn == "combo_subfactorial") {
-                return combo_count_text(fn, combo::subfactorial(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::subfactorial(counting_n));
             }
             if (fn == "combo_double_factorial") {
-                return combo_count_text(fn, combo::double_factorial(static_cast<uint32_t>(n_d)));
+                return combo_count_text(fn, combo::double_factorial(counting_n));
             }
             if (fn == "numthy_isprime") {
                 auto n_u64 = checked_u64_argument(fn, "n", n_d, kMaxU64AsDouble);
@@ -23984,7 +24004,7 @@ Result<std::string> Interpreter::execute_impl(const std::string& line) {
                 }
                 return combo_count_text(fn, numthy::sum_divisors(*n_u64));
             }
-            return combo_count_text(fn, numthy::partition(static_cast<uint32_t>(n_d)));
+            return combo_count_text(fn, numthy::partition(counting_n));
         }
 
         if (fn == "info_channel_capacity_bsc") {

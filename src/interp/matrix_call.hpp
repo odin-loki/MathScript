@@ -190,6 +190,30 @@ inline Result<std::int64_t> checked_i64_argument(const std::string& fn, const ch
 /// 32-bit half of a wider value.
 constexpr double kMaxU32AsDouble = 4294967295.0;
 
+/// The index of a counting sequence: factorial, Catalan, Bell, Motzkin, partition.
+///
+/// Nine of these had the same two lines -- reject a negative or fractional argument,
+/// then `static_cast<uint32_t>(arg)` -- and the second is undefined for a double past
+/// `uint32_t`. The class is the one `checked_int_argument` was written for; what hid it
+/// is that GCC and Clang disagree about the result and neither is obliged to do
+/// anything. On gcc-13 `-O1` a 34-digit argument converts to 0.
+///
+/// The bound costs nothing anyone can use. Every one of these overflows `uint64_t` in
+/// the twenties or thirties -- 21! does not fit, nor the 36th Catalan number -- and
+/// `combo_count_value` turns that into "result does not fit in 64 bits". So the answer
+/// above 4 billion was already a refusal; this only makes the refusal defined.
+inline Result<std::uint32_t> checked_counting_index(const std::string& fn, double arg) {
+    if (arg < 0.0 || std::floor(arg) != arg) {
+        return std::unexpected(DomainError{fn, "expected non-negative integer n"});
+    }
+    if (!std::isfinite(arg) || arg > kMaxU32AsDouble) {
+        return std::unexpected(DomainError{
+            fn, "n " + describe_count(arg) + " is too large; this index is a 32-bit count "
+                "and every sequence here has overflowed 64 bits long before it"});
+    }
+    return static_cast<std::uint32_t>(arg);
+}
+
 /// A random seed, which is an `unsigned` and so has its own range.
 ///
 /// The same cast-before-check shape as everywhere else, and here it does not merely

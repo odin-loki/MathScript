@@ -97,13 +97,27 @@ TEST(ReplResourceGuards, CountingFunctionsReportOverflowInsteadOfWrapping) {
     // And the REPL forms return rather than hanging. They used to return the sentinel
     // itself, printed as 18446744073709551615; now they say what it means. Either way
     // the point of this assertion is that the call comes back at all.
+    //
+    // Which of the two things it says depends on which bound the argument crosses
+    // first, and that distinction is worth keeping. Below 2^32 the index converts
+    // cleanly and what fails is the arithmetic, so the message is about the RESULT.
+    // Above it the index itself has no `uint32_t` to become -- `static_cast` there is
+    // undefined, and until 2026-09-17 it was performed anyway -- so the message is
+    // about the INDEX. 1e18 used to report the result's overflow, which was true and
+    // beside the point.
     Interpreter interp;
-    for (const char* cmd : {"combo_bell(3000000000)", "combo_bell_num(1e18)",
-                            "combo_motzkin(3000000000)", "combo_subfactorial(1e18)"}) {
+    for (const char* cmd : {"combo_bell(3000000000)", "combo_motzkin(3000000000)"}) {
         const auto result = interp.execute(cmd);
         ASSERT_FALSE(result.has_value()) << cmd;
         const std::string message = ms::format_error(result.error());
         EXPECT_NE(message.find("does not fit in 64 bits"), std::string::npos)
+            << cmd << " error: " << message;
+    }
+    for (const char* cmd : {"combo_bell_num(1e18)", "combo_subfactorial(1e18)"}) {
+        const auto result = interp.execute(cmd);
+        ASSERT_FALSE(result.has_value()) << cmd;
+        const std::string message = ms::format_error(result.error());
+        EXPECT_NE(message.find("32-bit count"), std::string::npos)
             << cmd << " error: " << message;
     }
 }
@@ -500,4 +514,60 @@ TEST(ReplResourceGuards, AxiomEvolveIsBoundedByPopulationTimesGenerations) {
     EXPECT_TRUE(interp.execute("b = axiom_evolve(D, 20, 25)").has_value());
     EXPECT_TRUE(interp.execute("c = axiom_evolve(D, 1000, 100)").has_value());
     EXPECT_GT(interp.state().scalars.count("a"), 0u);
+}
+
+TEST(ReplResourceGuards, FloatToIntegerConversionsAreBoundedBeforeTheCast) {
+    // Twelve sites found by sweeping the REPL under `-fsanitize=float-cast-overflow`,
+    // which is the point: GCC's `-fsanitize=undefined` does NOT include that check, so
+    // the sanitizer job could not see any of them. Measured on the same file:
+    //
+    //   gcc-13 -fsanitize=undefined                    prints 0, silently
+    //   gcc-13 -fsanitize=undefined,float-cast-overflow diagnostic, then 0
+    //   clang  -fsanitize=undefined                     diagnostic, then 9223372036854775808
+    //
+    // Two of the twelve were answering rather than refusing, and those are the
+    // assertions below that can fail on an ordinary build. The rest were "rejected by
+    // accident" -- the cast came first, INT_MIN came out, and `n < 1` turned it down --
+    // which is the right outcome by undefined means and reads exactly like a guard.
+    Interpreter interp;
+    const char* big = "8155555555555555555555555555555550";
+
+    // `combo_factorial` ANSWERED 1. The conversion landed on 0 and 0! is 1. Both
+    // dispatch paths had it: the assigned form and the bare form are separate code.
+    const auto assigned = interp.execute(std::string("f = combo_factorial(") + big + ")");
+    ASSERT_FALSE(assigned.has_value());
+    EXPECT_NE(ms::format_error(assigned.error()).find("32-bit count"), std::string::npos)
+        << ms::format_error(assigned.error());
+    const auto bare = interp.execute(std::string("combo_factorial(") + big + ")");
+    ASSERT_FALSE(bare.has_value()) << bare.value_or("");
+    const auto partition = interp.execute(std::string("numthy_partition(") + big + ")");
+    ASSERT_FALSE(partition.has_value()) << partition.value_or("");
+
+    // The counting sequences anyone would ask for are untouched: 10! and p(10) = 42.
+    const auto fact = interp.execute("combo_factorial(10)");
+    ASSERT_TRUE(fact.has_value());
+    EXPECT_NE(fact->find("3628800"), std::string::npos) << *fact;
+    const auto p10 = interp.execute("numthy_partition(10)");
+    ASSERT_TRUE(p10.has_value());
+    EXPECT_NE(p10->find("42"), std::string::npos) << *p10;
+
+    // `stats_vif` ANSWERED for column 0 when asked for a 34-digit column, and answered
+    // 0 for any column the matrix does not have. An index has to name a column.
+    ASSERT_TRUE(interp.execute("X = [1, 2; 3, 4; 5, 7]").has_value());
+    const auto vif0 = interp.execute("stats_vif(X, 0)");
+    ASSERT_TRUE(vif0.has_value());
+    EXPECT_NE(vif0->find("76"), std::string::npos) << *vif0;
+    for (const std::string cmd : {std::string("stats_vif(X, 5)"),
+                                  std::string("stats_vif(X, ") + big + ")"}) {
+        const auto out = interp.execute(cmd);
+        ASSERT_FALSE(out.has_value()) << cmd << " => " << out.value_or("");
+        EXPECT_NE(ms::format_error(out.error()).find("out of range"), std::string::npos)
+            << ms::format_error(out.error());
+    }
+
+    // The signal factors were the "rejected by accident" kind, so these two lines pass
+    // either way on x86-64 and are here for the boundary, not as a mutant check.
+    EXPECT_FALSE(interp.execute("signal_downsample([1;2;3;4], 3000000000)").has_value());
+    EXPECT_TRUE(interp.execute("signal_downsample([1;2;3;4], 2)").has_value());
+    EXPECT_TRUE(interp.execute("signal_median_filter([1;5;2;8;3], 3)").has_value());
 }
