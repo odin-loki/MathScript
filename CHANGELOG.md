@@ -18,6 +18,7 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 - `kronecker_symbol(a, INT64_MIN)` recursed forever because `-INT64_MIN` is not representable in `int64_t`. The 24 h fuzzer found it as `numthy_kronecker_symbol(1, -9223372036854775808)`. Magnitude is taken in unsigned arithmetic.
 - ISA detection compiled x86 `XGETBV` (`=a`/`=d` constraints) on every Clang target, including Apple Silicon, so the first macOS CI build died in `isa.cpp`.
 - Symbolic number parsing used `std::from_chars` on `double`, which Apple libc++ still deletes. macOS uses `strtod` for that literal.
+- `test_repl_corpus` needed `<algorithm>` for `std::sort`; libstdc++ pulled it in transitively and libc++ does not.
 - ISA detection compiled x86 `XGETBV` (`=a`/`=d` constraints) on every Clang target, including Apple Silicon, so the first macOS CI build died in `isa.cpp`.
 
 ### Windows MSVC, and the numbers from 2026-09-16

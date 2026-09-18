@@ -27,6 +27,7 @@
 // expected files are the record of what the program does, and a record that is
 // regenerated without being read is not a record.
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
