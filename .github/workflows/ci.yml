@@ -178,9 +178,17 @@ jobs:
       - name: Install toolchain
         run: brew install ninja
 
+      - name: Toolchain versions
+        run: |
+          cmake --version
+          clang++ --version
+          ninja --version
+          uname -m
+
       - name: Configure
         run: >
           cmake -S . -B build-macos -G Ninja
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
           -DCMAKE_BUILD_TYPE=Release
           -DMS_BUILD_TESTS=ON
           -DMS_ENABLE_CUDA=OFF

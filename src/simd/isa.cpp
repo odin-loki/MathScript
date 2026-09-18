@@ -41,6 +41,12 @@ void cpuid(int info[4], int leaf, int subleaf = 0) {
 // kernel compiled with -mavx512f and the first instruction faults, so the failure
 // is SIGILL inside dgemm rather than a fall back to a slower path -- decided by the
 // deployment environment, not by anything the caller passed in.
+//
+// XGETBV is an x86 instruction. Compiling the GNU '=a'/ '=d' form on Apple
+// Silicon (or any other non-x86 Clang) is a hard error from the assembler, which
+// is how the first macOS CI job died. detect_isa() already returns before calling
+// this on those targets.
+#if MS_ISA_X86
 std::uint64_t xgetbv0() noexcept {
 #if defined(_MSC_VER)
     return _xgetbv(0);
@@ -54,6 +60,7 @@ std::uint64_t xgetbv0() noexcept {
     return 0;
 #endif
 }
+#endif
 
 // XCR0 bit 1 (SSE state) and bit 2 (AVX state, the upper half of YMM).
 constexpr std::uint64_t kXcr0Ymm = 0x6;
