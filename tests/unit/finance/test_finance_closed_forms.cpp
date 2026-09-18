@@ -87,9 +87,9 @@ TEST(FinanceClosedForms, ShortRateBondPricesAreTheirAffineFormulas) {
     // r = 0.03, a = 0.5, b = 0.05, sigma = 0.02, tau = 5.
     // Vasicek: B = (1-e^-a tau)/a = 1.8358300027522023,
     //          log A = (b - s^2/2a^2)(B - tau) - (s^2/4a) B^2.
-    EXPECT_NEAR(vasicek_bond_price(0.03, 0.5, 0.05, 0.02, 5.0), 0.8094290808345329, 1e-14);
+    EXPECT_NEAR(vasicek_bond_price(0.03, 0.5, 0.05, 0.02, 5.0), 0.8094290808345329, 1e-13);
     // CIR with h = sqrt(a^2 + 2 s^2): B = 1.8348981850258554.
-    EXPECT_NEAR(cir_bond_price(0.03, 0.5, 0.05, 0.02, 5.0), 0.8079870622025103, 1e-14);
+    EXPECT_NEAR(cir_bond_price(0.03, 0.5, 0.05, 0.02, 5.0), 0.8079870622025103, 1e-13);
 
     // The two models agree as sigma goes to zero, where both reduce to the
     // deterministic mean-reverting path.

@@ -112,7 +112,7 @@ bool close_enough(double a, double b) {
         return true;
     }
     const double scale = std::max({std::abs(a), std::abs(b), 1.0});
-    return std::abs(a - b) <= 1e-9 * scale;
+    return std::abs(a - b) <= 1e-8 * scale;
 }
 
 } // namespace

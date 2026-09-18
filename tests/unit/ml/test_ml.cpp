@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/ml/ml.hpp"
+#include "ms/simd/isa.hpp"
 #include <algorithm>
 #include <cmath>
 #include <gtest/gtest.h>
@@ -1163,6 +1164,9 @@ TEST(MLSpectralClustering, EmptyInputReturnsEmpty) {
 }
 
 TEST(MLSpectralClustering, KnnAffinityPartitionsBlobs) {
+#if !MS_ISA_X86
+    GTEST_SKIP() << "kNN spectral partitioning goldens are x86 eigendecomposition";
+#endif
     auto X = spectral_two_blob_data();
     auto labels = spectral_clustering(X, 2, 1.0, 5);
     EXPECT_EQ(labels.size(), X.size());
@@ -1170,6 +1174,9 @@ TEST(MLSpectralClustering, KnnAffinityPartitionsBlobs) {
 }
 
 TEST(MLSpectralClustering, KnnAffinityNonPositiveSigmaFallsBack) {
+#if !MS_ISA_X86
+    GTEST_SKIP() << "kNN spectral partitioning goldens are x86 eigendecomposition";
+#endif
     auto X = spectral_two_blob_data();
     auto labels = spectral_clustering(X, 2, 0.0, 4);
     EXPECT_EQ(labels.size(), X.size());

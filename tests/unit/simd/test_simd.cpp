@@ -11,7 +11,11 @@ using namespace ms::simd;
 
 TEST(SimdTest, dispatch_detects_isa) {
     const auto info = dispatch_info();
+#if MS_ISA_X86
     EXPECT_TRUE(info.isa.sse2);
+#else
+    EXPECT_FALSE(info.isa.sse2);
+#endif
 }
 
 TEST(SimdTest, add_matches_scalar) {

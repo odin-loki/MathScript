@@ -19,7 +19,7 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 - ISA detection compiled x86 `XGETBV` (`=a`/`=d` constraints) on every Clang target, including Apple Silicon, so the first macOS CI build died in `isa.cpp`.
 - Symbolic number parsing used `std::from_chars` on `double`, which Apple libc++ still deletes. macOS uses `strtod` for that literal.
 - `test_repl_corpus` needed `<algorithm>` for `std::sort`; libstdc++ pulled it in transitively and libc++ does not.
-- ISA detection compiled x86 `XGETBV` (`=a`/`=d` constraints) on every Clang target, including Apple Silicon, so the first macOS CI build died in `isa.cpp`.
+- Apple Silicon CTest treated x86 goldens as portable: SSE2 was asserted on ARM, SIFT/spectral/GMM/latex round-trips pinned libm bit patterns, and a few ULP-tight `EXPECT_NEAR`s missed Apple libm by one unit. Those tests now skip or loosen off x86.
 
 ### Windows MSVC, and the numbers from 2026-09-16
 

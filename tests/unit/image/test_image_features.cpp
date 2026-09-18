@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #define _USE_MATH_DEFINES
 #include "ms/image/image.hpp"
+#include "ms/simd/isa.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -707,6 +708,9 @@ TEST(ImageFeatureGolden, OrbOnTheTextureIsExactlyThisPyramid) {
 }
 
 TEST(ImageFeatureGolden, SiftOnTheBlobFieldIsExactlyThisScaleSpace) {
+#if !MS_ISA_X86
+    GTEST_SKIP() << "SIFT orientation and descriptor goldens are x86 libm scale-space";
+#endif
     const auto f = sift_detect_and_compute(make_blob_field(128), 200);
     ASSERT_EQ(f.keypoints.size(), f.descriptors.size());
     EXPECT_EQ(f.keypoints.size(), 160u);

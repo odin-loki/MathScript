@@ -15,8 +15,11 @@ using namespace ms::simd;
 
 TEST(SimdIsa, DetectIsa_Returns_IsaFeatures) {
     IsaFeatures features = detect_isa();
-    // On any modern x64 CPU, at least SSE2 should be present
+#if MS_ISA_X86
     EXPECT_TRUE(features.sse2) << "SSE2 should be supported on all x64 systems";
+#else
+    EXPECT_FALSE(features.sse2) << "SSE2 is an x86 feature";
+#endif
 }
 
 TEST(SimdIsa, IsaFeatures_Hierarchy_Consistent) {
@@ -32,9 +35,12 @@ TEST(SimdIsa, IsaFeatures_Hierarchy_Consistent) {
 }
 
 TEST(SimdIsa, IsaFeatures_SSE2_On_X64) {
-    // x64 mandates SSE2
     IsaFeatures features = detect_isa();
+#if MS_ISA_X86
     EXPECT_TRUE(features.sse2);
+#else
+    EXPECT_FALSE(features.sse2);
+#endif
 }
 
 TEST(SimdIsa, IsaFeatures_BoolFields_AreValidBools) {

@@ -22,9 +22,13 @@ TEST(SimdVectorOpsTest, detect_isa_and_summary) {
 }
 
 TEST(SimdVectorOpsTest, detect_isa_sse2_always_true) {
-    // On any x86-64 target SSE2 is baseline
     const auto info = dispatch_info();
+#if MS_ISA_X86
+    // x86-64 mandates SSE2.
     EXPECT_TRUE(info.isa.sse2);
+#else
+    EXPECT_FALSE(info.isa.sse2);
+#endif
 }
 
 // ---------------------------------------------------------------------------

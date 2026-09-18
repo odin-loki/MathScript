@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // SPDX-FileCopyrightText: 2026 Odin Loch
 #include <gtest/gtest.h>
+#include <algorithm>
+#include <cmath>
 #include <span>
 #include <vector>
 #include "ms/poly/poly.hpp"
@@ -28,7 +30,8 @@ void expect_batch_matches_naive(const std::vector<double>& coeffs, std::span<con
     const auto expected = naive_poly_eval_at(coeffs, xs);
     ASSERT_EQ(got.size(), expected.size());
     for (size_t i = 0; i < got.size(); ++i) {
-        EXPECT_NEAR(got[i], expected[i], 1e-12) << "i=" << i;
+        const double tol = 1e-12 * std::max(1.0, std::abs(expected[i]));
+        EXPECT_NEAR(got[i], expected[i], tol) << "i=" << i;
     }
 }
 

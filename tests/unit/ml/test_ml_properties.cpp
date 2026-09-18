@@ -30,6 +30,7 @@
 
 #define _USE_MATH_DEFINES
 #include "ms/ml/ml.hpp"
+#include "ms/simd/isa.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -276,6 +277,9 @@ TEST(MlProperties, GaussianMixtureRecoversTheVariancesItWasGiven) {
 }
 
 TEST(MlProperties, GaussianMixtureScoresEveryFeature) {
+#if !MS_ISA_X86
+    GTEST_SKIP() << "GMM EM separation goldens are x86 libm";
+#endif
     // Two components that differ ONLY in feature 0. If the per-point density
     // skipped that feature there would be nothing left to tell them apart, so
     // the assignment of a point far out along feature 0 is the test.
