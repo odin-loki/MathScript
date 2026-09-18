@@ -5,12 +5,35 @@
 
 #include <charconv>
 #include <cctype>
+#include <cerrno>
 #include <cstdlib>
 #include <string_view>
 
 namespace ms {
 
 namespace {
+
+bool parse_double_literal(std::string_view token, double& value) {
+#if defined(__APPLE__)
+    // Apple libc++ still deletes floating std::from_chars (Xcode 15.4): the
+    // integral overload is a candidate and then a hard error. strtod on a
+    // privately owned buffer is the portable substitute; the token is already
+    // a number the lexer accepted, so locale and leading-space questions do
+    // not arise.
+    const std::string owned(token);
+    char* end = nullptr;
+    errno = 0;
+    const double parsed = std::strtod(owned.c_str(), &end);
+    if (errno != 0 || end != owned.c_str() + owned.size()) {
+        return false;
+    }
+    value = parsed;
+    return true;
+#else
+    const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+    return ec == std::errc{} && ptr == token.data() + token.size();
+#endif
+}
 
 std::expected<SymExpr, SymParseError> sym_expr_ok(SymExpr expr) {
     return std::expected<SymExpr, SymParseError>(std::in_place, std::move(expr));
@@ -273,8 +296,7 @@ private:
 
         const std::string_view token(text_.data() + start, pos_ - start);
         double value = 0.0;
-        const auto [ptr, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
-        if (ec != std::errc{} || ptr != token.data() + token.size()) {
+        if (!parse_double_literal(token, value)) {
             return std::unexpected(make_error("invalid numeric literal"));
         }
         return sym_expr_ok(sym_const(value));
