@@ -611,3 +611,76 @@ TEST(ReplResourceGuards, GriaEntropyBinsAreBoundedByTheHistogramTheyAllocate) {
     EXPECT_NE(four->find("1.459148"), std::string::npos) << *four;
     EXPECT_TRUE(interp.execute("gria_entropy([1,2,2,3,3,3])").has_value());
 }
+
+TEST(ReplResourceGuards, RiccatiWeightsMustBeSizedAgainstTheInputsTheyWeigh) {
+    // Found by the 24-hour REPL-only fuzz session, 99 minutes in:
+    //
+    //     control_lqr([-4,0;0,-3],[1;1],eye(2),[1<NUL...>,1;0,1<NUL...>])
+    //     AddressSanitizer: heap-buffer-overflow, READ of size 8
+    //       #0 ms::control::matmul(...)   control.cpp:56
+    //       #1 ms::control::q_from_k(...) control.cpp:1101
+    //       #2 ms::control::riccati(...)  control.cpp:1178
+    //       #3 ms::control::lqr(...)      control.cpp:1269
+    //     0x... is located 0 bytes after 8-byte region allocated by
+    //       ms::control::transpose(...)  control.cpp:65
+    //
+    // A is 2x2 and B is 2x1, so there is ONE input and R has to be 1x1. R was given
+    // as 2x2 and nothing checked it: `q_from_k` transposes the 1x2 gain into a 2x1,
+    // then multiplies it by a 2x2 R, and `matmul` takes its inner extent from R --
+    // so it reads two doubles out of rows that hold one. The REPL layer checked B's
+    // rows and Q's size against A and left R alone, and the library re-derived the
+    // input count from B[0] without ever comparing it to R.
+    //
+    // Valgrind on the release build: two invalid reads of size 8 before the guard,
+    // none after. The release build does not fault -- it ANSWERS, with a 2x2 gain
+    // whose second row is zeros, where a 2x2 A and a 2x1 B admit only a 1x2 gain.
+    // That is why the shape is asserted below and not merely the survival: a "does
+    // not crash" check passes against the defect.
+    Interpreter interp;
+
+    // Cheap, and the mutant check: with the guard reverted each of these succeeds
+    // (over-reading as it goes) instead of being refused.
+    const std::pair<std::string, std::string> rejected[] = {
+        {"control_lqr([-4,0;0,-3],[1;1],[1,0;0,1],[1,0;0,1])", "per input"},
+        {"control_riccati([-4,0;0,-3],[1;1],[1,0;0,1],[1,0;0,1])", "per input"},
+        {"control_dare([0.5,0;0,0.5],[1;1],[1,0;0,1],[1,0;0,1])", "per input"},
+        {"control_lqe([-4,0;0,-3],[1,0],[1,0;0,1],[1,0;0,1])", "per measurement"},
+    };
+    for (const auto& [cmd, want] : rejected) {
+        const auto out = interp.execute(cmd);
+        ASSERT_FALSE(out.has_value()) << cmd << " => " << out.value_or("");
+        EXPECT_NE(ms::format_error(out.error()).find(want), std::string::npos)
+            << cmd << " => " << ms::format_error(out.error());
+    }
+
+    // The fuzzer's own line, with the NULs it carried folded to spaces the way the
+    // fuzz target folds them.
+    EXPECT_FALSE(
+        interp.execute("control_lqr([-4,0;0,-3],[1;1],eye(2),[1   ,1;0,1   ])").has_value());
+
+    // One input, so the gain is 1x2 -- not the 2x2 the defect returned.
+    ASSERT_TRUE(interp.execute("K = control_lqr([-4,0;0,-3],[1;1],[1,0;0,1],[2])").has_value());
+    const auto k_rows = interp.execute("mat_rows(K)");
+    ASSERT_TRUE(k_rows.has_value()) << ms::format_error(k_rows.error());
+    EXPECT_NE(k_rows->find("1"), std::string::npos) << *k_rows;
+    const auto k_cols = interp.execute("mat_cols(K)");
+    ASSERT_TRUE(k_cols.has_value()) << ms::format_error(k_cols.error());
+    EXPECT_NE(k_cols->find("2"), std::string::npos) << *k_cols;
+
+    // One measurement, so the estimator gain is 2x1 -- the dual shape.
+    ASSERT_TRUE(interp.execute("L = control_lqe([-4,0;0,-3],[1,0],[1,0;0,1],[2])").has_value());
+    const auto l_rows = interp.execute("mat_rows(L)");
+    ASSERT_TRUE(l_rows.has_value()) << ms::format_error(l_rows.error());
+    EXPECT_NE(l_rows->find("2"), std::string::npos) << *l_rows;
+    const auto l_cols = interp.execute("mat_cols(L)");
+    ASSERT_TRUE(l_cols.has_value()) << ms::format_error(l_cols.error());
+    EXPECT_NE(l_cols->find("1"), std::string::npos) << *l_cols;
+
+    // Two inputs with a 2x2 R is the case the guard must not refuse, cross terms
+    // included -- non-diagonal R is ordinary in LQR.
+    EXPECT_TRUE(
+        interp.execute("control_lqr([-4,0;0,-3],[1,0;0,1],[1,0;0,1],[2,0.5;0.5,2])").has_value());
+    EXPECT_TRUE(
+        interp.execute("control_dare([0.5,0;0,0.5],[1,0;0,1],[1,0;0,1],[2,0.5;0.5,2])")
+            .has_value());
+}

@@ -1107,6 +1107,44 @@ q_from_k(const std::vector<std::vector<double>>& Q,
     return Qaug;
 }
 
+// ---- Shape guard for the algebraic-Riccati family ----
+// riccati(), dare() and the gains built from them multiply R against B and
+// against K, and matmul() trusts the shapes it is handed. An R whose size is
+// not B's column count -- the input count -- makes matmul walk off the end of
+// a row that was allocated from B, which is a read past the allocation, not a
+// wrong answer. Nothing downstream re-checks it, so every public entry point
+// validates the whole (A, B, Q, R) set here, before the first multiplication.
+static const char* are_shape_error(const std::vector<std::vector<double>>& A,
+                                   const std::vector<std::vector<double>>& B,
+                                   const std::vector<std::vector<double>>& Q,
+                                   const std::vector<std::vector<double>>& R) {
+    if (A.empty())
+        return "expected a non-empty A";
+    const size_t n = A.size();
+    for (const auto& row : A)
+        if (row.size() != n)
+            return "expected a square A";
+    if (B.size() != n)
+        return "expected B with one row per state";
+    if (B.front().empty())
+        return "expected B with at least one column";
+    const size_t m = B.front().size();
+    for (const auto& row : B)
+        if (row.size() != m)
+            return "expected B with rows of equal length";
+    if (Q.size() != n)
+        return "expected Q with one row and column per state";
+    for (const auto& row : Q)
+        if (row.size() != n)
+            return "expected Q with one row and column per state";
+    if (R.size() != m)
+        return "expected R with one row and column per input";
+    for (const auto& row : R)
+        if (row.size() != m)
+            return "expected R with one row and column per input";
+    return nullptr;
+}
+
 // ---- Riccati (Kleinman policy iteration) ----
 // Solve: A^T X + X A - X S X + Q = 0 where S = B R^{-1} B^T
 // With stabilising K_0, iterate:
@@ -1117,6 +1155,8 @@ riccati(const std::vector<std::vector<double>>& A,
         const std::vector<std::vector<double>>& B,
         const std::vector<std::vector<double>>& Q,
         const std::vector<std::vector<double>>& R) {
+    if (const char* shape_err = are_shape_error(A, B, Q, R))
+        return std::unexpected(Error{DomainError{"riccati", shape_err}});
     int n = static_cast<int>(A.size());
     int m = static_cast<int>(B[0].size());
     auto BT = transpose(B);
@@ -1195,6 +1235,8 @@ dare(const std::vector<std::vector<double>>& A,
      const std::vector<std::vector<double>>& B,
      const std::vector<std::vector<double>>& Q,
      const std::vector<std::vector<double>>& R) {
+    if (const char* shape_err = are_shape_error(A, B, Q, R))
+        return std::unexpected(Error{DomainError{"dare", shape_err}});
     int n = static_cast<int>(A.size());
     auto AT = transpose(A);
     auto BT = transpose(B);
@@ -1266,6 +1308,8 @@ lqr(const std::vector<std::vector<double>>& A,
     const std::vector<std::vector<double>>& B,
     const std::vector<std::vector<double>>& Q,
     const std::vector<std::vector<double>>& R) {
+    if (const char* shape_err = are_shape_error(A, B, Q, R))
+        return std::unexpected(Error{DomainError{"lqr", shape_err}});
     auto X = riccati(A, B, Q, R);
     if (!X) return std::unexpected(X.error());
     // K = R^{-1} B^T X
@@ -1285,6 +1329,37 @@ lqr(const std::vector<std::vector<double>>& A,
     return matmul(matmul(Rinv, BT), X.value());
 }
 
+// The dual of are_shape_error() for lqe(), stated on the operands as the
+// caller passes them: A is n x n, C is p x n, Q is n x n and R is p x p.
+static const char* lqe_shape_error(const std::vector<std::vector<double>>& A,
+                                   const std::vector<std::vector<double>>& C,
+                                   const std::vector<std::vector<double>>& Q,
+                                   const std::vector<std::vector<double>>& R) {
+    if (A.empty())
+        return "expected a non-empty A";
+    const size_t n = A.size();
+    for (const auto& row : A)
+        if (row.size() != n)
+            return "expected a square A";
+    if (C.empty())
+        return "expected a non-empty C";
+    const size_t p = C.size();
+    for (const auto& row : C)
+        if (row.size() != n)
+            return "expected C with one column per state";
+    if (Q.size() != n)
+        return "expected Q with one row and column per state";
+    for (const auto& row : Q)
+        if (row.size() != n)
+            return "expected Q with one row and column per state";
+    if (R.size() != p)
+        return "expected R with one row and column per measurement";
+    for (const auto& row : R)
+        if (row.size() != p)
+            return "expected R with one row and column per measurement";
+    return nullptr;
+}
+
 // ---- LQE (dual of LQR) ----
 // Filter ARE: A*P + P*A^T - P*C^T*R^{-1}*C*P + Q = 0
 // Dual control ARE with (A, B) -> (A^T, C^T) gives the same equation for P.
@@ -1293,6 +1368,12 @@ lqe(const std::vector<std::vector<double>>& A,
     const std::vector<std::vector<double>>& C,
     const std::vector<std::vector<double>>& Q,
     const std::vector<std::vector<double>>& R) {
+    // The dual ARE substitutes (A, B) -> (A^T, C^T), so R is weighted against
+    // C's rows -- the measurement count -- not against A. transpose() itself
+    // dereferences A[0] and C[0] and reads every row to that width, so the
+    // shapes are checked here, on the untransposed operands, before it runs.
+    if (const char* shape_err = lqe_shape_error(A, C, Q, R))
+        return std::unexpected(Error{DomainError{"lqe", shape_err}});
     auto P = riccati(transpose(A), transpose(C), Q, R);
     if (!P) return std::unexpected(P.error());
 

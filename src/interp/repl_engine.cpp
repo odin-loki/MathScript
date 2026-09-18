@@ -11217,7 +11217,16 @@ Result<std::string> Interpreter::execute(const std::string& line) {
     // split the arguments correctly and got as far as judging them: for
     // `signal_czt_zoom([1, 0, 0, 0], 0, 1, 0, 4)` the retry says `expected
     // positive integer m`, which is the actual fault.
-    if (format_error(direct.error()).find("unknown matrix: [") != std::string::npos) {
+    //
+    // Any failure to RESOLVE an argument is that same artifact, not only the one
+    // that names a half-read literal: the truncated reading also hands whole
+    // fragments to the resolver, so `control_lqr([-4,0;0,-3], [1;1], eye(2),
+    // [1,1;0,1])` reported `unknown matrix: eye(2)` -- a nested call the split
+    // reading evaluates without trouble -- and hid the retry's `expected R with
+    // one row and column per input`, which is the actual fault. When the split
+    // reading fails at resolution too, the argument really is missing and both
+    // errors say so, so preferring the retry costs nothing there.
+    if (format_error(direct.error()).find("unknown matrix: ") != std::string::npos) {
         return std::unexpected(retried.error());
     }
     return std::unexpected(direct.error());
