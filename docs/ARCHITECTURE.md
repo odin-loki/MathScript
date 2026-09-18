@@ -16,7 +16,7 @@ MathsScript/
 ├── docs/               # This file, API, user guide, waves
 ├── vendor/             # Third-party sources; CHECKSUMS.sha256
 ├── build.ps1 / build.sh
-└── .github/workflows/  # ci.yml, nightly.yml, fuzz-24h.yml
+└── .github/workflows/  # ci.yml (Windows/Linux/macOS + tag release), nightly.yml, fuzz-24h.yml
 ```
 
 Local Windows builds use a single directory: **`build-msvc`**. Linux CI uses `build` (or a job-specific name in the workflow). Do not keep extra `build-*` trees on a workstation.

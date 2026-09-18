@@ -591,8 +591,17 @@ int kronecker_symbol(int64_t a, int64_t n) {
     if (n == 0) return (a == 1 || a == -1) ? 1 : 0;
     if (n == 1) return 1;
     if (n == -1) return (a < 0) ? -1 : 1;
-    if (n < 0) return kronecker_symbol(a, -n) * ((a < 0) ? -1 : 1);
-    return jacobi_symbol(a, static_cast<uint64_t>(n));
+    // (a/n) for n < 0 is (a/|n|) * (a/-1). Negating INT64_MIN in int64_t
+    // overflows and used to recurse forever; the 24 h fuzzer found it as
+    // numthy_kronecker_symbol(1, -9223372036854775808). Unsigned two's
+    // complement gives |n| for every negative n, including that one.
+    uint64_t un = static_cast<uint64_t>(n);
+    int sign = 1;
+    if (n < 0) {
+        un = 0ull - un;
+        sign = (a < 0) ? -1 : 1;
+    }
+    return jacobi_symbol(a, un) * sign;
 }
 
 Result<uint64_t> discrete_log(uint64_t g, uint64_t h, uint64_t p) {

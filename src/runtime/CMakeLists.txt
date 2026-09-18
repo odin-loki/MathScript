@@ -25,7 +25,7 @@ else()
                                        cpu/avx512_sgemm_stub.cpp)
 endif()
 
-if(MS_ENABLE_AVX2)
+if(MS_ENABLE_AVX2 AND MS_TARGET_X86)
     list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm.cpp cpu/avx2_sgemm.cpp)
 else()
     list(APPEND MS_RUNTIME_CPU_SOURCES cpu/avx2_dgemm_stub.cpp cpu/avx2_sgemm_stub.cpp)
@@ -62,7 +62,7 @@ if(MS_ENABLE_AVX512 AND MS_TARGET_X86)
     endif()
 endif()
 
-if(MS_ENABLE_AVX2)
+if(MS_ENABLE_AVX2 AND MS_TARGET_X86)
     if(MSVC)
         set_source_files_properties(cpu/avx2_dgemm.cpp cpu/avx2_sgemm.cpp
                                     PROPERTIES COMPILE_OPTIONS "/arch:AVX2")

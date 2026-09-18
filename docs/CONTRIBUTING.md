@@ -8,7 +8,7 @@ Looking to just use MathScript? See [`docs/USER_GUIDE.md`](USER_GUIDE.md) instea
 
 - **CMake** 3.28+
 - **Ninja**
-- **C++23** compiler: MSVC 2022+ (Windows) or GCC 13 / Clang (Linux)
+- **C++23** compiler: MSVC 2022+ (Windows), GCC 13 / Clang (Linux), or AppleClang (macOS)
 
 GoogleTest is fetched automatically when `MS_BUILD_TESTS=ON`.
 

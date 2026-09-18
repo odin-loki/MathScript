@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
 
@@ -167,6 +168,40 @@ jobs:
 
       - name: Vendor checksum verify
         run: bash scripts/verify_vendor.sh
+
+  build-test-macos:
+    name: Build & test (macOS AppleClang)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: brew install ninja
+
+      - name: Configure
+        run: >
+          cmake -S . -B build-macos -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DMS_BUILD_TESTS=ON
+          -DMS_ENABLE_CUDA=OFF
+          -DMS_ENABLE_AVX512=OFF
+          -DMS_ENABLE_AVX2=OFF
+
+      - name: Build
+        run: cmake --build build-macos
+
+      - name: Test
+        run: ctest --test-dir build-macos --output-on-failure || ctest --test-dir build-macos --rerun-failed --output-on-failure
+
+      - name: Install smoke
+        run: bash scripts/package_smoke.sh build-macos install-smoke
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mathscript-macos-tgz
+          path: build-macos/mathscript-*.tar.gz
+          if-no-files-found: error
 
   compliance-linux:
     name: Compliance (source-only checks)
@@ -439,3 +474,47 @@ jobs:
           MS_BENCH_REGRESSION: on
           MS_BENCH_TOLERANCE: "10"
         run: bash scripts/bench_regression.sh build-bench
+
+  # Packages attached to a GitHub Release are the ones this workflow just built.
+  # A local cpack upload is not a substitute: the tag is what triggers this job.
+  publish-release:
+    name: Publish GitHub release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - build-test-windows
+      - build-test-linux
+      - build-test-macos
+      - compliance-linux
+      - coverage-linux
+      - fuzz-linux
+      - sanitizer-linux
+      - plugin-linux
+      - jit-linux
+      - benchmark-linux
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mathscript-*
+          merge-multiple: true
+          path: dist
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ls -la dist
+          prerelease_args=()
+          case "${GITHUB_REF_NAME}" in
+            *rc*|*alpha*|*beta*) prerelease_args+=(--prerelease) ;;
+          esac
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "MathScript ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag \
+            "${prerelease_args[@]}"

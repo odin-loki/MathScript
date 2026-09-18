@@ -1,6 +1,6 @@
 # MathScript 1.0.0 release
 
-CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when the list below is true. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) is published: CI green ([run 33269316904](https://github.com/odin-loki/MathScript/actions/runs/33269316904)), 816 CTest suites on Windows and Linux as the catalogue was then (criterion 2 has the current count and why it moved), AddressSanitizer + UBSan, and packaging smoke. Coverage has since been measured honestly over the corrected denominator (criterion 3), and the two engineering-plan decisions that were outstanding — the rename off "MathScript" (§4.2) and the commit-authorship rewrite (§4.5) — have both been **declined by the repository owner**, so neither gates the tag; see [`PLAN_STATUS.md`](PLAN_STATUS.md). **Remaining for the tag: CI green on `main` (criterion 1) and the 24 h fuzz marathon (criterion 5).** What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
+CMake already reports version **1.0.0**. Packages for Windows, Linux, and macOS are built by GitHub Actions on the `v*` tag (`publish-release` in `ci.yml`) and attached to the GitHub Release; a local `cpack` upload is not the release path. Pre-release [`v1.0.0-rc.1`](https://github.com/odin-loki/MathScript/releases/tag/v1.0.0-rc.1) was published earlier. What the deferred-stub list became, and the little that is still out of scope, is in [`RELEASE_DECISIONS.md`](RELEASE_DECISIONS.md).
 
 ## Tag criteria
 
@@ -117,7 +117,7 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
 
    The marathon earns its place: it found an out-of-memory in `combo_restricted_partitions(442, 5)` that 353 million local executions had not, at 2398 MB peak RSS. That input is now in the corpus.
 6. **Unsafe surface** — `UNSAFE_REVIEW.md` matches `scripts/unsafe_report.sh`; no new unreviewed sites. Last local run: **33 sites against a baseline of 33**, `unsafe_delta.sh` clean.
-7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist. Last local run: install prefix and `mathscript-1.0.0-Linux.tar.gz` both produced, **smoke OK**.
+7. **Packaging** — smoke scripts plus extra CPack generators when tools are present. `scripts/package_smoke.sh` installs the prefix and runs `cpack -G TGZ`. `scripts/package_smoke.ps1` installs the prefix and runs `cpack -G ZIP`. CI also runs DEB/RPM (Linux) and NSIS/WiX (Windows) when those tools exist. macOS produces `mathscript-*-macOS-arm64.tar.gz`. The GitHub Release assets are the artifacts from `build-test-windows`, `build-test-linux`, and `build-test-macos` on the tag, not a workstation upload.
 8. **Benchmarks** — within **10%** of `linux-gcc13.json` (`benchmark-linux` on GitHub-hosted ubuntu-24.04, AVX-512 off). Last local run: **check OK**, worst delta +9.3% (`BM_fft/256`). The gate is deliberately thin: only **5** of the 445 baseline entries carry a measured `median_time_ns`, and the other **440** are nulls the comparison skips.
 
    Filling them in was tried and rejected on evidence. `bench-baseline-linux.yml` was dispatched twice against this branch, and comparing the two artifacts — the same code, two `ubuntu-24.04` runners — shows the tolerance cannot survive the hardware:
@@ -200,6 +200,10 @@ bash scripts/package_smoke.sh build install-smoke
 
 `package_smoke.sh` defaults to `build-linux` if you omit the first argument; pass `build` when that is your tree. The script installs into the prefix, checks the three binaries, `libms_core.a`, and `include/ms/version.hpp`, then runs `cpack -G TGZ`.
 
+## macOS
+
+CI tree `build-macos` on `macos-14` (AppleClang, arm64, AVX2 off). Same install/package smoke as Linux, producing `mathscript-1.0.0-macOS-arm64.tar.gz`.
+
 ## Fuzz marathon
 
 Nightly runs 15 min × 7. Tag requires 24 h × 7:
@@ -213,8 +217,7 @@ Helper: `bash scripts/fuzz_24h_dispatch.sh`. Read-only pre-tag: `bash scripts/ta
 
 ## Tag procedure
 
-1. Confirm fuzz marathon zero crashes.
-2. Confirm CMake `project(MathScript VERSION 1.0.0)` and a green CI run you watched.
-3. Move `[Unreleased]` in `CHANGELOG.md` to `[1.0.0] - <date>`.
-4. `bash scripts/pre_release.sh` (Linux).
-5. Push `main`, then `git tag -a v1.0.0 -m "MathScript 1.0.0"` and push the tag.
+1. Confirm CMake `project(MathScript VERSION 1.0.0)` and a green CI run on `main` you watched, including `build-test-macos`.
+2. Move `[Unreleased]` in `CHANGELOG.md` to `[1.0.0] - <date>` if that has not already happened.
+3. Push `main`, then `git tag -a v1.0.0 -m "MathScript 1.0.0"` and push the tag.
+4. The tag re-runs `ci.yml`. `publish-release` waits for Windows, Linux, and macOS package jobs (and the rest of CI) and creates the GitHub Release from those artifacts. Do not attach a local build.

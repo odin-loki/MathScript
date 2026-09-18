@@ -92,6 +92,7 @@ This is the original design specification (modules, conventions, phased delivery
 | Windows 11 | x86_64 |
 | Ubuntu 22.04 LTS | x86_64 |
 | Ubuntu 24.04 LTS | x86_64 |
+| macOS 14+ | arm64 |
 
 ### Tier 2 — Supported, No Binary Releases
 
@@ -106,7 +107,6 @@ This is the original design specification (modules, conventions, phased delivery
 | Platform | Architecture |
 |---|---|
 | Linux aarch64 | Grace Hopper, AWS Graviton |
-| macOS 14+ | arm64 (if demanded) |
 
 ### GPU Compute Targets
 

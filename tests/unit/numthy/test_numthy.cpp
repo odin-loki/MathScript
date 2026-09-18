@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <set>
 
 using namespace ms::numthy;
@@ -898,6 +899,17 @@ TEST(NumthyModular, KroneckerSpecialN) {
     EXPECT_EQ(kronecker_symbol(5, -1), 1);
     EXPECT_EQ(kronecker_symbol(-5, -1), -1);
     EXPECT_EQ(kronecker_symbol(2, -7), kronecker_symbol(2, 7) * 1);
+}
+
+TEST(NumthyModular, KroneckerInt64MinDoesNotRecurse) {
+    // -INT64_MIN is not representable. The recursive |n| used to overflow and
+    // call itself forever; fuzz_repl_input found it on the 24 h campaign.
+    const int64_t nmin = std::numeric_limits<int64_t>::min();
+    EXPECT_EQ(kronecker_symbol(1, nmin), 0);
+    EXPECT_EQ(kronecker_symbol(-1, nmin), 0);
+    EXPECT_EQ(kronecker_symbol(3, nmin), 0);
+    EXPECT_EQ(kronecker_symbol(nmin, nmin), 0);
+    EXPECT_EQ(kronecker_symbol(-2, -7), -kronecker_symbol(-2, 7));
 }
 
 TEST(NumthyModular, LegendreNonPrime) {

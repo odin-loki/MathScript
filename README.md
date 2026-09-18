@@ -50,10 +50,10 @@ CPU BLAS/LAPACK kernels live in `linalg` and are declared in `include/ms/cpu/bla
 
 ## Status
 
-- **Version:** CMake project version **1.0.0**. The `v1.0.0` git tag is not cut; remaining gates are in [`docs/RELEASE.md`](docs/RELEASE.md).
-- **Tests:** **873** CTest suites, 100% passed on Linux GCC 13 Release (CUDA off). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **80%** line coverage (`coverage-linux`); **90%** is the `v1.0.0` tag goal. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
+- **Version:** **1.0.0**. Windows, Linux, and macOS packages are built by GitHub Actions on the `v*` tag.
+- **Tests:** **374** CTest suites (the grouped catalogue with `MS_BUILD_INTEGRATION=ON`), 100% passed on Linux GCC 13 and Windows MSVC Release (CUDA off). Tests live under `tests/{unit,numerical,integration,performance}/<domain>/`. CI enforces **80%** line coverage (`coverage-linux`); **90%** is the `v1.0.0` tag goal and is met. REPL matrix calls dispatch through a name-keyed handler registry (`src/interp/matrix_calls/<domain>/`).
 - **Benchmarks:** 28 Google Benchmark targets passed locally with `--benchmark_min_time=0.001s`. CI regression uses 10% tolerance vs `linux-gcc13.json`.
-- **CI:** Windows MSVC and Linux GCC 13; coverage; libFuzzer smoke (7 targets); AddressSanitizer + UBSan; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
+- **CI:** Windows MSVC, Linux GCC 13, and macOS AppleClang (arm64); coverage; libFuzzer smoke (7 targets); AddressSanitizer + UBSan; 28-bench regression (10% tolerance); Clang plugin; vendor checksums; optional JIT and plugin jobs.
 
 ## Build
 
@@ -72,6 +72,17 @@ cmake -S . -B build -G Ninja \
   -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13 \
   -DCMAKE_BUILD_TYPE=Release \
   -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/bin/mathscript-repl
+```
+
+macOS (Apple Silicon; AVX2 off):
+
+```bash
+cmake -S . -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DMS_BUILD_TESTS=ON -DMS_ENABLE_CUDA=OFF -DMS_ENABLE_AVX512=OFF -DMS_ENABLE_AVX2=OFF
 cmake --build build
 ctest --test-dir build --output-on-failure
 ./build/bin/mathscript-repl

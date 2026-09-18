@@ -6,6 +6,17 @@ Wave-by-wave implementation history (thousands of entries) is in [`docs/WAVES.md
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-09-18
+
+### Packaging
+
+- GitHub Actions builds the Windows ZIP, Linux TGZ, and macOS arm64 TGZ on a `v*` tag and publishes them as the GitHub Release. A local `cpack` upload is not the release path.
+- macOS AppleClang (arm64) is a CI job (`build-test-macos`). AVX2 kernels are compiled only on x86, so the default Apple Silicon tree no longer receives `-mavx2`.
+
+### Fixed
+
+- `kronecker_symbol(a, INT64_MIN)` recursed forever because `-INT64_MIN` is not representable in `int64_t`. The 24 h fuzzer found it as `numthy_kronecker_symbol(1, -9223372036854775808)`. Magnitude is taken in unsigned arithmetic.
+
 ### Windows MSVC, and the numbers from 2026-09-16
 
 The Windows Release tree on `main` at `6eed6b43` did not compile. Two new

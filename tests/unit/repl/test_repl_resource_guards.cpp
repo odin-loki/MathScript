@@ -890,3 +890,16 @@ TEST(ReplResourceGuards, DividingAPolynomialByZeroIsRefusedRatherThanSpunOn) {
     EXPECT_TRUE(interp.execute("poly_gcd([1;2],[0])").has_value());
     EXPECT_TRUE(interp.execute("poly_lcm([1;2],[0])").has_value());
 }
+
+TEST(ReplResourceGuards, KroneckerSymbolInt64MinReturns) {
+    // n = -2^63 used to recurse forever inside kronecker_symbol because
+    // -INT64_MIN is not representable. The library now takes the magnitude in
+    // unsigned arithmetic, and the REPL still accepts the exact int64_t edge.
+    Interpreter interp;
+    const auto out = interp.execute("numthy_kronecker_symbol(1, -9223372036854775808)");
+    ASSERT_TRUE(out.has_value()) << ms::format_error(out.error());
+    EXPECT_NE(out->find("0"), std::string::npos) << *out;
+
+    const auto neg = interp.execute("numthy_kronecker_symbol(-3, -7)");
+    ASSERT_TRUE(neg.has_value()) << ms::format_error(neg.error());
+}

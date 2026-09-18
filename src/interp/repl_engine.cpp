@@ -3690,12 +3690,15 @@ Result<double> Interpreter::eval_scalar_call(const std::string& name,
                                                                *n_u64));
         }
         if (fn == "numthy_kronecker_symbol") {
-            if (std::floor(args[0]) != args[0] || std::floor(args[1]) != args[1]) {
-                return std::unexpected(
-                    DomainError{"numthy_kronecker_symbol", "expected integer arguments"});
+            auto a_i = checked_i64_argument(fn, "a", args[0]);
+            if (!a_i) {
+                return std::unexpected(a_i.error());
             }
-            return static_cast<double>(numthy::kronecker_symbol(static_cast<int64_t>(args[0]),
-                                                                  static_cast<int64_t>(args[1])));
+            auto n_i = checked_i64_argument(fn, "n", args[1]);
+            if (!n_i) {
+                return std::unexpected(n_i.error());
+            }
+            return static_cast<double>(numthy::kronecker_symbol(*a_i, *n_i));
         }
         if (fn == "numthy_tonelli_shanks") {
             return eval_numthy_tonelli_shanks(args[0], args[1]);
@@ -22615,13 +22618,15 @@ Result<std::string> Interpreter::execute_impl(const std::string& line) {
                 return std::unexpected(DomainError{
                     "numthy_kronecker_symbol", "expected numthy_kronecker_symbol(a,n)"});
             }
-            if (std::floor(a_d) != a_d || std::floor(n_d) != n_d) {
-                return std::unexpected(
-                    DomainError{"numthy_kronecker_symbol", "expected integer arguments"});
+            auto a_i = checked_i64_argument(fn, "a", a_d);
+            if (!a_i) {
+                return std::unexpected(a_i.error());
             }
-            return format_scalar(numthy::kronecker_symbol(static_cast<int64_t>(a_d),
-                                                           static_cast<int64_t>(n_d))) +
-                   "\n";
+            auto n_i = checked_i64_argument(fn, "n", n_d);
+            if (!n_i) {
+                return std::unexpected(n_i.error());
+            }
+            return format_scalar(numthy::kronecker_symbol(*a_i, *n_i)) + "\n";
         }
 
         if (fn == "numthy_tonelli_shanks") {
