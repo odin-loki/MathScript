@@ -18029,10 +18029,17 @@ Result<std::string> eval_ode_vec_fixed_step_call(
             fn.c_str(),
             std::string("expected ") + fn + "(\"f0;f1;...\", t0, y0, t_end, steps)"});
     }
-    const int steps_i = static_cast<int>(steps_d);
-    if (steps_i < 0 || steps_d != steps_i) {
-        return std::unexpected(DomainError{fn.c_str(), "expected non-negative integer steps"});
+    // This was the one `steps` check in the file that the shared guard had not reached:
+    // it checked the sign and the integrality and stopped, so
+    // `ode_backward_euler_vec("-y0", 0, [1], 45, 447555554)` asked for 447 million rows
+    // and died at 2062 MB. The cast was unbounded too -- `static_cast<int>` of a double
+    // past INT_MAX is undefined, and `steps_d != steps_i` only rejected the result of it
+    // by accident.
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d, y0->size() + 1);
+    if (!bounded_steps) {
+        return std::unexpected(bounded_steps.error());
     }
+    const int steps_i = *bounded_steps;
     auto exprs_ptr = std::make_shared<std::vector<SymExpr>>(std::move(*exprs));
     OdeFuncVec f = [exprs_ptr](double t, const std::vector<double>& y) {
         const auto env = build_vec_ode_env(t, y);
@@ -18111,7 +18118,7 @@ Result<std::string> eval_ode_rosenbrock23_vec_call(const std::string& formula_ar
         return std::unexpected(DomainError{
             fn, "expected ode_rosenbrock23_vec(\"f0;f1;...\", t0, y0, t_end, steps)"});
     }
-    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d, y0->size() + 1);
     if (!bounded_steps) {
         return std::unexpected(bounded_steps.error());
     }
@@ -18158,7 +18165,9 @@ Result<std::string> eval_ode_verlet_vec_call(const std::string& formula_arg,
         return std::unexpected(DomainError{
             fn, "expected ode_verlet_vec(\"a0;a1;...\", t0, q0, v0, t_end, steps)"});
     }
-    auto bounded_steps = checked_ode_trajectory_steps(fn, steps_d);
+    // One row per step holds t, then q and v, each q0's width.
+    auto bounded_steps =
+        checked_ode_trajectory_steps(fn, steps_d, 2 * q0->size() + 1);
     if (!bounded_steps) {
         return std::unexpected(bounded_steps.error());
     }

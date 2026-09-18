@@ -422,12 +422,21 @@ inline Result<std::size_t> checked_result_length(const std::string& fn, const ch
 /// The range is decided on the double. `static_cast<int>` of a value outside int's range
 /// is undefined behaviour rather than a wrap, so a guard written on the result of the cast
 /// is reading a value the standard no longer accounts for.
-inline Result<int> checked_ode_trajectory_steps(const std::string& fn, double steps) {
+/// `per_step` is how many doubles ONE step of the trajectory stores: a scalar solver
+/// keeps t and y, so 2, which is the default. A vector solver keeps t and a state of
+/// y0's width, so `y0.size() + 1`, and the caller passes that -- a hard-coded 2 bounds
+/// `ode_euler_vec` with a fifty-component state at twenty-five times the elements every
+/// other REPL allocation answers to.
+inline Result<int> checked_ode_trajectory_steps(const std::string& fn, double steps,
+                                                std::size_t per_step = 2) {
     if (!std::isfinite(steps) || steps != std::floor(steps) || steps < 0.0) {
         return std::unexpected(DomainError{fn, "expected non-negative integer steps"});
     }
+    if (per_step == 0) {
+        per_step = 1;
+    }
     if (!repl_elems_allowed(static_cast<std::size_t>(
-                                steps > 4.0e9 ? 4.0e9 : steps) + 1, 2)) {
+                                steps > 4.0e9 ? 4.0e9 : steps) + 1, per_step)) {
         return std::unexpected(DomainError{
             fn, "steps " + describe_count(steps) +
                     " is too large; the trajectory is one row per step and is limited to " +

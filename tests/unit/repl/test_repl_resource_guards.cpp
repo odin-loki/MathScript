@@ -684,3 +684,66 @@ TEST(ReplResourceGuards, RiccatiWeightsMustBeSizedAgainstTheInputsTheyWeigh) {
         interp.execute("control_dare([0.5,0;0,0.5],[1,0;0,1],[1,0;0,1],[2,0.5;0.5,2])")
             .has_value());
 }
+
+TEST(ReplResourceGuards, VectorOdeTrajectoriesAreBoundedByTheRowsTheyStore) {
+    // Found by the 24-hour REPL-only fuzz session, 2h47m in:
+    //
+    //     ode_backward_euler_vec("-y0", 0, [1],45  ,447555554)
+    //     libFuzzer: out-of-memory (used: 2062Mb; limit: 2048Mb)
+    //       805306368 bytes (59%) in 1 allocation
+    //         ms::ode_backward_euler_vec(...)  ode.cpp:1114
+    //       268435456 bytes (19%) in 1 allocation
+    //         ms::ode_backward_euler_vec(...)  ode.cpp:1113
+    //       218358160 bytes in 27294770 allocations
+    //         ms::ode_backward_euler_vec(...)  ode.cpp:1114
+    //
+    // `steps` is the ROW COUNT of the trajectory the solver accumulates -- one t and one
+    // state vector per step. `checked_ode_trajectory_steps` already bounded it at twelve
+    // call sites; `eval_ode_vec_fixed_step_call` was the thirteenth and had its own
+    // inline check, which tested the sign and the integrality and stopped. 447555554 is
+    // a non-negative integer, so it passed, and the four commands behind that helper --
+    // ode_euler_vec, ode_rk4_vec, ode_backward_euler_vec, ode_adams_bashforth2_vec --
+    // had no upper bound at all. The cast was unbounded too: `static_cast<int>` of a
+    // double past INT_MAX is undefined and `steps_d != steps_i` rejected it by accident.
+    //
+    // The guard also now takes the width of one row instead of assuming 2. A vector
+    // solver stores y0.size() + 1 doubles per step, so a fifty-component state was
+    // bounded at twenty-five times the elements every other REPL allocation answers to.
+    Interpreter interp;
+
+    // Cheap, and the mutant check: with the guard reverted this is a 447-million-row
+    // trajectory, which is the out-of-memory itself and not something to run in a test.
+    // One step past the cap is refused for the same reason and returns immediately.
+    const auto over = interp.execute("ode_euler_vec(\"-y0\", 0, [1], 1, 131072)");
+    ASSERT_FALSE(over.has_value()) << over.value_or("");
+    ASSERT_NE(ms::format_error(over.error()).find("is too large"), std::string::npos)
+        << ms::format_error(over.error());
+
+    // The row width is y0's, so a wider state gets fewer steps -- 262144/3 - 1.
+    EXPECT_FALSE(interp.execute("ode_euler_vec(\"-y0;-y1\", 0, [1,2], 1, 87381)").has_value());
+    EXPECT_TRUE(interp.execute("ode_euler_vec(\"-y0;-y1\", 0, [1,2], 1, 4)").has_value());
+
+    // ode_verlet_vec stores t, q and v, so 2 * q0.size() + 1.
+    EXPECT_FALSE(
+        interp.execute("ode_verlet_vec(\"-q0\", 0, [1], [0], 1, 87381)").has_value());
+    EXPECT_TRUE(interp.execute("ode_verlet_vec(\"-q0\", 0, [1], [0], 1, 4)").has_value());
+
+    // All four commands behind the helper that had no bound, and the fuzzer's own line.
+    for (const std::string fn : {std::string("ode_euler_vec"), std::string("ode_rk4_vec"),
+                                 std::string("ode_backward_euler_vec"),
+                                 std::string("ode_adams_bashforth2_vec")}) {
+        const auto huge = interp.execute(fn + "(\"-y0\", 0, [1],45  ,447555554)");
+        ASSERT_FALSE(huge.has_value()) << fn << " => " << huge.value_or("");
+        EXPECT_NE(ms::format_error(huge.error()).find("is too large"), std::string::npos)
+            << fn << " => " << ms::format_error(huge.error());
+
+        // dy/dt = -y from y(0) = 1 over four steps of h = 0.25 still integrates.
+        const auto four = interp.execute(fn + "(\"-y0\", 0, [1], 1, 4)");
+        ASSERT_TRUE(four.has_value()) << fn << " => " << ms::format_error(four.error());
+        EXPECT_NE(four->find("1.000000"), std::string::npos) << fn << " => " << *four;
+    }
+
+    // The scalar family keeps the default row width of 2, and its boundary is unchanged.
+    EXPECT_TRUE(interp.execute("ode_euler(\"-y\", 0, 1, 1, 4)").has_value());
+    EXPECT_FALSE(interp.execute("ode_euler(\"-y\", 0, 1, 1, 131072)").has_value());
+}
