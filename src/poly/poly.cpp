@@ -146,9 +146,24 @@ static std::vector<double> strip(std::vector<double> p, double eps = 1e-14) {
     return p;
 }
 
+// `strip` never goes below one coefficient, so a STRIPPED polynomial can still be the
+// zero polynomial -- it is exactly the one-element case whose coefficient is near zero.
+// The long division below divides by that leading coefficient, so the difference
+// matters: `poly_div_quot([0.1], [0])` took `0.1 / 0 = inf`, subtracted `inf * 0` from
+// the remainder to get NaN, and then span forever, because `|NaN| < 1e-14` is false so
+// the remainder never shrank and the loop never ended. libFuzzer found it as a 1252
+// second timeout.
+static bool is_zero_poly(const std::vector<double>& p, double eps = 1e-14) {
+    return p.empty() || (p.size() == 1 && std::abs(p[0]) < eps);
+}
+
 std::vector<double> poly_div_quot(const std::vector<double>& a,
                                    const std::vector<double>& b) {
     auto A = strip(a), B = strip(b);
+    // Division by the zero polynomial is undefined, and attempting it does not
+    // terminate. The callers that can report an error do; this one cannot, so it
+    // answers the way it already answers a divisor too large to divide by.
+    if (is_zero_poly(B)) return {0.0};
     if (A.size() < B.size()) return {0.0};
     const size_t n = A.size() - B.size() + 1;
     std::vector<double> q(n, 0.0);
@@ -162,10 +177,17 @@ std::vector<double> poly_div_quot(const std::vector<double>& a,
         const size_t pos = i - (B.size() - 1);
         const double coef = rem[i] / B.back();
         q[pos] = coef;
+        const size_t before = rem.size();
         for (size_t j = 0; j < B.size(); ++j) {
             rem[i - (B.size() - 1 - j)] -= coef * B[j];
         }
         rem = strip(rem);
+        // The step above cancels the leading term -- rem[i] - coef * B.back() is zero
+        // by construction -- so `strip` must shorten the remainder, and that shortening
+        // is what ends the loop. A non-finite coefficient anywhere in the inputs turns
+        // the cancellation into NaN, which strips no better than it compares, so the
+        // invariant is enforced rather than assumed: no progress, no next iteration.
+        if (rem.size() >= before) break;
     }
     return strip(q);
 }
@@ -173,6 +195,9 @@ std::vector<double> poly_div_quot(const std::vector<double>& a,
 std::vector<double> poly_mod(const std::vector<double>& a,
                               const std::vector<double>& b) {
     auto A = strip(a), B = strip(b);
+    // See poly_div_quot: a stripped B can still be the zero polynomial, and dividing by
+    // it does not terminate. A remainder modulo nothing is the whole of A.
+    if (is_zero_poly(B)) return A;
     if (A.size() < B.size()) return A;
     auto rem = A;
     while (rem.size() >= B.size()) {
@@ -182,10 +207,12 @@ std::vector<double> poly_mod(const std::vector<double>& a,
             continue;
         }
         const double coef = rem[i] / B.back();
+        const size_t before = rem.size();
         for (size_t j = 0; j < B.size(); ++j) {
             rem[i - (B.size() - 1 - j)] -= coef * B[j];
         }
         rem = strip(rem);
+        if (rem.size() >= before) break;
     }
     return rem;
 }

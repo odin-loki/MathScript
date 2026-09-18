@@ -12763,6 +12763,15 @@ Result<Matrix<double>> eval_poly_div_quot(const Matrix<double>& a_m, const Matri
         return std::unexpected(
             DomainError{"poly_div_quot", "expected non-empty coefficient vectors"});
     }
+    // A vector of zeros IS the zero polynomial, and dividing by it is undefined --
+    // `poly_div_quot([0.1], [0])` used to spin until libFuzzer called it a timeout at 1252
+    // seconds. The library refuses it now too, but it cannot say why, and a user who
+    // typed it deserves the reason rather than a quotient of zero.
+    if (std::all_of(b->begin(), b->end(),
+                    [](double c) { return std::abs(c) < 1e-14; })) {
+        return std::unexpected(
+            DomainError{"poly_div_quot", "expected a non-zero divisor polynomial"});
+    }
     return vector_to_column(poly::poly_div_quot(*a, *b));
 }
 
@@ -12778,6 +12787,15 @@ Result<Matrix<double>> eval_poly_mod(const Matrix<double>& a_m, const Matrix<dou
     if (a->empty() || b->empty()) {
         return std::unexpected(
             DomainError{"poly_mod", "expected non-empty coefficient vectors"});
+    }
+    // A vector of zeros IS the zero polynomial, and dividing by it is undefined --
+    // `poly_mod([0.1], [0])` used to spin until libFuzzer called it a timeout at 1252
+    // seconds. The library refuses it now too, but it cannot say why, and a user who
+    // typed it deserves the reason rather than a quotient of zero.
+    if (std::all_of(b->begin(), b->end(),
+                    [](double c) { return std::abs(c) < 1e-14; })) {
+        return std::unexpected(
+            DomainError{"poly_mod", "expected a non-zero divisor polynomial"});
     }
     return vector_to_column(poly::poly_mod(*a, *b));
 }

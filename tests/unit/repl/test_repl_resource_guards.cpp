@@ -829,3 +829,64 @@ TEST(ReplResourceGuards, AShortRfftSpectrumIsZeroPaddedNotReadPastItsEnd) {
     EXPECT_TRUE(interp.execute("fft_irfft([1,0;2,0;3,0;4,0;5,0;6,0;7,0], 4)").has_value());
     EXPECT_TRUE(interp.execute("fft_irfft([1,0], 1)").has_value());
 }
+
+TEST(ReplResourceGuards, DividingAPolynomialByZeroIsRefusedRatherThanSpunOn) {
+    // Found by chunk 1 of the first chained 24-hour run, 4h16m in, as a TIMEOUT rather
+    // than a crash -- the first of the fifteen that was not a memory error:
+    //
+    //     poly_div_quot([0.1;],[0])
+    //     ALARM: working on the last Unit for 1252 seconds
+    //     ERROR: libFuzzer: timeout after 1252 seconds
+    //       ms::poly::poly_div_quot(...)  poly.cpp:168
+    //
+    // `strip` removes trailing near-zero coefficients but never goes below one, so a
+    // STRIPPED divisor can still be the zero polynomial: the one-element case whose
+    // coefficient is zero. Long division then divided by that leading coefficient --
+    // 0.1 / 0 = inf -- and subtracted inf * 0 from the remainder, giving NaN. The loop
+    // ends when the remainder shrinks, and it shrinks when `|rem[i]| < 1e-14` pops the
+    // cancelled leading term; `|NaN| < 1e-14` is false, so nothing was ever popped and
+    // the loop ran until the fuzzer's alarm. `poly_mod` had the identical loop and the
+    // identical hang. `poly_gcd` and `poly_lcm` were measured safe: gcd only calls
+    // poly_mod with a divisor of two or more coefficients, which strip guarantees is
+    // non-zero, and lcm already refused both zero cases.
+    //
+    // Two fixes, because they answer different questions. The library refuses the zero
+    // divisor and also enforces the loop's termination invariant directly -- no
+    // shrinkage, no next iteration -- so no input can spin it again whatever the
+    // arithmetic does. The REPL refuses it with a reason, which is what a user who
+    // typed it needs.
+    Interpreter interp;
+
+    // Cheap, and first: with the REPL check reverted this returns a quotient of zero
+    // instead of an error, and with the library guard reverted as well it HANGS -- so
+    // run this test under a timeout when checking the mutant.
+    for (const std::string cmd : {std::string("poly_div_quot([0.1;],[0])"),
+                                  std::string("poly_mod([0.1;],[0])"),
+                                  std::string("poly_div_quot([1;2;3],[0;0])"),
+                                  std::string("poly_mod([1;2;3],[0])")}) {
+        const auto out = interp.execute(cmd);
+        ASSERT_FALSE(out.has_value()) << cmd << " => " << out.value_or("");
+        EXPECT_NE(ms::format_error(out.error()).find("non-zero divisor"), std::string::npos)
+            << cmd << " => " << ms::format_error(out.error());
+    }
+
+    // Division by a real polynomial still divides. (3x^2 + 2x + 1) / (x + 1) is
+    // 3x - 1 remainder 2, and (x^2 - 1) / (x + 1) is x - 1 exactly.
+    const auto quot = interp.execute("poly_div_quot([1;2;3],[1;1])");
+    ASSERT_TRUE(quot.has_value()) << ms::format_error(quot.error());
+    EXPECT_NE(quot->find("-1.000000"), std::string::npos) << *quot;
+    EXPECT_NE(quot->find("3.000000"), std::string::npos) << *quot;
+
+    const auto rem = interp.execute("poly_mod([1;2;3],[1;1])");
+    ASSERT_TRUE(rem.has_value()) << ms::format_error(rem.error());
+    EXPECT_NE(rem->find("2.000000"), std::string::npos) << *rem;
+
+    const auto exact = interp.execute("poly_div_quot([-1;0;1],[1;1])");
+    ASSERT_TRUE(exact.has_value()) << ms::format_error(exact.error());
+    EXPECT_NE(exact->find("-1.000000"), std::string::npos) << *exact;
+    EXPECT_NE(exact->find("1.000000"), std::string::npos) << *exact;
+
+    // gcd and lcm take a zero argument without complaint, as they did before.
+    EXPECT_TRUE(interp.execute("poly_gcd([1;2],[0])").has_value());
+    EXPECT_TRUE(interp.execute("poly_lcm([1;2],[0])").has_value());
+}
