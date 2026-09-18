@@ -221,15 +221,30 @@ std::vector<std::complex<double>> rfft_half_transform(const std::vector<double>&
     return out;
 }
 
+// `spectrum` is the HALF spectrum, bins 0..full_len/2. Hermitian symmetry relates
+// bin i to bin full_len - i, and for every i in this array but the last that index
+// lies in the upper half, which a half spectrum does not store -- so the bins above
+// what the caller supplied cannot be recovered from the ones below them, and the loop
+// that tried read past the end of the array:
+//
+//     fft_irfft([1,33], 5)
+//     AddressSanitizer: heap-buffer-overflow  fft.cpp:232
+//
+// n = 5 gives full_len = 8 and half = 4, so `spectrum` holds five bins and the caller
+// supplied two; the fill then read spectrum[8-2] and spectrum[8-3] out of it. Only
+// i == half indexed inside the array at all, and there it read the element it was
+// assigning, so the loop was out of bounds for every i it did anything for.
+//
+// A caller who supplies fewer bins than the transform length needs has said nothing
+// about the high-frequency bins, so they are zero -- which is what the vector below is
+// already constructed with, and what numpy.fft.irfft does with a short input. A longer
+// input is cropped, as it was before.
 std::vector<std::complex<double>> hermitian_extend_rfft_spectrum(
     const std::vector<std::complex<double>>& x, size_t full_len) {
     const size_t half = full_len / 2;
     std::vector<std::complex<double>> spectrum(half + 1);
     for (size_t i = 0; i < x.size() && i <= half; ++i) {
         spectrum[i] = x[i];
-    }
-    for (size_t i = x.size(); i <= half; ++i) {
-        spectrum[i] = std::conj(spectrum[full_len - i]);
     }
     return spectrum;
 }

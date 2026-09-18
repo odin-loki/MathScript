@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <complex>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -746,4 +747,85 @@ TEST(ReplResourceGuards, VectorOdeTrajectoriesAreBoundedByTheRowsTheyStore) {
     // The scalar family keeps the default row width of 2, and its boundary is unchanged.
     EXPECT_TRUE(interp.execute("ode_euler(\"-y\", 0, 1, 1, 4)").has_value());
     EXPECT_FALSE(interp.execute("ode_euler(\"-y\", 0, 1, 1, 131072)").has_value());
+}
+
+TEST(ReplResourceGuards, AShortRfftSpectrumIsZeroPaddedNotReadPastItsEnd) {
+    // Found by chunk 2 of the chained fuzz run, nine minutes in, from chunk 1's corpus:
+    //
+    //     fft_irfft([1,33], 5)
+    //     AddressSanitizer: heap-buffer-overflow, READ of size 8
+    //       #0 ms::hermitian_extend_rfft_spectrum(...) fft.cpp:232
+    //       #1 ms::irfft_half_transform(...)           fft.cpp:245
+    //       #2 ms::irfft(...)                          fft.cpp:570
+    //       #3 ms::interp::detail::eval_fft_irfft(...) repl_engine_internal.cpp:8775
+    //
+    // The array being filled is the HALF spectrum, bins 0..full_len/2. The fill loop
+    // used Hermitian symmetry -- bin i from bin full_len - i -- which for every index
+    // in that array but the last names a bin in the UPPER half, which a half spectrum
+    // does not store. n = 5 gives full_len = 8 and half = 4, so the array holds five
+    // bins and the caller gave two; the loop then read indices 6 and 5 out of it. The
+    // one index that was inside the array, i == half, read the element it was
+    // assigning. So the loop was out of bounds for every i it did anything for, and
+    // could only ever run when the spectrum was shorter than the transform length --
+    // which is why `rfft` round trips never touched it.
+    //
+    // WHAT KILLS THE MUTANT, measured rather than assumed, because the obvious answers
+    // do not:
+    //
+    //   valgrind, release build        3 invalid reads of size 8  -> none after
+    //   clang-18 -fsanitize=address    heap-buffer-overflow       -> clean after
+    //   gcc-13   -fsanitize=address    SILENT
+    //
+    // GCC's AddressSanitizer does not report it. Reduced to three lines --
+    // `std::vector<std::complex<double>> v(5); v[5].real();` -- clang-18 says "0 bytes
+    // after 80-byte region" at -O0 and -O1 and gcc-13 says nothing at either, while
+    // both catch the same shape on a `vector<double>` and on `new double[10]`. It is
+    // the 16-byte complex element GCC misses. CI's sanitizer job is GCC, so it is blind
+    // to this class the way it is already blind to float-cast-overflow; the Clang fuzz
+    // build is what found this.
+    //
+    // The value assertions below do detect the defect when this test runs in its suite,
+    // which is how ctest and CI run it -- with the loop restored the whole binary fails
+    // here, shuffled orders included. They do NOT detect it when the test is run on its
+    // own with --gtest_filter: the bins read out of bounds then land on an untouched
+    // zero page, which is exactly the value the fix supplies, so the defect and the fix
+    // agree. Measured at n = 5 and at n = 1000, where the read goes 8 KB past the end,
+    // and with 4096 same-size-class allocations deliberately dirtied and freed first --
+    // in isolation the allocator still hands back a clean page. The defect is the read,
+    // not the result, so the dependable detectors are the two above and not a value.
+    Interpreter interp;
+
+    const auto shortest = interp.execute("fft_irfft([1,33], 5)");
+    ASSERT_TRUE(shortest.has_value()) << ms::format_error(shortest.error());
+
+    // A caller who gives fewer bins than the transform length needs has said nothing
+    // about the high-frequency bins, so they are zero -- numpy.fft.irfft's reading. The
+    // proof is that naming them explicitly changes nothing.
+    ASSERT_TRUE(interp.execute("padded = fft_irfft([36,0;-4,9.656854;0,0;0,0;0,0], 8)")
+                    .has_value());
+    ASSERT_TRUE(interp.execute("bare = fft_irfft([36,0;-4,9.656854], 8)").has_value());
+    const auto padded = interp.execute("padded");
+    const auto bare = interp.execute("bare");
+    ASSERT_TRUE(padded.has_value());
+    ASSERT_TRUE(bare.has_value());
+    // Past the `name =` line, which is the only part that differs.
+    ASSERT_NE(padded->find('\n'), std::string::npos) << *padded;
+    ASSERT_NE(bare->find('\n'), std::string::npos) << *bare;
+    EXPECT_EQ(padded->substr(padded->find('\n')), bare->substr(bare->find('\n')))
+        << "a short spectrum must mean the zero-padded one\n"
+        << *padded << *bare;
+
+    // And the round trip, which the defect never reached, still returns the signal:
+    // rfft gives half + 1 bins, so the loop had nothing to fill.
+    ASSERT_TRUE(interp.execute("sig = [1;2;3;4;5]").has_value());
+    ASSERT_TRUE(interp.execute("spec = fft_rfft(sig)").has_value());
+    const auto back = interp.execute("fft_irfft(spec, 5)");
+    ASSERT_TRUE(back.has_value()) << ms::format_error(back.error());
+    for (const char* sample : {"1.000000", "2.000000", "3.000000", "4.000000", "5.000000"}) {
+        EXPECT_NE(back->find(sample), std::string::npos) << sample << " in " << *back;
+    }
+
+    // A spectrum LONGER than the transform length is cropped, as it always was.
+    EXPECT_TRUE(interp.execute("fft_irfft([1,0;2,0;3,0;4,0;5,0;6,0;7,0], 4)").has_value());
+    EXPECT_TRUE(interp.execute("fft_irfft([1,0], 1)").has_value());
 }
