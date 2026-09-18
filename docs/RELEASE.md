@@ -86,9 +86,24 @@ CMake already reports version **1.0.0**. The git tag `v1.0.0` is cut only when t
    (`scripts/fuzz_24h_local.sh` on the workstation, and `fuzz-24h.yml` dispatched); it is
    not yet a result. **The Actions rehearsal is now green: run 10 of `fuzz-24h.yml`,
    7 of 7 targets at 900 s each on 2026-09-17, zero crashes** — the first green run that
-   workflow has had. The full 24 h is still what criterion 5 asks for and still needs
-   dispatching; what the rehearsals establish is that the job itself works, which is
-   what the previous seven runner-hours failed to establish.
+   workflow has had. The full 24 h is still what criterion 5 asks for; what the
+   rehearsals establish is that the job itself works, which is what the previous
+   seven runner-hours failed to establish.
+
+   **A 24 h budget could not have been spent by the workflow as it stood, and the reason
+   is worth keeping.** A job on a GitHub-hosted runner is terminated at six hours of
+   execution time whatever `timeout-minutes` says — the job carried `timeout-minutes: 1500`
+   and that number was never reachable. Run 14 (`seconds: 86400`, one target, dispatched
+   2026-09-18 00:34Z) would have been killed at 06:34Z after 5 h 50 m of fuzzing, with no
+   crash and no artifact, and reported as a **failure** — a result indistinguishable from a
+   real finding and worthless as evidence either way. Two earlier dispatches had died of
+   their own findings before reaching that limit, which is why it had not yet been seen.
+   The workflow now splits the budget across chunks that fit (`fuzz-chunk.yml`, at most six,
+   4 h each) chained with `needs:`, handing the corpus between them as an artifact the way
+   `fuzz_session.sh` already hands it between the 900 s chunks inside one job. The corpus
+   hand-off has a `chunks` dispatch input so it can be rehearsed in twenty minutes rather
+   than first exercised in the run it matters in — the mistake this file already records
+   once, in the seven runner-hours that proved `-corpus_dir=` was a no-op.
 
    Every job that runs libFuzzer now goes through `scripts/fuzz_session.sh`, which carries the corpus handling, the chunking, the sanitizer options and the artifact check. Two ways to run the marathon: `scripts/fuzz_24h_dispatch.sh` sends it to Actions, one 2-core runner per target; `scripts/fuzz_24h_local.sh` runs all seven at once on a workstation and puts every spare core behind them (`MS_FUZZ_WORKERS` per target). Both seed from the checked-in corpora, write new coverage back into them, hold the 2048 MB RSS limit so an out-of-memory finding reproduces identically, and fail if any target leaves a `crash-`/`oom-`/`leak-`/`timeout-` artifact — including when libFuzzer's own exit code is 0, which happens when a worker rather than the parent finds the input.
 

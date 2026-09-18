@@ -1,0 +1,109 @@
+name: Fuzz chunk
+
+# One slice of a long fuzz campaign, as its own set of jobs.
+#
+# A job on a GitHub-hosted runner is TERMINATED AT SIX HOURS of execution time,
+# whatever `timeout-minutes` says. So a 24-hour budget cannot be spent inside
+# one job, and the dispatch that tried had no way of succeeding: run 14 of
+# `fuzz-24h.yml` (seconds=86400, one target) would have been killed at 06:34Z
+# after 5h50m of fuzzing, with no crash, no artifact, and a red job -- a result
+# indistinguishable from a real finding and useless as criterion 5 evidence.
+#
+# The budget is therefore spent across several jobs chained with `needs:`, and
+# the corpus -- the only state a fuzz campaign carries forward -- is handed
+# between them as an artifact. That is the same thing `fuzz_session.sh` already
+# does between the 900-second chunks inside one job; the only difference here is
+# that the machine changes, so the corpus has to travel.
+
+on:
+  workflow_call:
+    inputs:
+      targets:
+        description: JSON array of the fuzz targets to run, in parallel with each other.
+        required: true
+        type: string
+      seconds:
+        description: Budget for THIS chunk, per target, in seconds.
+        required: true
+        type: string
+      chunk:
+        description: 1-based index of this chunk. Names the corpus artifact it writes.
+        required: true
+        type: number
+      previous:
+        description: >-
+          The index of the chunk whose corpus this one continues from, as a string,
+          or empty for the first chunk. The caller passes it as a literal because
+          GitHub expressions have NO arithmetic operators -- `inputs.chunk - 1` is
+          not an expression, it is a parse error at workflow load time.
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }} chunk ${{ inputs.chunk }}
+    runs-on: ubuntu-24.04
+    # Under the platform's six-hour kill, so this timeout is the one that fires
+    # and the log says which limit was hit.
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.targets) }}
+    env:
+      MS_CI_LINUX_FLAGS: >-
+        -DMS_BUILD_TESTS=ON
+        -DMS_ENABLE_CUDA=OFF
+        -DMS_ENABLE_AVX512=OFF
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld ninja-build g++-13
+
+      - name: Configure
+        run: cmake -S . -B build-fuzz-24h -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
+
+      - name: Build fuzz target
+        run: cmake --build build-fuzz-24h --target ${{ matrix.target }}
+
+      # Everything a campaign has learned is in its corpus, and each chunk starts
+      # from a fresh checkout, so the previous chunk's corpus is laid over the one
+      # the repository carries. Chunk 1 has no predecessor and starts from the
+      # committed corpus alone.
+      - name: Restore the previous chunk's corpus
+        if: inputs.previous != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}-${{ inputs.previous }}
+          path: tests/fuzz/corpus/${{ matrix.target }}
+
+      # `scripts/fuzz_session.sh` carries the corpus handling, the chunking and
+      # the artifact check, and says at length why each is the way it is. It is
+      # the same script the CI smoke, both nightly sessions and the local
+      # marathon runner use: this job having its own copy of those fifteen lines
+      # is how three of the four came to be wrong.
+      - name: Run fuzz session
+        run: bash scripts/fuzz_session.sh build-fuzz-24h ${{ matrix.target }} "${{ inputs.seconds }}"
+
+      # Uploaded whatever the outcome. If the chunk found nothing, the next chunk
+      # needs this to continue rather than start over; if it found a crash, the
+      # inputs that led there are worth as much as the crash itself.
+      - name: Save this chunk's corpus
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-corpus-${{ matrix.target }}-${{ inputs.chunk }}
+          path: tests/fuzz/corpus/${{ matrix.target }}
+          if-no-files-found: ignore
+
+      - name: Upload findings
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}-${{ inputs.chunk }}
+          path: artifacts/
+          if-no-files-found: ignore

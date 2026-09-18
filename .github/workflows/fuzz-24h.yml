@@ -20,47 +20,129 @@ on:
         required: false
         default: >-
           ["fuzz_special_fns","fuzz_matrix_ops","fuzz_repl_input","fuzz_sym_parser","fuzz_poly_ops","fuzz_bignum","fuzz_mpi_message"]
+      chunks:
+        description: >-
+          How many chained jobs to split the budget across, 1 to 6. Normally left
+          empty: the fewest that fit the six-hour job limit. Setting it is how the
+          corpus hand-off between chunks gets REHEARSED -- seconds=1200 with
+          chunks=2 exercises the upload and the restore in twenty minutes, where
+          the budget alone would always compute one chunk and leave that path
+          untested until the run it matters in.
+        required: false
+        default: ""
 
 jobs:
-  fuzz-24h:
-    name: libFuzzer 24h (${{ matrix.target }})
+  # A GitHub-hosted job is terminated at six hours of execution time no matter
+  # what `timeout-minutes` says, so the budget is split into chunks that fit and
+  # chained below. See `.github/workflows/fuzz-chunk.yml` for what a chunk does
+  # and how the corpus travels between them.
+  plan:
+    name: Plan the chunks
     runs-on: ubuntu-24.04
-    timeout-minutes: 1500
-    strategy:
-      fail-fast: false
-      matrix:
-        target: ${{ fromJSON(inputs.targets) }}
-    env:
-      MS_CI_LINUX_FLAGS: >-
-        -DMS_BUILD_TESTS=ON
-        -DMS_ENABLE_CUDA=OFF
-        -DMS_ENABLE_AVX512=OFF
+    outputs:
+      chunks: ${{ steps.split.outputs.chunks }}
+      per_chunk: ${{ steps.split.outputs.per_chunk }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Install toolchain
+      - name: Split the budget into jobs that fit the six-hour limit
+        id: split
+        env:
+          # Through the environment, not interpolated into the script: this is a
+          # dispatch input and it is about to be arithmetic.
+          TOTAL: ${{ inputs.seconds }}
+          FORCED_CHUNKS: ${{ inputs.chunks }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld ninja-build g++-13
+          set -euo pipefail
+          case "${TOTAL}" in
+            ''|*[!0-9]*) echo "error: seconds must be a positive integer, got '${TOTAL}'" >&2; exit 1 ;;
+          esac
+          if [ "${TOTAL}" -lt 1 ]; then
+            echo "error: seconds must be at least 1" >&2
+            exit 1
+          fi
+          # Four hours of fuzzing plus a ten-minute build leaves well over an
+          # hour of headroom inside the six-hour kill.
+          max_per_chunk=14400
+          # Chunks are chained statically below, so there is a fixed number of them.
+          max_chunks=6
+          chunks=$(( (TOTAL + max_per_chunk - 1) / max_per_chunk ))
+          if [ -n "${FORCED_CHUNKS}" ]; then
+            case "${FORCED_CHUNKS}" in
+              ''|*[!0-9]*) echo "error: chunks must be a positive integer, got '${FORCED_CHUNKS}'" >&2; exit 1 ;;
+            esac
+            if [ "${FORCED_CHUNKS}" -lt "${chunks}" ]; then
+              echo "error: chunks=${FORCED_CHUNKS} cannot hold ${TOTAL}s; ${chunks} are needed" >&2
+              exit 1
+            fi
+            chunks="${FORCED_CHUNKS}"
+          fi
+          if [ "${chunks}" -gt "${max_chunks}" ]; then
+            echo "error: seconds=${TOTAL} needs ${chunks} chunks; this workflow chains ${max_chunks}" >&2
+            echo "       (a maximum of $(( max_chunks * max_per_chunk ))s per target)" >&2
+            exit 1
+          fi
+          per_chunk=$(( (TOTAL + chunks - 1) / chunks ))
+          echo "chunks=${chunks}" >> "${GITHUB_OUTPUT}"
+          echo "per_chunk=${per_chunk}" >> "${GITHUB_OUTPUT}"
+          echo "${TOTAL}s per target = ${chunks} chunk(s) of ${per_chunk}s"
 
-      - name: Configure
-        run: cmake -S . -B build-fuzz-24h -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_BUILD_TYPE=RelWithDebInfo -DMS_BUILD_FUZZ=ON ${{ env.MS_CI_LINUX_FLAGS }}
+  # Each chunk waits on the one before it, so a target is fuzzed for the whole
+  # budget and not six times over. An explicit `if` REPLACES the implicit
+  # success() check on `needs`, so success() is spelled out: a chunk that finds
+  # a crash must stop the campaign, not be skipped past.
+  chunk1:
+    needs: plan
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 1
 
-      - name: Build fuzz target
-        run: cmake --build build-fuzz-24h --target ${{ matrix.target }}
+  chunk2:
+    needs: [plan, chunk1]
+    if: ${{ success() && fromJSON(needs.plan.outputs.chunks) >= 2 }}
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 2
+      previous: "1"
 
-      # `scripts/fuzz_session.sh` carries the corpus handling, the chunking and
-      # the artifact check, and says at length why each is the way it is. It is
-      # the same script the CI smoke, both nightly sessions and the local
-      # marathon runner use: this job having its own copy of those fifteen lines
-      # is how three of the four came to be wrong.
-      - name: Run fuzz session
-        run: bash scripts/fuzz_session.sh build-fuzz-24h ${{ matrix.target }} "${{ inputs.seconds }}"
+  chunk3:
+    needs: [plan, chunk2]
+    if: ${{ success() && fromJSON(needs.plan.outputs.chunks) >= 3 }}
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 3
+      previous: "2"
 
-      - name: Upload findings
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: fuzz-artifacts-${{ matrix.target }}
-          path: artifacts/
-          if-no-files-found: ignore
+  chunk4:
+    needs: [plan, chunk3]
+    if: ${{ success() && fromJSON(needs.plan.outputs.chunks) >= 4 }}
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 4
+      previous: "3"
+
+  chunk5:
+    needs: [plan, chunk4]
+    if: ${{ success() && fromJSON(needs.plan.outputs.chunks) >= 5 }}
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 5
+      previous: "4"
+
+  chunk6:
+    needs: [plan, chunk5]
+    if: ${{ success() && fromJSON(needs.plan.outputs.chunks) >= 6 }}
+    uses: ./.github/workflows/fuzz-chunk.yml
+    with:
+      targets: ${{ inputs.targets }}
+      seconds: ${{ needs.plan.outputs.per_chunk }}
+      chunk: 6
+      previous: "5"
